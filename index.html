@@ -1,0 +1,1590 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>별빛 아레나</title>
+<style>
+  /* ====== 화면 전체를 검은 배경으로 채우고 스크롤바를 없앤다 ====== */
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;          /* 가로/세로 스크롤바 제거 */
+    background: #0a0a18;        /* 레터박스(여백) 색 */
+  }
+  /* body를 flex로 만들어 캔버스를 가운데 정렬 → 남는 공간이 자연스러운 레터박스가 된다 */
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: "Malgun Gothic", "맑은 고딕", sans-serif;
+  }
+  /* 캔버스: CSS 크기는 JS가 화면에 맞게 조절한다 */
+  #game {
+    display: block;
+    background: #14142a;
+    image-rendering: auto;
+    box-shadow: 0 0 40px rgba(120,160,255,0.25);
+  }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<script>
+"use strict";
+
+/* =====================================================================
+   별빛 아레나 (Star Arena)
+   - 크롬북 Chrome 브라우저에서 바로 실행되는 1대1 아레나 슈팅 게임
+   - 외부 라이브러리/이미지/폰트/사운드 없이 순수 Canvas 로 제작
+   ===================================================================== */
+
+/* =====================================================================
+   1) 학생용 설정값 (GAME_CONFIG)
+   - 학생들이 이 숫자들만 바꿔도 게임 느낌을 쉽게 조절할 수 있다.
+   ===================================================================== */
+const GAME_CONFIG = {
+  // --- 게임 규칙 ---
+  gameTime: 90,                 // 한 판의 제한 시간(초)
+  respawnDelay: 3,              // 쓰러진 뒤 다시 등장하기까지 걸리는 시간(초)
+  invincibleTime: 2,            // 다시 등장한 뒤 무적이 유지되는 시간(초)
+  regenStartTime: 3,            // 마지막 전투(공격/피격) 후 체력 회복이 시작되는 시간(초)
+  regenRate: 12,                // 1초 동안 회복되는 체력 양
+
+  // --- 플레이어(루미) ---
+  playerMaxHp: 100,             // 플레이어 최대 체력
+  playerMoveSpeed: 225,         // 플레이어 이동 속도(초당 픽셀) - 컴퓨터보다 약간 빠름
+  playerDamage: 18,             // 플레이어 기본 공격 한 발의 피해량
+  playerAttackCooldown: 0.45,   // 기본 공격 사이의 대기시간(초)
+  playerBulletSpeed: 520,       // 플레이어 탄환 속도
+  playerBulletRadius: 9,        // 플레이어 탄환 크기(반지름)
+  playerRange: 470,             // 플레이어 공격 사거리(중거리)
+
+  // --- 플레이어 필살기(별빛 폭발) ---
+  superDamage: 40,              // 필살기 피해량
+  superRadius: 150,             // 필살기 범위(반지름)
+  superKnockback: 130,          // 필살기로 밀쳐내는 거리
+  superChargePerHit: 20,        // 기본 공격 적중 시 채워지는 게이지 양
+
+  // --- 컴퓨터(크롬) ---
+  enemyMaxHp: 100,              // 컴퓨터 최대 체력
+  enemyMoveSpeed: 175,          // 컴퓨터 이동 속도 - 플레이어보다 약간 느림
+  enemyDamage: 16,             // 컴퓨터 공격 피해량
+  enemyAttackCooldown: 0.7,    // 컴퓨터 공격 사이의 대기시간(초)
+  enemyBulletSpeed: 430,       // 컴퓨터 탄환 속도
+  enemyBulletRadius: 8,        // 컴퓨터 탄환 크기
+  enemyRange: 430,             // 컴퓨터 공격 사거리(중거리)
+  enemyAimError: 0.12,         // 컴퓨터 조준 오차(라디안) - 클수록 잘 못 맞힘
+  enemyReactionTime: 0.35,     // 컴퓨터 반응 시간(초)
+  enemyRetreatHp: 30,          // 이 체력 이하가 되면 거리를 벌리려 한다
+  enemyIdealDistance: 300      // 컴퓨터가 유지하려는 적정 거리
+};
+
+/* =====================================================================
+   2) 캔버스와 논리(고정) 좌표
+   - 게임 내부 계산은 항상 1280 x 720 논리 좌표를 사용한다.
+   - 실제 화면 크기에 맞춰 스케일만 바꿔서 그린다 → 충돌/속도가 변하지 않음.
+   ===================================================================== */
+const LOGW = 1280;   // 논리 가로 폭
+const LOGH = 720;    // 논리 세로 높이
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+// 아레나(전투가 벌어지는 직사각형 영역). 위/아래는 정보 표시줄로 사용.
+const ARENA = { x: 24, y: 70, w: 1232, h: 576 };
+
+// 화면 크기에 맞게 캔버스 픽셀 크기와 CSS 크기를 조절한다.
+function resizeCanvas() {
+  const dpr = window.devicePixelRatio || 1;     // 고해상도 화면 대응
+  const ww = window.innerWidth;
+  const wh = window.innerHeight;
+  // 논리 비율(16:9)을 유지하면서 화면 안에 최대한 크게 들어가는 배율을 구한다.
+  const scale = Math.min(ww / LOGW, wh / LOGH);
+  const cssW = Math.max(1, Math.floor(LOGW * scale));
+  const cssH = Math.max(1, Math.floor(LOGH * scale));
+  canvas.style.width = cssW + "px";
+  canvas.style.height = cssH + "px";
+  // 실제 캔버스 픽셀 수 = CSS 크기 * dpr (선명하게)
+  canvas.width = Math.floor(cssW * dpr);
+  canvas.height = Math.floor(cssH * dpr);
+}
+window.addEventListener("resize", resizeCanvas);
+resizeCanvas();
+
+/* =====================================================================
+   3) 작은 도우미 함수들
+   ===================================================================== */
+function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+function dist(ax, ay, bx, by) { return Math.hypot(ax - bx, ay - by); }
+function dist2(ax, ay, bx, by) { const dx = ax - bx, dy = ay - by; return dx * dx + dy * dy; }
+function rand(a, b) { return a + Math.random() * (b - a); }
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+// 원(cx,cy,r)과 사각형 R 이 겹치는지 검사 (가장 가까운 점까지의 거리로 판정)
+function circleRectOverlap(cx, cy, r, R) {
+  const nx = clamp(cx, R.x, R.x + R.w);
+  const ny = clamp(cy, R.y, R.y + R.h);
+  const dx = cx - nx, dy = cy - ny;
+  return (dx * dx + dy * dy) < (r * r);
+}
+
+/* =====================================================================
+   4) 맵 데이터 (장애물 / 풀숲)
+   - 중앙 점(640,358)을 기준으로 거의 대칭이 되도록 배치했다.
+   ===================================================================== */
+// 장애물(사각형). 캐릭터와 탄환이 통과할 수 없다.
+const OBSTACLES = [
+  // 중앙의 큰 장애물(수정 기둥)
+  { x: 580, y: 298, w: 120, h: 120, kind: "crystal" },
+  // 좌우 대칭 작은 장애물들(돌벽 / 에너지 상자)
+  { x: 250, y: 150, w: 70, h: 70, kind: "box" },
+  { x: 960, y: 496, w: 70, h: 70, kind: "box" },
+  { x: 470, y: 470, w: 60, h: 60, kind: "rock" },
+  { x: 750, y: 186, w: 60, h: 60, kind: "rock" },
+  { x: 180, y: 420, w: 50, h: 90, kind: "rock" },
+  { x: 1050, y: 206, w: 50, h: 90, kind: "rock" }
+];
+
+// 풀숲(사각형). 장애물이 아니라 이동은 자유롭지만 몸을 숨길 수 있다.
+const BUSHES = [
+  { x: 430, y: 90, w: 150, h: 90 },
+  { x: 700, y: 536, w: 150, h: 90 },
+  { x: 120, y: 230, w: 130, h: 110 },
+  { x: 1030, y: 376, w: 130, h: 110 },
+  { x: 545, y: 470, w: 190, h: 70 }
+];
+
+// 시작(재등장) 지점
+const PLAYER_SPAWN = { x: 120, y: 560 };  // 왼쪽 아래
+const ENEMY_SPAWN  = { x: 1160, y: 150 }; // 오른쪽 위
+
+/* =====================================================================
+   5) 게임 상태 변수
+   ===================================================================== */
+const STATE = { START: "start", PLAYING: "playing", PAUSED: "paused", OVER: "over" };
+let gameState = STATE.START;
+
+let player, enemy;        // 캐릭터 두 명
+let bullets = [];         // 화면의 모든 탄환
+let effects = [];         // 시각 효과(발사/적중/파동/재등장 등)
+let damageNumbers = [];   // 떠오르는 피해 숫자
+
+let playerScore = 0;      // 루미 점수(크롬을 쓰러뜨린 횟수)
+let enemyScore = 0;       // 크롬 점수(루미를 쓰러뜨린 횟수)
+let matchElapsed = 0;     // 플레이 중 흐른 시간(초). 일시정지/시작전에는 멈춘다.
+let superGauge = 0;       // 필살기 게이지(0~100)
+
+let uiTime = 0;           // 메뉴/HUD 연출용 시간(항상 흐름) - 게임 로직과 무관
+
+// 시작/결과 화면 버튼 선택 상태
+let resultButtonIndex = 0; // 0 = 다시 시작, 1 = 시작 화면으로
+
+// 통계(결과 화면에 표시)
+let stats;
+function freshStats() {
+  return {
+    damageDealt: 0,    // 플레이어가 준 총 피해량
+    damageTaken: 0,    // 플레이어가 받은 총 피해량
+    shotsFired: 0,     // 기본 공격 발사 횟수
+    shotsHit: 0,       // 기본 공격 명중 횟수
+    superUsed: 0,      // 필살기 사용 횟수
+    kills: 0,          // 크롬을 쓰러뜨린 횟수
+    playerDeaths: 0    // 루미가 쓰러진 횟수
+  };
+}
+
+/* =====================================================================
+   6) 캐릭터 만들기 / 한 판 초기화
+   ===================================================================== */
+function makeFighter(isPlayer) {
+  const spawn = isPlayer ? PLAYER_SPAWN : ENEMY_SPAWN;
+  return {
+    isPlayer: isPlayer,
+    name: isPlayer ? "루미" : "크롬",
+    x: spawn.x, y: spawn.y,
+    spawnX: spawn.x, spawnY: spawn.y,
+    r: 22,                                   // 충돌 반지름
+    maxHp: isPlayer ? GAME_CONFIG.playerMaxHp : GAME_CONFIG.enemyMaxHp,
+    hp: isPlayer ? GAME_CONFIG.playerMaxHp : GAME_CONFIG.enemyMaxHp,
+    displayHp: isPlayer ? GAME_CONFIG.playerMaxHp : GAME_CONFIG.enemyMaxHp, // 부드러운 체력바용
+    facing: isPlayer ? 0 : Math.PI,          // 바라보는 방향(라디안)
+    moveFacing: isPlayer ? 0 : Math.PI,
+    cooldown: 0,                             // 다음 공격까지 남은 시간
+    lastCombatTime: -999,                    // 마지막으로 공격/피격한 시각(회복 판정용)
+    lastFireTime: -999,                      // 마지막으로 발사한 시각(은신 판정용)
+    hitFlash: 0,                             // 피격 깜빡임 타이머
+    dead: false,                             // 쓰러진 상태인가
+    respawnTimer: 0,                         // 재등장까지 남은 시간
+    invincibleTimer: 0,                      // 무적 남은 시간
+    // 컴퓨터 AI 전용 상태
+    ai: {
+      strafeDir: 1, strafeTimer: 0,
+      reactionTimer: GAME_CONFIG.enemyReactionTime, fireTimer: 0, // 첫 교전에도 반응 지연을 둔다
+      lastX: spawn.x, lastY: spawn.y, stuckCheck: 0.4,
+      avoidDir: 1, avoidTimer: 0,
+      knowsPlayer: true, lastKnownX: spawn.x, lastKnownY: spawn.y
+    }
+  };
+}
+
+// 한 판을 완전히 새로 시작할 수 있도록 모든 데이터를 초기화한다.
+function resetMatch() {
+  player = makeFighter(true);
+  enemy = makeFighter(false);
+  bullets = [];
+  effects = [];
+  damageNumbers = [];
+  playerScore = 0;
+  enemyScore = 0;
+  matchElapsed = 0;
+  superGauge = 0;
+  stats = freshStats();
+  resultButtonIndex = 0;
+  keysDown.clear();   // 키 입력 상태도 초기화
+}
+
+/* =====================================================================
+   7) 키보드 입력
+   ===================================================================== */
+const keysDown = new Set();   // 현재 눌려 있는 키들(e.code 기준)
+
+// 방향키와 Space 는 브라우저 스크롤을 막아야 하는 키들
+const PREVENT_KEYS = new Set([
+  "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"
+]);
+
+window.addEventListener("keydown", (e) => {
+  if (PREVENT_KEYS.has(e.code)) e.preventDefault();
+
+  // 같은 키를 누르고 있을 때 반복 이벤트(키 리피트)는 한 번만 처리
+  if (!e.repeat) {
+    handleKeyPress(e.code);
+  }
+  keysDown.add(e.code);
+});
+
+window.addEventListener("keyup", (e) => {
+  keysDown.delete(e.code);
+});
+
+// 브라우저 창이 포커스를 잃으면 눌린 키 상태를 모두 비운다(계속 움직이는 버그 방지).
+window.addEventListener("blur", () => { keysDown.clear(); });
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) keysDown.clear();
+});
+
+// "한 번 누름"으로 처리해야 하는 동작(메뉴 이동, 일시정지 토글, 필살기 등)
+function handleKeyPress(code) {
+  if (gameState === STATE.START) {
+    // 시작 화면: Enter/Space 로 게임 시작
+    if (code === "Enter" || code === "Space" || code === "NumpadEnter") {
+      startGame();
+    }
+    return;
+  }
+
+  if (gameState === STATE.PLAYING) {
+    if (code === "Space") { usePlayerSuper(); return; }          // 필살기
+    if (code === "KeyP") { setPaused(true); return; }            // 일시정지
+    if (code === "Escape") { goToStartScreen(); return; }        // 시작 화면으로
+    return;
+  }
+
+  if (gameState === STATE.PAUSED) {
+    if (code === "KeyP") { setPaused(false); return; }           // 계속하기
+    if (code === "Escape") { goToStartScreen(); return; }        // 시작 화면으로
+    return;
+  }
+
+  if (gameState === STATE.OVER) {
+    // 결과 화면: 좌우로 버튼 선택, Enter 실행, R 즉시 재시작
+    if (code === "ArrowLeft") { resultButtonIndex = 0; return; }
+    if (code === "ArrowRight") { resultButtonIndex = 1; return; }
+    if (code === "KeyR") { startGame(); return; }
+    if (code === "Enter" || code === "NumpadEnter" || code === "Space") {
+      if (resultButtonIndex === 0) startGame();
+      else goToStartScreen();
+      return;
+    }
+    if (code === "Escape") { goToStartScreen(); return; }
+    return;
+  }
+}
+
+/* =====================================================================
+   8) 게임 흐름 제어 (시작 / 일시정지 / 종료)
+   ===================================================================== */
+function startGame() {
+  resetMatch();
+  gameState = STATE.PLAYING;
+}
+
+function goToStartScreen() {
+  gameState = STATE.START;
+  keysDown.clear();
+}
+
+function setPaused(p) {
+  if (p && gameState === STATE.PLAYING) {
+    gameState = STATE.PAUSED;
+    keysDown.clear(); // 일시정지 중 입력을 비워 재개 시 갑자기 움직이지 않게 한다
+  } else if (!p && gameState === STATE.PAUSED) {
+    gameState = STATE.PLAYING;
+    keysDown.clear(); // 재개할 때도 입력 초기화
+  }
+}
+
+function endGame() {
+  gameState = STATE.OVER;
+  resultButtonIndex = 0;
+  keysDown.clear();
+}
+
+/* =====================================================================
+   9) 이동과 충돌 처리
+   - X축 → Y축 순서로 나누어 이동시켜 벽을 따라 미끄러지게 한다.
+   ===================================================================== */
+function moveEntity(ent, dx, dy) {
+  const ox = ent.x, oy = ent.y; // 이동 전 위치를 기억해 둔다
+  // ---- X축 이동 ----
+  // X로 움직였다가 장애물과 겹치면 X 이동만 취소한다(벽에 막힘).
+  // 이때 Y 이동은 그대로 살아 있어 벽을 따라 자연스럽게 미끄러진다.
+  ent.x += dx;
+  for (const o of OBSTACLES) {
+    if (circleRectOverlap(ent.x, ent.y, ent.r, o)) { ent.x = ox; break; }
+  }
+  // ---- Y축 이동 ----
+  ent.y += dy;
+  for (const o of OBSTACLES) {
+    if (circleRectOverlap(ent.x, ent.y, ent.r, o)) { ent.y = oy; break; }
+  }
+  // ---- 아레나 경계 안으로 제한 ----
+  ent.x = clamp(ent.x, ARENA.x + ent.r, ARENA.x + ARENA.w - ent.r);
+  ent.y = clamp(ent.y, ARENA.y + ent.r, ARENA.y + ARENA.h - ent.r);
+}
+
+// 캐릭터가 풀숲 안에 있는지(중심 기준)
+function inBush(ent) {
+  for (const b of BUSHES) {
+    if (ent.x >= b.x && ent.x <= b.x + b.w && ent.y >= b.y && ent.y <= b.y + b.h) return true;
+  }
+  return false;
+}
+
+// 공격받을 수 있는 상태인가? (쓰러졌거나 무적이면 불가)
+function canBeHit(ent) {
+  return !ent.dead && ent.invincibleTimer <= 0;
+}
+
+// 두 점을 잇는 선이 장애물에 막히는지(컴퓨터가 벽 너머로 쏘지 않게 하기 위함)
+function hasLineOfSight(ax, ay, bx, by) {
+  const d = dist(ax, ay, bx, by);
+  const steps = Math.max(1, Math.ceil(d / 16));
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps;
+    const px = lerp(ax, bx, t);
+    const py = lerp(ay, by, t);
+    for (const o of OBSTACLES) {
+      if (px >= o.x && px <= o.x + o.w && py >= o.y && py <= o.y + o.h) return false;
+    }
+  }
+  return true;
+}
+
+/* =====================================================================
+   10) 탄환 발사와 피해 처리
+   ===================================================================== */
+function fireBullet(owner, dirx, diry) {
+  const ent = owner === "player" ? player : enemy;
+  const speed = owner === "player" ? GAME_CONFIG.playerBulletSpeed : GAME_CONFIG.enemyBulletSpeed;
+  const r     = owner === "player" ? GAME_CONFIG.playerBulletRadius : GAME_CONFIG.enemyBulletRadius;
+  const dmg   = owner === "player" ? GAME_CONFIG.playerDamage : GAME_CONFIG.enemyDamage;
+  const range = owner === "player" ? GAME_CONFIG.playerRange : GAME_CONFIG.enemyRange;
+
+  // 탄환은 캐릭터 가장자리 살짝 바깥에서 출발
+  const muzzle = ent.r + 6;
+  const bx = ent.x + dirx * muzzle;
+  const by = ent.y + diry * muzzle;
+
+  bullets.push({
+    x: bx, y: by,
+    vx: dirx * speed, vy: diry * speed,
+    r: r, damage: dmg, owner: owner,
+    alive: true, traveled: 0, maxRange: range
+  });
+
+  spawnMuzzle(bx, by, dirx, diry, owner);  // 발사 효과
+  ent.facing = Math.atan2(diry, dirx);     // 공격 방향을 바라봄
+  ent.lastCombatTime = matchElapsed;       // 공격하면 회복 타이머 초기화
+  if (ent.invincibleTimer > 0) ent.invincibleTimer = 0; // 무적 중 공격하면 무적 해제
+  if (owner === "player") {
+    stats.shotsFired++;
+    player.lastFireTime = matchElapsed;
+  }
+}
+
+// 피해를 적용한다. 실제로 들어간 피해량을 돌려준다(0이면 무효).
+function applyDamage(target, dmg, fromX, fromY) {
+  if (!canBeHit(target)) return 0;       // 죽었거나 무적이면 무시
+  target.hp -= dmg;
+  target.lastCombatTime = matchElapsed;  // 맞으면 회복 타이머 초기화
+  target.hitFlash = 0.15;                // 피격 깜빡임
+
+  // 피해 숫자 띄우기
+  const color = target.isPlayer ? "#ff7a7a" : "#ffe066";
+  spawnDamageNumber(target.x, target.y - target.r - 8, Math.round(dmg), color);
+
+  // 통계(플레이어 기준)
+  if (target === enemy) stats.damageDealt += dmg;
+  else stats.damageTaken += dmg;
+
+  if (target.hp <= 0) {
+    target.hp = 0;
+    handleDeath(target);
+  }
+  return dmg;
+}
+
+// 캐릭터가 쓰러졌을 때
+function handleDeath(ent) {
+  if (ent.dead) return;       // 이미 쓰러진 경우 점수 중복 방지
+  ent.dead = true;
+  ent.respawnTimer = GAME_CONFIG.respawnDelay;
+  ent.invincibleTimer = 0;
+  spawnDeathBurst(ent);
+  if (ent === player) { stats.playerDeaths++; enemyScore++; }
+  else { stats.kills++; playerScore++; }
+}
+
+// 재등장 처리
+function respawn(ent) {
+  ent.dead = false;
+  ent.hp = ent.maxHp;
+  ent.displayHp = ent.maxHp;
+  ent.cooldown = 0;
+
+  // 기본 재등장 위치
+  let sx = ent.spawnX, sy = ent.spawnY;
+  // 상대가 시작 지점 근처에 있으면 살짝 떨어진 안전한 위치로
+  const opp = ent === player ? enemy : player;
+  if (!opp.dead && dist2(sx, sy, opp.x, opp.y) < (ent.r + opp.r + 40) * (ent.r + opp.r + 40)) {
+    sy = clamp(sy + (sy < LOGH / 2 ? 70 : -70), ARENA.y + ent.r, ARENA.y + ARENA.h - ent.r);
+  }
+  ent.x = sx; ent.y = sy;
+  ent.invincibleTimer = GAME_CONFIG.invincibleTime;
+  ent.lastCombatTime = matchElapsed;
+  ent.ai.lastX = sx; ent.ai.lastY = sy;
+  spawnRespawnRing(ent);
+}
+
+// 필살기 사용(별빛 폭발)
+function usePlayerSuper() {
+  if (player.dead) return;
+  if (superGauge < 100) {
+    // 게이지가 부족하면 짧은 안내 효과만 표시
+    spawnSuperFail(player.x, player.y);
+    return;
+  }
+  superGauge = 0;
+  stats.superUsed++;
+  spawnSuperWave(player.x, player.y);
+  player.lastCombatTime = matchElapsed;
+  if (player.invincibleTimer > 0) player.invincibleTimer = 0;
+
+  // 범위 안의 컴퓨터에게 피해 + 밀쳐내기
+  if (canBeHit(enemy) && dist(player.x, player.y, enemy.x, enemy.y) <= GAME_CONFIG.superRadius + enemy.r) {
+    applyDamage(enemy, GAME_CONFIG.superDamage, player.x, player.y);
+    const a = Math.atan2(enemy.y - player.y, enemy.x - player.x);
+    // 밀쳐내기도 충돌 처리를 거쳐 벽을 뚫지 않게 한다(여러 번 나눠 이동)
+    const push = GAME_CONFIG.superKnockback;
+    const stepN = 8;
+    for (let i = 0; i < stepN; i++) {
+      moveEntity(enemy, Math.cos(a) * push / stepN, Math.sin(a) * push / stepN);
+    }
+  }
+}
+
+/* =====================================================================
+   11) 업데이트(매 프레임 게임 로직) - PLAYING 상태에서만 실행
+   ===================================================================== */
+function updatePlayer(dt) {
+  if (player.dead) {
+    player.respawnTimer -= dt;
+    if (player.respawnTimer <= 0) respawn(player);
+    return;
+  }
+
+  // ---- 이동(WASD) ----
+  let mx = 0, my = 0;
+  if (keysDown.has("KeyW")) my -= 1;
+  if (keysDown.has("KeyS")) my += 1;
+  if (keysDown.has("KeyA")) mx -= 1;
+  if (keysDown.has("KeyD")) mx += 1;
+  const ml = Math.hypot(mx, my);
+  if (ml > 0) {
+    mx /= ml; my /= ml;  // 대각선이 빨라지지 않도록 정규화
+    moveEntity(player, mx * GAME_CONFIG.playerMoveSpeed * dt, my * GAME_CONFIG.playerMoveSpeed * dt);
+    player.moveFacing = Math.atan2(my, mx);
+  }
+
+  // ---- 공격(방향키) ----
+  player.cooldown -= dt;
+  let ax = 0, ay = 0;
+  if (keysDown.has("ArrowLeft")) ax -= 1;
+  if (keysDown.has("ArrowRight")) ax += 1;
+  if (keysDown.has("ArrowUp")) ay -= 1;
+  if (keysDown.has("ArrowDown")) ay += 1;
+  // 반대 방향키를 함께 누르면 ax/ay 가 0 이 되어 그 축은 공격하지 않는다(잘못된 방향 방지)
+  if (ax !== 0 || ay !== 0) {
+    const al = Math.hypot(ax, ay);
+    ax /= al; ay /= al;                 // 대각선 공격 속도도 정규화
+    player.facing = Math.atan2(ay, ax); // 공격 방향을 바라봄
+    if (player.cooldown <= 0) {
+      fireBullet("player", ax, ay);
+      player.cooldown = GAME_CONFIG.playerAttackCooldown; // 쿨다운에 맞춰 연속 공격
+    }
+  } else if (ml > 0) {
+    player.facing = player.moveFacing;  // 공격 안 할 땐 이동 방향을 바라봄
+  }
+
+  // ---- 피격 깜빡임 / 무적 / 회복 ----
+  if (player.hitFlash > 0) player.hitFlash -= dt;
+  if (player.invincibleTimer > 0) player.invincibleTimer -= dt;
+  regen(player, dt);
+}
+
+function updateEnemyAI(dt) {
+  if (enemy.dead) {
+    enemy.respawnTimer -= dt;
+    if (enemy.respawnTimer <= 0) respawn(enemy);
+    return;
+  }
+  if (enemy.hitFlash > 0) enemy.hitFlash -= dt;
+  if (enemy.invincibleTimer > 0) enemy.invincibleTimer -= dt;
+
+  const ai = enemy.ai;
+  const d = dist(enemy.x, enemy.y, player.x, player.y);
+
+  // ---- 플레이어 위치 파악(은신 처리) ----
+  // 플레이어가 멀리 떨어진 풀숲에 숨어 있고, 최근에 공격하지 않았다면 정확한 위치를 모른다.
+  const playerHidden = inBush(player) && d > 270 &&
+                       (matchElapsed - player.lastFireTime) > 1.2;
+  const wasKnown = ai.knowsPlayer;
+  if (!playerHidden) {
+    // 숨었던 플레이어를 다시 찾아낸 순간에는 반응 지연을 줘서 즉시 저격하지 않게 한다
+    if (!wasKnown) ai.reactionTimer = GAME_CONFIG.enemyReactionTime * rand(0.6, 1.2);
+    ai.knowsPlayer = true;
+    ai.lastKnownX = player.x;
+    ai.lastKnownY = player.y;
+  } else {
+    ai.knowsPlayer = false; // 마지막으로 본 위치를 사용
+  }
+  const tx = ai.knowsPlayer ? player.x : ai.lastKnownX;
+  const ty = ai.knowsPlayer ? player.y : ai.lastKnownY;
+  const tdx = tx - enemy.x, tdy = ty - enemy.y;
+  const td = Math.hypot(tdx, tdy) || 1;
+
+  // ---- 이동 방향 결정 ----
+  let mvx = 0, mvy = 0;
+  const ideal = GAME_CONFIG.enemyIdealDistance;
+  const retreating = enemy.hp <= GAME_CONFIG.enemyRetreatHp;
+
+  if (retreating) {
+    // 체력이 낮으면 거리를 벌린다
+    mvx = -tdx / td; mvy = -tdy / td;
+  } else if (td > ideal + 45) {
+    // 너무 멀면 접근
+    mvx = tdx / td; mvy = tdy / td;
+  } else if (td < ideal - 45) {
+    // 너무 가까우면 물러남
+    mvx = -tdx / td; mvy = -tdy / td;
+  } else {
+    // 적정 거리면 좌우로 움직이며 탄환을 피한다(스트레이프)
+    ai.strafeTimer -= dt;
+    if (ai.strafeTimer <= 0) {
+      ai.strafeDir = Math.random() < 0.5 ? 1 : -1;
+      ai.strafeTimer = rand(0.6, 1.4);
+    }
+    mvx = -tdy / td * ai.strafeDir;
+    mvy = tdx / td * ai.strafeDir;
+  }
+
+  // ---- 같은 자리에 오래 머물면(벽에 낌) 방향 틀기 ----
+  ai.stuckCheck -= dt;
+  if (ai.stuckCheck <= 0) {
+    const moved = dist(enemy.x, enemy.y, ai.lastX, ai.lastY);
+    if (moved < 6) {
+      ai.avoidDir = Math.random() < 0.5 ? 1 : -1;
+      ai.avoidTimer = 0.6;
+    }
+    ai.lastX = enemy.x; ai.lastY = enemy.y;
+    ai.stuckCheck = 0.4;
+  }
+  // 우회 중이면 이동 방향을 옆으로 꺾는다(장애물 우회)
+  if (ai.avoidTimer > 0) {
+    ai.avoidTimer -= dt;
+    const a = Math.atan2(mvy, mvx) + ai.avoidDir * 1.2;
+    mvx = Math.cos(a); mvy = Math.sin(a);
+  }
+
+  // ---- 실제 이동(정규화 후) ----
+  const mlen = Math.hypot(mvx, mvy);
+  if (mlen > 0) {
+    mvx /= mlen; mvy /= mlen;
+    moveEntity(enemy, mvx * GAME_CONFIG.enemyMoveSpeed * dt, mvy * GAME_CONFIG.enemyMoveSpeed * dt);
+  }
+
+  // ---- 공격 ----
+  ai.fireTimer -= dt;
+  ai.reactionTimer -= dt;
+  if (ai.knowsPlayer && d < GAME_CONFIG.enemyRange &&
+      ai.fireTimer <= 0 && ai.reactionTimer <= 0 &&
+      hasLineOfSight(enemy.x, enemy.y, player.x, player.y) && canBeHit(player)) {
+    const baseA = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+    const a = baseA + rand(-1, 1) * GAME_CONFIG.enemyAimError; // 조준 오차
+    fireBullet("enemy", Math.cos(a), Math.sin(a));
+    // 공격 간격과 반응 시간에 약간의 무작위성
+    ai.fireTimer = GAME_CONFIG.enemyAttackCooldown * rand(0.85, 1.25);
+    ai.reactionTimer = GAME_CONFIG.enemyReactionTime * rand(0.7, 1.3);
+  }
+
+  // ---- 회복 ----
+  regen(enemy, dt);
+}
+
+// 체력 회복: 마지막 전투 후 일정 시간이 지나면 서서히 회복
+function regen(ent, dt) {
+  if (ent.dead) return;
+  if (matchElapsed - ent.lastCombatTime >= GAME_CONFIG.regenStartTime && ent.hp < ent.maxHp) {
+    ent.hp = Math.min(ent.maxHp, ent.hp + GAME_CONFIG.regenRate * dt);
+  }
+}
+
+// 탄환 업데이트(작은 단계로 쪼개 이동시켜 빠른 탄환이 통과하지 않게 한다)
+function updateBullets(dt) {
+  for (const b of bullets) {
+    if (!b.alive) continue;
+    const speed = Math.hypot(b.vx, b.vy);
+    const moveLen = speed * dt;
+    // 한 번에 너무 많이 움직이면 얇은 벽을 통과할 수 있으므로 단계로 나눈다
+    const steps = Math.max(1, Math.ceil(moveLen / (b.r * 0.9)));
+    const sx = b.vx * dt / steps;
+    const sy = b.vy * dt / steps;
+    const stepLen = Math.hypot(sx, sy);
+
+    for (let s = 0; s < steps && b.alive; s++) {
+      b.x += sx; b.y += sy;
+      b.traveled += stepLen;
+
+      // 아레나 밖으로 나가면 제거
+      if (b.x < ARENA.x || b.x > ARENA.x + ARENA.w || b.y < ARENA.y || b.y > ARENA.y + ARENA.h) {
+        b.alive = false; break;
+      }
+      // 장애물에 닿으면 제거
+      let hitWall = false;
+      for (const o of OBSTACLES) {
+        if (circleRectOverlap(b.x, b.y, b.r, o)) { hitWall = true; break; }
+      }
+      if (hitWall) {
+        spawnHit(b.x, b.y, "#aab0d0");
+        b.alive = false; break;
+      }
+      // 상대에게 명중?
+      const target = b.owner === "player" ? enemy : player;
+      if (canBeHit(target) && dist(b.x, b.y, target.x, target.y) < b.r + target.r) {
+        const applied = applyDamage(target, b.damage, b.x, b.y);
+        if (applied > 0 && b.owner === "player") {
+          stats.shotsHit++;
+          superGauge = Math.min(100, superGauge + GAME_CONFIG.superChargePerHit); // 명중 시에만 게이지 충전
+        }
+        spawnHit(b.x, b.y, b.owner === "player" ? "#ffe066" : "#c98bff");
+        b.alive = false; break; // 한 번만 피해를 주고 즉시 제거
+      }
+      // 사거리 초과
+      if (b.traveled > b.maxRange) { b.alive = false; break; }
+    }
+  }
+  // 죽은 탄환 제거(다음 프레임에 다시 피해를 주지 않게)
+  bullets = bullets.filter(b => b.alive);
+}
+
+// 화면 효과/피해 숫자 업데이트
+function updateEffects(dt) {
+  for (const e of effects) {
+    e.t += dt;
+    if (e.vx !== undefined) { e.x += e.vx * dt; e.y += e.vy * dt; }
+  }
+  effects = effects.filter(e => e.t < e.life);
+
+  for (const n of damageNumbers) {
+    n.t += dt;
+    n.y += n.vy * dt;
+  }
+  damageNumbers = damageNumbers.filter(n => n.t < n.life);
+}
+
+// 한 프레임 전체 업데이트
+function update(dt) {
+  uiTime += dt; // 메뉴 연출용(항상 흐름)
+
+  if (gameState !== STATE.PLAYING) return; // 시작/일시정지/종료 중에는 게임 로직 정지
+
+  matchElapsed += dt;
+
+  // 체력바 부드럽게 따라가기(연출이지만 일시정지 중엔 멈추도록 PLAYING에서만)
+  player.displayHp = lerp(player.displayHp, player.hp, Math.min(1, dt * 8));
+  enemy.displayHp = lerp(enemy.displayHp, enemy.hp, Math.min(1, dt * 8));
+
+  updatePlayer(dt);
+  updateEnemyAI(dt);
+  updateBullets(dt);
+  updateEffects(dt);
+
+  // 시간이 끝나면 게임 종료
+  if (matchElapsed >= GAME_CONFIG.gameTime) {
+    matchElapsed = GAME_CONFIG.gameTime;
+    endGame();
+  }
+}
+
+/* =====================================================================
+   12) 시각 효과 생성 함수들
+   ===================================================================== */
+function spawnMuzzle(x, y, dx, dy, owner) {
+  effects.push({ kind: "muzzle", x, y, dx, dy, t: 0, life: 0.12,
+                 color: owner === "player" ? "#fff6c0" : "#ff9bd0" });
+}
+function spawnHit(x, y, color) {
+  effects.push({ kind: "hit", x, y, t: 0, life: 0.25, color });
+  for (let i = 0; i < 5; i++) {
+    const a = rand(0, Math.PI * 2), sp = rand(60, 160);
+    effects.push({ kind: "spark", x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+                   t: 0, life: 0.3, color });
+  }
+}
+function spawnDamageNumber(x, y, value, color) {
+  damageNumbers.push({ x: x + rand(-6, 6), y, vy: -55, t: 0, life: 0.85, value, color });
+}
+function spawnDeathBurst(ent) {
+  effects.push({ kind: "death", x: ent.x, y: ent.y, t: 0, life: 0.6,
+                 color: ent.isPlayer ? "#7fd6ff" : "#c98bff" });
+  for (let i = 0; i < 14; i++) {
+    const a = rand(0, Math.PI * 2), sp = rand(80, 240);
+    effects.push({ kind: "spark", x: ent.x, y: ent.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+                   t: 0, life: 0.55, color: ent.isPlayer ? "#bfe9ff" : "#e6c0ff" });
+  }
+}
+function spawnRespawnRing(ent) {
+  effects.push({ kind: "respawn", x: ent.x, y: ent.y, t: 0, life: 0.5,
+                 color: ent.isPlayer ? "#7fd6ff" : "#c98bff" });
+}
+function spawnSuperWave(x, y) {
+  effects.push({ kind: "superwave", x, y, t: 0, life: 0.55, radius: GAME_CONFIG.superRadius });
+}
+function spawnSuperFail(x, y) {
+  effects.push({ kind: "superfail", x, y, t: 0, life: 0.4 });
+}
+
+/* =====================================================================
+   13) 그리기(렌더링)
+   ===================================================================== */
+function render() {
+  // 매 프레임 화면 픽셀에 맞춰 스케일을 설정(논리좌표 → 실제픽셀)
+  const sx = canvas.width / LOGW;
+  const sy = canvas.height / LOGH;
+  ctx.setTransform(sx, 0, 0, sy, 0, 0);
+
+  // 배경 지우기
+  ctx.clearRect(0, 0, LOGW, LOGH);
+  drawBackground();
+
+  // 아레나 바닥/장식
+  drawArenaFloor();
+  drawBushes();      // 풀숲(아래쪽 레이어)
+  drawObstacles();   // 장애물
+
+  // 게임 요소
+  if (gameState !== STATE.START) {
+    drawBullets();
+    drawFighter(enemy);
+    drawFighter(player);
+    drawEffects();
+    drawDamageNumbers();
+  }
+
+  // HUD(점수/시간/체력/필살기/조작안내)
+  if (gameState === STATE.PLAYING || gameState === STATE.PAUSED || gameState === STATE.OVER) {
+    drawHUD();
+  }
+
+  // 화면별 오버레이
+  if (gameState === STATE.START) drawStartScreen();
+  else if (gameState === STATE.PAUSED) drawPauseScreen();
+  else if (gameState === STATE.OVER) drawResultScreen();
+}
+
+function drawBackground() {
+  // 전체 배경 그라데이션(밝은 SF 분위기)
+  const g = ctx.createLinearGradient(0, 0, 0, LOGH);
+  g.addColorStop(0, "#1b2150");
+  g.addColorStop(1, "#0d1030");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, LOGW, LOGH);
+
+  // 멀리 반짝이는 별(장식)
+  ctx.save();
+  for (let i = 0; i < 40; i++) {
+    const x = (i * 173.13) % LOGW;
+    const y = (i * 97.7) % 64;        // 위쪽 띠 영역
+    const tw = 0.5 + 0.5 * Math.sin(uiTime * 2 + i);
+    ctx.globalAlpha = 0.25 + tw * 0.4;
+    ctx.fillStyle = "#cfe3ff";
+    ctx.fillRect(x, y, 2, 2);
+  }
+  ctx.restore();
+}
+
+function drawArenaFloor() {
+  // 아레나 바닥
+  ctx.save();
+  ctx.fillStyle = "#222a52";
+  roundRect(ARENA.x, ARENA.y, ARENA.w, ARENA.h, 18);
+  ctx.fill();
+
+  // 바닥 격자 무늬(너무 비어 보이지 않게)
+  ctx.beginPath();
+  ctx.rect(ARENA.x, ARENA.y, ARENA.w, ARENA.h);
+  ctx.clip();
+  ctx.strokeStyle = "rgba(120,150,230,0.12)";
+  ctx.lineWidth = 2;
+  for (let gx = ARENA.x; gx <= ARENA.x + ARENA.w; gx += 64) {
+    ctx.beginPath(); ctx.moveTo(gx, ARENA.y); ctx.lineTo(gx, ARENA.y + ARENA.h); ctx.stroke();
+  }
+  for (let gy = ARENA.y; gy <= ARENA.y + ARENA.h; gy += 64) {
+    ctx.beginPath(); ctx.moveTo(ARENA.x, gy); ctx.lineTo(ARENA.x + ARENA.w, gy); ctx.stroke();
+  }
+  // 중앙 원형 장식
+  ctx.strokeStyle = "rgba(150,180,255,0.18)";
+  ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.arc(LOGW / 2, ARENA.y + ARENA.h / 2, 90, 0, Math.PI * 2); ctx.stroke();
+  ctx.restore();
+
+  // 시작 지점 표시(양 진영)
+  drawSpawnMark(PLAYER_SPAWN.x, PLAYER_SPAWN.y, "#7fd6ff");
+  drawSpawnMark(ENEMY_SPAWN.x, ENEMY_SPAWN.y, "#c98bff");
+
+  // 아레나 경계(이동 불가 테두리)
+  ctx.strokeStyle = "#5566aa";
+  ctx.lineWidth = 5;
+  roundRect(ARENA.x, ARENA.y, ARENA.w, ARENA.h, 18);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawSpawnMark(x, y, color) {
+  ctx.save();
+  ctx.globalAlpha = 0.35;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(x, y, 30, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(x, y, 18, 0, Math.PI * 2); ctx.stroke();
+  ctx.restore();
+}
+
+function drawBushes() {
+  for (const b of BUSHES) {
+    ctx.save();
+    // 풀숲 본체(반투명 초록)
+    ctx.fillStyle = "rgba(46,150,86,0.78)";
+    roundRect(b.x, b.y, b.w, b.h, 16);
+    ctx.fill();
+    // 잎사귀 점무늬로 풀숲 느낌
+    ctx.fillStyle = "rgba(28,110,60,0.6)";
+    for (let i = 0; i < 10; i++) {
+      const px = b.x + ((i * 53.7) % b.w);
+      const py = b.y + ((i * 37.3) % b.h);
+      ctx.beginPath(); ctx.arc(px + 8, py + 8, 9, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.strokeStyle = "rgba(80,200,120,0.5)";
+    ctx.lineWidth = 2;
+    roundRect(b.x, b.y, b.w, b.h, 16);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawObstacles() {
+  for (const o of OBSTACLES) {
+    ctx.save();
+    if (o.kind === "crystal") {
+      // 수정 기둥(밝은 청록)
+      ctx.fillStyle = "#3aa0c8";
+      roundRect(o.x, o.y, o.w, o.h, 10); ctx.fill();
+      ctx.fillStyle = "rgba(190,240,255,0.55)";
+      ctx.beginPath();
+      ctx.moveTo(o.x + o.w * 0.5, o.y + 8);
+      ctx.lineTo(o.x + o.w - 12, o.y + o.h * 0.5);
+      ctx.lineTo(o.x + o.w * 0.5, o.y + o.h - 8);
+      ctx.lineTo(o.x + 12, o.y + o.h * 0.5);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = "#bfeaff"; ctx.lineWidth = 3;
+      roundRect(o.x, o.y, o.w, o.h, 10); ctx.stroke();
+    } else if (o.kind === "box") {
+      // 에너지 상자(노란 테두리)
+      ctx.fillStyle = "#6b5a2a";
+      roundRect(o.x, o.y, o.w, o.h, 8); ctx.fill();
+      ctx.strokeStyle = "#ffd34d"; ctx.lineWidth = 4;
+      roundRect(o.x + 6, o.y + 6, o.w - 12, o.h - 12, 6); ctx.stroke();
+      ctx.strokeStyle = "#ffe680"; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(o.x + 6, o.y + 6); ctx.lineTo(o.x + o.w - 6, o.y + o.h - 6); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(o.x + o.w - 6, o.y + 6); ctx.lineTo(o.x + 6, o.y + o.h - 6); ctx.stroke();
+    } else {
+      // 돌벽(회색 바위)
+      ctx.fillStyle = "#5a5f78";
+      roundRect(o.x, o.y, o.w, o.h, 10); ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,0.08)";
+      roundRect(o.x + 5, o.y + 5, o.w - 10, (o.h - 10) * 0.4, 6); ctx.fill();
+      ctx.strokeStyle = "#878da8"; ctx.lineWidth = 3;
+      roundRect(o.x, o.y, o.w, o.h, 10); ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
+// 캐릭터 그리기
+function drawFighter(ent) {
+  if (ent.dead) return; // 쓰러진 동안에는 캐릭터 본체를 그리지 않는다(쓰러짐 효과만)
+
+  // 은신 처리: 풀숲에 있으면 흐리게. 상대(컴퓨터)는 멀리 있으면 거의 안 보이게.
+  let alpha = 1;
+  const bushed = inBush(ent);
+  if (bushed) {
+    if (!ent.isPlayer) {
+      // 컴퓨터: 플레이어와 멀면 거의 숨겨진다
+      const dd = dist(ent.x, ent.y, player.x, player.y);
+      if (dd > 240) {
+        // 멀리 있는 풀숲 → 살랑이는 효과만 잠깐 그리고 본체는 숨김
+        drawBushRustle(ent.x, ent.y);
+        return;
+      }
+      alpha = 0.55;
+    } else {
+      alpha = 0.55; // 플레이어 자신은 약간 흐리게(스스로는 보임)
+    }
+  }
+
+  // 무적 깜빡임
+  if (ent.invincibleTimer > 0 && Math.floor(ent.invincibleTimer * 12) % 2 === 0) {
+    alpha *= 0.35;
+  }
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(ent.x, ent.y);
+
+  if (ent.isPlayer) drawLumi(ent);
+  else drawChrome(ent);
+
+  ctx.restore();
+
+  // 피격 깜빡임(흰색 덧칠)
+  if (ent.hitFlash > 0) {
+    ctx.save();
+    ctx.globalAlpha = 0.5 * (ent.hitFlash / 0.15) * alpha;
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath(); ctx.arc(ent.x, ent.y, ent.r + 2, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  // 캐릭터 위 정보(이름/체력바)
+  drawFighterInfo(ent, alpha);
+}
+
+// 루미(플레이어): 밝은 하늘색 + 노란 별
+function drawLumi(ent) {
+  // 빛나는 외곽 광채
+  const glow = ctx.createRadialGradient(0, 0, 4, 0, 0, ent.r + 12);
+  glow.addColorStop(0, "rgba(180,235,255,0.6)");
+  glow.addColorStop(1, "rgba(180,235,255,0)");
+  ctx.fillStyle = glow;
+  ctx.beginPath(); ctx.arc(0, 0, ent.r + 12, 0, Math.PI * 2); ctx.fill();
+
+  // 몸통(둥근 하늘색)
+  ctx.fillStyle = "#5fc8ff";
+  ctx.beginPath(); ctx.arc(0, 0, ent.r, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = "#d6f2ff"; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(0, 0, ent.r, 0, Math.PI * 2); ctx.stroke();
+
+  // 가운데 노란 별
+  drawStar(0, 0, 5, ent.r * 0.62, ent.r * 0.28, "#ffe14d");
+
+  // 바라보는 방향의 빛 포(공격 방향 표시)
+  ctx.save();
+  ctx.rotate(ent.facing);
+  ctx.fillStyle = "#fff3b0";
+  roundRect(ent.r - 4, -6, 16, 12, 4); ctx.fill();
+  ctx.restore();
+}
+
+// 크롬(컴퓨터): 보라/붉은 각진 로봇
+function drawChrome(ent) {
+  // 광채
+  const glow = ctx.createRadialGradient(0, 0, 4, 0, 0, ent.r + 12);
+  glow.addColorStop(0, "rgba(200,140,255,0.5)");
+  glow.addColorStop(1, "rgba(200,140,255,0)");
+  ctx.fillStyle = glow;
+  ctx.beginPath(); ctx.arc(0, 0, ent.r + 12, 0, Math.PI * 2); ctx.fill();
+
+  // 각진 몸통(육각형)
+  ctx.fillStyle = "#8a3fd0";
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const a = Math.PI / 6 + i * Math.PI / 3;
+    const px = Math.cos(a) * ent.r, py = Math.sin(a) * ent.r;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = "#e0b3ff"; ctx.lineWidth = 3; ctx.stroke();
+
+  // 붉은 바이저(눈)
+  ctx.save();
+  ctx.rotate(ent.facing);
+  ctx.fillStyle = "#ff4d6d";
+  roundRect(2, -7, ent.r - 4, 14, 4); ctx.fill();
+  ctx.fillStyle = "#ffd1dc";
+  roundRect(ent.r - 8, -4, 5, 8, 2); ctx.fill();
+  // 팔 포신
+  ctx.fillStyle = "#6a2aa0";
+  roundRect(ent.r - 6, -6, 14, 12, 3); ctx.fill();
+  ctx.restore();
+
+  // 어깨 장식(각진 느낌 강조)
+  ctx.fillStyle = "#b266ff";
+  ctx.fillRect(-ent.r - 2, -6, 6, 12);
+}
+
+// 별 모양 그리기
+function drawStar(cx, cy, spikes, outerR, innerR, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  let rot = -Math.PI / 2;
+  const step = Math.PI / spikes;
+  ctx.moveTo(cx + Math.cos(rot) * outerR, cy + Math.sin(rot) * outerR);
+  for (let i = 0; i < spikes; i++) {
+    rot += step;
+    ctx.lineTo(cx + Math.cos(rot) * innerR, cy + Math.sin(rot) * innerR);
+    rot += step;
+    ctx.lineTo(cx + Math.cos(rot) * outerR, cy + Math.sin(rot) * outerR);
+  }
+  ctx.closePath(); ctx.fill();
+}
+
+// 멀리 숨은 적 풀숲 흔들림 효과
+function drawBushRustle(x, y) {
+  ctx.save();
+  ctx.globalAlpha = 0.5 + 0.3 * Math.sin(uiTime * 8);
+  ctx.fillStyle = "rgba(120,220,150,0.6)";
+  ctx.beginPath(); ctx.arc(x - 6, y, 4, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x + 7, y - 4, 3, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+// 캐릭터 위 이름/체력바
+function drawFighterInfo(ent, alpha) {
+  const w = 56, h = 8;
+  const bx = ent.x - w / 2;
+  const by = ent.y - ent.r - 26;
+
+  ctx.save();
+  ctx.globalAlpha = Math.max(0.5, alpha);
+
+  // 이름
+  ctx.fillStyle = ent.isPlayer ? "#bfe9ff" : "#e6c0ff";
+  ctx.font = "bold 14px 'Malgun Gothic', sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "bottom";
+  ctx.fillText(ent.name, ent.x, by - 2);
+
+  // 체력바 배경
+  ctx.fillStyle = "rgba(0,0,0,0.5)";
+  roundRect(bx, by, w, h, 4); ctx.fill();
+
+  // 줄어드는 잔상(밝은 색, displayHp 기준)
+  const dispRatio = clamp(ent.displayHp / ent.maxHp, 0, 1);
+  ctx.fillStyle = "rgba(255,255,255,0.45)";
+  roundRect(bx, by, w * dispRatio, h, 4); ctx.fill();
+
+  // 현재 체력(초록/주황/빨강)
+  const ratio = clamp(ent.hp / ent.maxHp, 0, 1);
+  ctx.fillStyle = ratio > 0.5 ? "#4bd86b" : (ratio > 0.25 ? "#ffd24d" : "#ff5a5a");
+  roundRect(bx, by, w * ratio, h, 4); ctx.fill();
+
+  // 체력 수치
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 11px 'Malgun Gothic', sans-serif";
+  ctx.fillText(Math.ceil(ent.hp), ent.x, by + h + 13);
+
+  // 무적 표시
+  if (ent.invincibleTimer > 0) {
+    ctx.fillStyle = "#9fe8ff";
+    ctx.font = "bold 10px 'Malgun Gothic', sans-serif";
+    ctx.fillText("무적", ent.x, by - 16);
+  }
+  ctx.restore();
+}
+
+function drawBullets() {
+  for (const b of bullets) {
+    ctx.save();
+    const color = b.owner === "player" ? "#ffe066" : "#c98bff";
+    // 빛나는 후광
+    const glow = ctx.createRadialGradient(b.x, b.y, 1, b.x, b.y, b.r * 2.2);
+    glow.addColorStop(0, color);
+    glow.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 2.2, 0, Math.PI * 2); ctx.fill();
+    // 탄환 본체
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 0.7, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.9;
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+    ctx.lineWidth = 2; ctx.strokeStyle = color; ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawEffects() {
+  for (const e of effects) {
+    const k = e.t / e.life; // 0~1 진행도
+    ctx.save();
+    if (e.kind === "muzzle") {
+      ctx.globalAlpha = 1 - k;
+      ctx.fillStyle = e.color;
+      ctx.beginPath();
+      ctx.arc(e.x + e.dx * 8, e.y + e.dy * 8, 10 * (1 - k) + 4, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (e.kind === "hit") {
+      ctx.globalAlpha = 1 - k;
+      ctx.strokeStyle = e.color; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(e.x, e.y, 6 + 18 * k, 0, Math.PI * 2); ctx.stroke();
+    } else if (e.kind === "spark") {
+      ctx.globalAlpha = 1 - k;
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.arc(e.x, e.y, 3 * (1 - k) + 1, 0, Math.PI * 2); ctx.fill();
+    } else if (e.kind === "death") {
+      ctx.globalAlpha = (1 - k) * 0.8;
+      const r = 12 + 60 * k;
+      const g = ctx.createRadialGradient(e.x, e.y, 2, e.x, e.y, r);
+      g.addColorStop(0, e.color);
+      g.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(e.x, e.y, r, 0, Math.PI * 2); ctx.fill();
+    } else if (e.kind === "respawn") {
+      ctx.globalAlpha = 1 - k;
+      ctx.strokeStyle = e.color; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(e.x, e.y, 50 * (1 - k) + 6, 0, Math.PI * 2); ctx.stroke();
+    } else if (e.kind === "superwave") {
+      ctx.globalAlpha = (1 - k) * 0.85;
+      const r = e.radius * k;
+      ctx.strokeStyle = "#ffe066"; ctx.lineWidth = 8 * (1 - k) + 2;
+      ctx.beginPath(); ctx.arc(e.x, e.y, r, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = "rgba(255,255,255,0.7)"; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(e.x, e.y, r * 0.7, 0, Math.PI * 2); ctx.stroke();
+    } else if (e.kind === "superfail") {
+      ctx.globalAlpha = 1 - k;
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 16px 'Malgun Gothic', sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("게이지 부족!", e.x, e.y - 50 - 20 * k);
+    }
+    ctx.restore();
+  }
+}
+
+function drawDamageNumbers() {
+  for (const n of damageNumbers) {
+    const k = n.t / n.life;
+    ctx.save();
+    ctx.globalAlpha = 1 - k;
+    ctx.fillStyle = n.color;
+    ctx.font = "bold 18px 'Malgun Gothic', sans-serif";
+    ctx.textAlign = "center";
+    ctx.strokeStyle = "rgba(0,0,0,0.6)";
+    ctx.lineWidth = 3;
+    ctx.strokeText("-" + n.value, n.x, n.y);
+    ctx.fillText("-" + n.value, n.x, n.y);
+    ctx.restore();
+  }
+}
+
+/* =====================================================================
+   14) HUD (위/아래 정보 표시줄)
+   ===================================================================== */
+function drawHUD() {
+  // ---- 위쪽 띠 ----
+  ctx.save();
+  ctx.fillStyle = "rgba(10,12,32,0.7)";
+  ctx.fillRect(0, 0, LOGW, 64);
+
+  ctx.textBaseline = "middle";
+  // 루미 점수(왼쪽)
+  ctx.textAlign = "left";
+  ctx.fillStyle = "#7fd6ff";
+  ctx.font = "bold 26px 'Malgun Gothic', sans-serif";
+  ctx.fillText("루미", 30, 26);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 34px 'Malgun Gothic', sans-serif";
+  ctx.fillText(String(playerScore), 30, 52);
+
+  // 크롬 점수(오른쪽)
+  ctx.textAlign = "right";
+  ctx.fillStyle = "#c98bff";
+  ctx.font = "bold 26px 'Malgun Gothic', sans-serif";
+  ctx.fillText("크롬", LOGW - 30, 26);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 34px 'Malgun Gothic', sans-serif";
+  ctx.fillText(String(enemyScore), LOGW - 30, 52);
+
+  // 남은 시간(가운데)
+  const remain = Math.max(0, Math.ceil(GAME_CONFIG.gameTime - matchElapsed));
+  ctx.textAlign = "center";
+  ctx.fillStyle = remain <= 10 ? "#ff7a7a" : "#ffffff";
+  ctx.font = "bold 40px 'Malgun Gothic', sans-serif";
+  ctx.fillText(String(remain), LOGW / 2, 34);
+
+  // 현재 상태 안내
+  ctx.fillStyle = "#aab4e0";
+  ctx.font = "bold 13px 'Malgun Gothic', sans-serif";
+  let statusText = "전투 중";
+  if (gameState === STATE.PAUSED) statusText = "일시 정지";
+  else if (gameState === STATE.OVER) statusText = "경기 종료";
+  ctx.fillText(statusText, LOGW / 2, 55);
+  ctx.restore();
+
+  // ---- 재등장 카운트다운(쓰러진 캐릭터) ----
+  drawRespawnCountdown(player, "#7fd6ff");
+  drawRespawnCountdown(enemy, "#c98bff");
+
+  // ---- 아래쪽 띠(필살기 게이지 + 조작 안내) ----
+  ctx.save();
+  ctx.fillStyle = "rgba(10,12,32,0.7)";
+  ctx.fillRect(0, 656, LOGW, 64);
+
+  // 필살기 게이지 바
+  const barX = 30, barY = 676, barW = 360, barH = 22;
+  const ready = superGauge >= 100;
+  ctx.fillStyle = "#cfd6f0";
+  ctx.font = "bold 15px 'Malgun Gothic', sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.fillText("필살기", barX, 666);
+
+  ctx.fillStyle = "rgba(0,0,0,0.5)";
+  roundRect(barX, barY, barW, barH, 8); ctx.fill();
+
+  // 채워진 정도
+  const ratio = clamp(superGauge / 100, 0, 1);
+  if (ready) {
+    // 가득 차면 빛나는 효과
+    const pulse = 0.5 + 0.5 * Math.sin(uiTime * 8);
+    ctx.fillStyle = "rgba(255,225,80," + (0.7 + pulse * 0.3) + ")";
+  } else {
+    ctx.fillStyle = "#5fa0ff";
+  }
+  roundRect(barX, barY, barW * ratio, barH, 8); ctx.fill();
+
+  ctx.strokeStyle = ready ? "#fff3b0" : "#7088c0";
+  ctx.lineWidth = ready ? 3 : 2;
+  roundRect(barX, barY, barW, barH, 8); ctx.stroke();
+
+  // 퍼센트 + 사용 가능 여부
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 14px 'Malgun Gothic', sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillText(Math.floor(superGauge) + "%", barX + barW + 12, barY + barH / 2);
+  ctx.fillStyle = ready ? "#ffe066" : "#8893bb";
+  ctx.fillText(ready ? "사용 가능! (Space)" : "충전 중", barX + barW + 70, barY + barH / 2);
+
+  // 조작 안내(오른쪽)
+  ctx.textAlign = "right";
+  ctx.fillStyle = "#aab4e0";
+  ctx.font = "bold 15px 'Malgun Gothic', sans-serif";
+  ctx.fillText("WASD 이동 · 방향키 공격 · Space 필살기 · P 일시 정지", LOGW - 30, barY + barH / 2);
+  ctx.restore();
+}
+
+function drawRespawnCountdown(ent, color) {
+  if (!ent.dead) return;
+  const secs = Math.ceil(ent.respawnTimer);
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  // 쓰러진 자리 부근에 표시
+  const x = ent.spawnX, y = ent.spawnY;
+  ctx.fillStyle = "rgba(0,0,0,0.45)";
+  ctx.beginPath(); ctx.arc(x, y, 30, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = color;
+  ctx.font = "bold 30px 'Malgun Gothic', sans-serif";
+  ctx.fillText(String(secs), x, y + 2);
+  ctx.fillStyle = "#dfe6ff";
+  ctx.font = "bold 12px 'Malgun Gothic', sans-serif";
+  ctx.fillText(ent.name + " 재등장", x, y + 42);
+  ctx.restore();
+}
+
+/* =====================================================================
+   15) 화면 오버레이 (시작 / 일시정지 / 결과)
+   ===================================================================== */
+function dimScreen(a) {
+  ctx.save();
+  ctx.fillStyle = "rgba(6,8,24," + a + ")";
+  ctx.fillRect(0, 0, LOGW, LOGH);
+  ctx.restore();
+}
+
+function drawTitle(y) {
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  // 빛나는 제목
+  const pulse = 0.5 + 0.5 * Math.sin(uiTime * 2.5);
+  ctx.shadowColor = "rgba(120,200,255," + (0.5 + pulse * 0.5) + ")";
+  ctx.shadowBlur = 30;
+  ctx.fillStyle = "#9fe0ff";
+  ctx.font = "bold 72px 'Malgun Gothic', sans-serif";
+  ctx.fillText("별빛 아레나", LOGW / 2, y);
+  ctx.shadowBlur = 0;
+  // 장식 별
+  drawStar(LOGW / 2 - 250, y, 5, 22, 9, "#ffe14d");
+  drawStar(LOGW / 2 + 250, y, 5, 22, 9, "#ffe14d");
+  ctx.restore();
+}
+
+// 선택 가능한 버튼 그리기
+function drawButton(text, cx, cy, w, h, selected) {
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const x = cx - w / 2, y = cy - h / 2;
+  // 배경
+  if (selected) {
+    const pulse = 0.5 + 0.5 * Math.sin(uiTime * 6);
+    ctx.fillStyle = "rgba(95,160,255,0.9)";
+    ctx.shadowColor = "rgba(120,200,255," + (0.5 + pulse * 0.5) + ")";
+    ctx.shadowBlur = 25;
+  } else {
+    ctx.fillStyle = "rgba(40,52,100,0.9)";
+  }
+  roundRect(x, y, w, h, 14); ctx.fill();
+  ctx.shadowBlur = 0;
+  // 테두리(선택 시 빛 테두리)
+  ctx.strokeStyle = selected ? "#ffffff" : "#6678b0";
+  ctx.lineWidth = selected ? 4 : 2;
+  roundRect(x, y, w, h, 14); ctx.stroke();
+  // 글자
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 26px 'Malgun Gothic', sans-serif";
+  ctx.fillText(text, cx, cy + 1);
+  ctx.restore();
+}
+
+function drawStartScreen() {
+  dimScreen(0.55);
+  drawTitle(120);
+
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  // 설명
+  ctx.fillStyle = "#e6ecff";
+  ctx.font = "bold 24px 'Malgun Gothic', sans-serif";
+  ctx.fillText("루미를 조종해 컴퓨터 크롬과 대결하세요!", LOGW / 2, 190);
+  ctx.fillStyle = "#aab4e0";
+  ctx.font = "20px 'Malgun Gothic', sans-serif";
+  ctx.fillText("90초 동안 상대를 더 많이 쓰러뜨리면 승리합니다.", LOGW / 2, 226);
+
+  // 조작 방법(왼쪽 박스)
+  const colY = 290;
+  ctx.textAlign = "left";
+  ctx.fillStyle = "#9fe0ff";
+  ctx.font = "bold 22px 'Malgun Gothic', sans-serif";
+  ctx.fillText("◆ 조작 방법", 230, colY);
+  ctx.fillStyle = "#dfe6ff";
+  ctx.font = "19px 'Malgun Gothic', sans-serif";
+  ctx.fillText("WASD : 이동", 250, colY + 38);
+  ctx.fillText("방향키 : 공격", 250, colY + 72);
+  ctx.fillText("Space : 필살기", 250, colY + 106);
+  ctx.fillText("P : 일시 정지", 250, colY + 140);
+
+  // 캐릭터 설명(오른쪽 박스)
+  ctx.fillStyle = "#9fe0ff";
+  ctx.font = "bold 22px 'Malgun Gothic', sans-serif";
+  ctx.fillText("◆ 캐릭터", 680, colY);
+  ctx.fillStyle = "#7fd6ff";
+  ctx.font = "bold 19px 'Malgun Gothic', sans-serif";
+  ctx.fillText("루미", 700, colY + 38);
+  ctx.fillStyle = "#dfe6ff";
+  ctx.font = "16px 'Malgun Gothic', sans-serif";
+  ctx.fillText("빛의 탄환을 쏘고 '별빛 폭발'을 사용합니다.", 700, colY + 64);
+  ctx.fillStyle = "#c98bff";
+  ctx.font = "bold 19px 'Malgun Gothic', sans-serif";
+  ctx.fillText("크롬", 700, colY + 104);
+  ctx.fillStyle = "#dfe6ff";
+  ctx.font = "16px 'Malgun Gothic', sans-serif";
+  ctx.fillText("거리를 유지하며 에너지 탄환을 쏘는 컴퓨터 전사입니다.", 700, colY + 130);
+  ctx.restore();
+
+  // 시작 버튼(항상 선택된 상태로 표시)
+  drawButton("게임 시작", LOGW / 2, 540, 280, 64, true);
+
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#ffe066";
+  ctx.font = "bold 18px 'Malgun Gothic', sans-serif";
+  const blink = 0.5 + 0.5 * Math.sin(uiTime * 4);
+  ctx.globalAlpha = 0.5 + blink * 0.5;
+  ctx.fillText("Enter 키를 눌러 시작!", LOGW / 2, 600);
+  ctx.restore();
+}
+
+function drawPauseScreen() {
+  dimScreen(0.55);
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "#ffffff";
+  ctx.shadowColor = "rgba(120,200,255,0.8)";
+  ctx.shadowBlur = 25;
+  ctx.font = "bold 64px 'Malgun Gothic', sans-serif";
+  ctx.fillText("일시 정지", LOGW / 2, LOGH / 2 - 30);
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = "#dfe6ff";
+  ctx.font = "bold 24px 'Malgun Gothic', sans-serif";
+  ctx.fillText("P 키를 눌러 계속하기", LOGW / 2, LOGH / 2 + 40);
+  ctx.fillStyle = "#8893bb";
+  ctx.font = "18px 'Malgun Gothic', sans-serif";
+  ctx.fillText("Esc 키 : 시작 화면으로", LOGW / 2, LOGH / 2 + 80);
+  ctx.restore();
+}
+
+function drawResultScreen() {
+  dimScreen(0.7);
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  // 결과 문구
+  let resultText, resultColor;
+  if (playerScore > enemyScore) { resultText = "승리!"; resultColor = "#ffe066"; }
+  else if (playerScore < enemyScore) { resultText = "패배!"; resultColor = "#ff7a7a"; }
+  else { resultText = "무승부!"; resultColor = "#9fe0ff"; }
+
+  ctx.shadowColor = resultColor; ctx.shadowBlur = 30;
+  ctx.fillStyle = resultColor;
+  ctx.font = "bold 80px 'Malgun Gothic', sans-serif";
+  ctx.fillText(resultText, LOGW / 2, 110);
+  ctx.shadowBlur = 0;
+
+  // 최종 점수
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 34px 'Malgun Gothic', sans-serif";
+  ctx.fillText("루미 " + playerScore + " : " + enemyScore + " 크롬", LOGW / 2, 175);
+
+  // 통계 표
+  const accuracy = stats.shotsFired > 0 ? Math.round(stats.shotsHit / stats.shotsFired * 100) : 0;
+  const lines = [
+    ["준 피해량", Math.round(stats.damageDealt)],
+    ["받은 피해량", Math.round(stats.damageTaken)],
+    ["기본 공격 발사", stats.shotsFired + " 발"],
+    ["기본 공격 명중", stats.shotsHit + " 발"],
+    ["명중률", accuracy + " %"],
+    ["필살기 사용", stats.superUsed + " 회"],
+    ["쓰러뜨린 횟수", stats.kills + " 회"],
+    ["쓰러진 횟수", stats.playerDeaths + " 회"]
+  ];
+  const boxX = LOGW / 2 - 230, boxY = 215, boxW = 460, rowH = 36;
+  ctx.fillStyle = "rgba(20,26,60,0.85)";
+  roundRect(boxX, boxY, boxW, rowH * lines.length + 20, 14); ctx.fill();
+  ctx.strokeStyle = "#5566aa"; ctx.lineWidth = 2;
+  roundRect(boxX, boxY, boxW, rowH * lines.length + 20, 14); ctx.stroke();
+
+  ctx.font = "20px 'Malgun Gothic', sans-serif";
+  for (let i = 0; i < lines.length; i++) {
+    const ly = boxY + 28 + i * rowH;
+    ctx.textAlign = "left";
+    ctx.fillStyle = "#aab4e0";
+    ctx.fillText(lines[i][0], boxX + 30, ly);
+    ctx.textAlign = "right";
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 20px 'Malgun Gothic', sans-serif";
+    ctx.fillText(String(lines[i][1]), boxX + boxW - 30, ly);
+    ctx.font = "20px 'Malgun Gothic', sans-serif";
+  }
+  ctx.restore();
+
+  // 버튼 두 개
+  drawButton("다시 시작", LOGW / 2 - 150, 640, 240, 58, resultButtonIndex === 0);
+  drawButton("시작 화면으로", LOGW / 2 + 150, 640, 240, 58, resultButtonIndex === 1);
+
+  // 안내
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#8893bb";
+  ctx.font = "15px 'Malgun Gothic', sans-serif";
+  ctx.fillText("← → 선택 · Enter 실행 · R 즉시 다시 시작", LOGW / 2, 690);
+  ctx.restore();
+}
+
+/* =====================================================================
+   16) 모서리 둥근 사각형 도우미
+   ===================================================================== */
+function roundRect(x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+/* =====================================================================
+   17) 메인 게임 루프 (단 하나만 실행되도록 보장)
+   - requestAnimationFrame 으로 화면 주사율에 맞춰 돌린다.
+   - dt(프레임 간 시간)를 사용해 어떤 기기에서도 속도가 같게 한다.
+   ===================================================================== */
+let lastTime = 0;
+let loopStarted = false; // 루프 중복 실행 방지
+
+function gameLoop(timestamp) {
+  requestAnimationFrame(gameLoop);
+  if (lastTime === 0) lastTime = timestamp;
+  let dt = (timestamp - lastTime) / 1000;
+  lastTime = timestamp;
+  // 탭 전환 등으로 dt 가 너무 커지면 한 프레임을 작게 제한(충돌이 튀는 것 방지)
+  if (dt > 0.05) dt = 0.05;
+
+  update(dt);
+  render();
+}
+
+// 처음 한 번만 루프를 시작한다(다시 시작해도 새 루프가 생기지 않음).
+function startLoopOnce() {
+  if (loopStarted) return;
+  loopStarted = true;
+  resetMatch();              // 시작 화면에서도 캐릭터가 보이도록 미리 만들어 둔다
+  gameState = STATE.START;
+  requestAnimationFrame(gameLoop);
+}
+
+startLoopOnce();
+</script>
+</body>
+</html>
