@@ -1707,7 +1707,7 @@ function drawShopScreen(){
    guest는 자기 입력만 쓰고 host가 보낸 state를 그린다.
    ======================================================================= */
 const ONLINE_MAP_ID = "training";   // 베타는 훈련장 맵만 사용
-const ONLINE_STATE_FPS = 18;        // 입력/상태 동기화 빈도(초당 횟수) — DB 사용량 절약
+const ONLINE_STATE_FPS = 30;        // 입력/상태 동기화 빈도(초당 횟수). 높일수록 부드럽고 Firebase 사용량 증가
 
 let onlineFighters = { host:null, guest:null };
 let onlineBullets = [];
@@ -1863,8 +1863,8 @@ function updateOnlineGuest(dt){
   }
   // 스냅샷 사이에는 탄환을 속도로 외삽해 부드럽게 진행
   for(const b of onlineBulletsView){ b.x+=b.vx*dt; b.y+=b.vy*dt; }
-  // 두 캐릭터 위치/방향을 받은 값 쪽으로 부드럽게 보간
-  const k=Math.min(1, dt*15);
+  // 두 캐릭터 위치/방향을 받은 값 쪽으로 부드럽게 보간(빠릿하게)
+  const k=Math.min(1, dt*22);
   for(const slot of ["host","guest"]){
     const p=s[slot]; if(!p) continue;
     if(!onlineRender[slot] || p.dead) onlineRender[slot]={ x:p.x, y:p.y, facing:p.facing||0 };
