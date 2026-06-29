@@ -559,13 +559,13 @@ const OnlineManager = {
       this.roomRef.child("state").set(stateObj); }catch(e){}
   },
 
-  leaveRoom:function(){
+  leaveRoom:function(localOnly){
     try{
       for(const u of this.unsubs){ try{ u(); }catch(e){} }
       this.unsubs=[];
-      // 서버에 등록해 둔 onDisconnect 들을 먼저 취소(떠난 방에 유령 데이터가 되살아나는 것 방지)
+      // localOnly: 방이 이미 서버에서 삭제/종료된 경우. DB에 아무것도 쓰지 않고 로컬 정리만 한다(유령 방 재생성 방지).
       const slotKey=this.mySlot||this.role;
-      if(this.roomRef && slotKey){
+      if(!localOnly && this.roomRef && slotKey){
         try{
           const pref=this.roomRef.child("players/"+slotKey);
           pref.child("connected").onDisconnect().cancel();
@@ -574,7 +574,7 @@ const OnlineManager = {
           if(this.role==="host") this.roomRef.child("meta/status").onDisconnect().cancel();
         }catch(e){}
       }
-      if(this.roomRef){
+      if(!localOnly && this.roomRef){
         try{
           const isTeam = (this.mode==="online3v3" || this.mode==="onlinePve6");
           if(this.role==="host"){ const rr=this.roomRef; rr.child("meta/status").set("ended");
@@ -1892,8 +1892,9 @@ function hostStartOnlineMatch(){
 function onRoomMetaChanged(){
   const meta=OnlineManager.meta;
   if(!meta){
-    // 방이 종료/삭제됨 → 소프트락 방지: 안내 후 시작 화면으로
-    if(gameState===STATE.ONLINE_LOBBY || gameState===STATE.ONLINE_PLAYING){ showToast("방이 종료되었습니다"); OnlineManager.leaveRoom(); goToStartScreen(); }
+    // 방이 종료/삭제됨 → 소프트락 방지: 안내 후 시작 화면으로.
+    // 방은 이미 서버에서 사라졌으므로 DB에 다시 쓰지 않는다(localOnly=true → 유령 방 재생성 방지).
+    if(gameState===STATE.ONLINE_LOBBY || gameState===STATE.ONLINE_PLAYING){ showToast("방이 종료되었습니다"); OnlineManager.leaveRoom(true); goToStartScreen(); }
     return;
   }
   if(meta.status==="playing"){
@@ -2724,7 +2725,18 @@ const PVE_STAGES = [
     waves:[ {enemies:[{type:"grunt",count:8},{type:"shooter",count:4}]}, {enemies:[{type:"elite",count:4},{type:"tank",count:2}]}, {enemies:[{type:"boss",count:1}]} ] }
 ];
 
-function tActivePlayerCount(){ let n=0; for(const s in tFighters){ if(!tFighters[s].isBot) n++; } return Math.max(1,n); }
+function tActivePlayerCount(){
+  // 봇·끊긴(inactive)·연결 끊긴 실제 플레이어는 제외. host 자신(isMe)은 항상 active.
+  const players=OnlineManager.players||{}; let n=0;
+  for(const s in tFighters){ const f=tFighters[s];
+    if(f.isBot) continue;
+    if(f.inactive) continue;
+    const isMe=s===OnlineManager.mySlot, p=players[s];
+    if(!isMe && !(p && p.connected!==false)) continue;
+    n++;
+  }
+  return Math.max(1,n);
+}
 
 function tSpawnEnemy(type, hpMul, map){
   const def=PVE_ENEMY_TYPES[type]||PVE_ENEMY_TYPES.grunt;
