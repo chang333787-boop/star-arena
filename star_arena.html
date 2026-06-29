@@ -1721,6 +1721,8 @@ let onlineRender = { host:null, guest:null };
 let onlineBulletsView = [];
 let onlineLastStateRef = null;
 let onlinePredict = null;   // 참가자 본인 캐릭터의 로컬 예측 위치(즉시 반응)
+let onlinePredictBullets = []; // 참가자 본인 총알의 로컬 예측(즉시 표시, 시각용)
+let onlinePredictCd = 0;
 function lerpAngle(a,b,t){ let d=b-a; while(d>Math.PI)d-=Math.PI*2; while(d<-Math.PI)d+=Math.PI*2; return a+d*t; }
 
 function openOnlineMenu(){
@@ -1803,6 +1805,7 @@ function resetOnlineMatchFromRoom(){
   onlineBullets=[]; onlineTimeLeft=GAME_CONFIG.gameTime; onlineWinner=null;
   onlineWriteAcc=0; onlineInputAcc=0; onlineLastInputStr="";
   onlineRender={ host:null, guest:null }; onlineBulletsView=[]; onlineLastStateRef=null; onlinePredict=null;
+  onlinePredictBullets=[]; onlinePredictCd=0;
 }
 function makeOnlineFighter(slot, d){
   const ch=getCharacter(d.characterId);
@@ -1860,7 +1863,7 @@ function updateOnlineGuest(dt){
   // 새 스냅샷이 도착하면 탄환 뷰를 받은 값으로 갱신(권한값 기준 보정)
   if(s !== onlineLastStateRef){
     onlineLastStateRef=s;
-    onlineBulletsView=(s.bullets||[]).map(b=>({ x:b.x, y:b.y, vx:b.vx||0, vy:b.vy||0, r:b.r, c:b.c }));
+    onlineBulletsView=(s.bullets||[]).map(b=>({ x:b.x, y:b.y, vx:b.vx||0, vy:b.vy||0, r:b.r, c:b.c, o:b.o }));
   }
   // 스냅샷 사이에는 탄환을 속도로 외삽해 부드럽게 진행
   for(const b of onlineBulletsView){ b.x+=b.vx*dt; b.y+=b.vy*dt; }
@@ -1894,6 +1897,34 @@ function updateOnlineGuest(dt){
       if(Math.hypot(mine.x-onlinePredict.x, mine.y-onlinePredict.y) > 70){ onlinePredict.x=mine.x; onlinePredict.y=mine.y; } // 큰 차이만 스냅(연속 보정 X → 가속 없음)
     }
   }
+
+  // 발사 예측: 내 총알을 로컬에서 즉시 보여준다(시각용; 실제 피해 판정은 호스트가 함)
+  onlinePredictCd -= dt;
+  if(onlinePredict && mine && !mine.dead && keysDown.has("KeyZ") && onlinePredictCd<=0){
+    const w=getWeapon(selectedWeaponId), c=getCharacter(selectedCharacterId);
+    const count=w.spreadCount, spread=deg2rad(w.spreadAngleDeg||0);
+    const speed=GAME_CONFIG.playerBulletSpeed*c.bulletSpeedMul*w.bulletSpeedMul;
+    const range=GAME_CONFIG.playerRange*w.rangeMul, radius=GAME_CONFIG.playerBulletRadius*w.bulletRadiusMul;
+    for(let i=0;i<count;i++){
+      let a=onlinePredict.facing; if(count>1) a=onlinePredict.facing-spread/2+spread*(i/(count-1));
+      const mz=onlinePredict.r+6;
+      onlinePredictBullets.push({ x:onlinePredict.x+Math.cos(a)*mz, y:onlinePredict.y+Math.sin(a)*mz,
+        vx:Math.cos(a)*speed, vy:Math.sin(a)*speed, r:radius, c:w.color, traveled:0, maxRange:range, alive:true });
+    }
+    onlinePredictCd=GAME_CONFIG.playerAttackCooldown*w.cooldownMul;
+  }
+  // 예측 총알 진행/소멸(벽·사거리·상대에 닿으면 시각적으로 사라짐)
+  const oppPos=onlineRender[oppSlot];
+  for(const b of onlinePredictBullets){
+    if(!b.alive) continue;
+    const sx=b.vx*dt, sy=b.vy*dt; b.x+=sx; b.y+=sy; b.traveled+=Math.hypot(sx,sy);
+    if(b.x<ARENA.x||b.x>ARENA.x+ARENA.w||b.y<ARENA.y||b.y>ARENA.y+ARENA.h){ b.alive=false; continue; }
+    let wall=false; for(const o of OBSTACLES){ if(circleRectOverlap(b.x,b.y,b.r,o)){ wall=true; break; } }
+    if(wall){ b.alive=false; continue; }
+    if(oppPos && dist(b.x,b.y,oppPos.x,oppPos.y) < b.r+22){ b.alive=false; continue; }
+    if(b.traveled>b.maxRange) b.alive=false;
+  }
+  onlinePredictBullets=onlinePredictBullets.filter(b=>b.alive);
 }
 function updateOnlineFighter(f, input, dt){
   if(f.dead){ f.respawnTimer-=dt; if(f.respawnTimer<=0) respawnOnline(f); return; }
@@ -2002,7 +2033,11 @@ function getOnlineDrawData(){
       return { x:r.x, y:r.y, facing:r.facing, hp:p.hp, maxHp:p.maxHp, dead:p.dead, inv:p.inv, charId:p.charId, score:p.score }; };
     const host = (ownSlot==="host") ? mkOwn(s.host) : mkOpp(s.host,"host");
     const guest = (ownSlot==="guest") ? mkOwn(s.guest) : mkOpp(s.guest,"guest");
-    return { timeLeft:s.timeLeft, host:host, guest:guest, bullets:onlineBulletsView.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.c })) };
+    // 상대 총알은 권한값으로, 내 총알은 예측값으로 그린다(내 권한 총알은 가려 중복 방지)
+    const oppSlot2=(ownSlot==="host")?"guest":"host";
+    const oppB=onlineBulletsView.filter(b=>b.o===oppSlot2).map(b=>({ x:b.x,y:b.y,r:b.r,c:b.c }));
+    const myB=onlinePredictBullets.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.c }));
+    return { timeLeft:s.timeLeft, host:host, guest:guest, bullets:oppB.concat(myB) };
   }
 }
 function drawOnlineBullet(b){
