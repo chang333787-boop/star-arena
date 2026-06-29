@@ -551,11 +551,11 @@ const OnlineManager = {
 
   writeInput:function(inputObj){ try{ const key=this.mySlot||this.role; if(this.roomRef && key) this.roomRef.child("players/"+key+"/input").set(inputObj); }catch(e){} },
   writeMetaStatus:function(status, extra){
-    try{ if(!this.roomRef) return; const u={ status:status, updatedAt:firebase.database.ServerValue.TIMESTAMP };
+    try{ if(this.role!=="host") return; if(!this.roomRef) return; const u={ status:status, updatedAt:firebase.database.ServerValue.TIMESTAMP };
       if(extra){ for(const k in extra) u[k]=extra[k]; } this.roomRef.child("meta").update(u); }catch(e){}
   },
   writeHostState:function(stateObj){
-    try{ if(!this.roomRef) return; stateObj.updatedAt=firebase.database.ServerValue.TIMESTAMP;
+    try{ if(this.role!=="host") return; if(!this.roomRef) return; stateObj.updatedAt=firebase.database.ServerValue.TIMESTAMP;
       this.roomRef.child("state").set(stateObj); }catch(e){}
   },
 
@@ -639,27 +639,35 @@ const OnlineManager = {
   },
   _joinTeamRoom:function(code, data, ref, onDone){
     try{
-      const self=this, mode=getOnlineMode(data.meta.mode);
-      if(data.meta.status!=="waiting" && data.meta.status!=="ready"){ if(onDone) onDone(false,"이미 시작된 방"); return; }
-      const players=data.players||{};
-      let slot=null;
-      for(let i=1;i<=mode.maxPlayers;i++){ const k="p"+i; if(!players[k] || players[k].connected===false){ slot=k; break; } }
-      if(!slot){ if(onDone) onDone(false,"방이 가득 찼습니다"); return; }
-      let team="pve";
-      if(mode.modeType==="pvp"){
-        let blue=0,red=0; for(const k in players){ const pp=players[k]; if(pp && pp.connected!==false){ if(pp.team==="red") red++; else blue++; } }
-        team = (blue<=red && blue<3) ? "blue" : (red<3 ? "red" : "blue");
-      }
-      const ts=firebase.database.ServerValue.TIMESTAMP;
-      const updates={};
-      updates["players/"+slot]={ uid:self.uid, nickname:profile.nickname, slot:slot, team:team, characterId:selectedCharacterId,
-        weaponId:selectedWeaponId, connected:true, ready:false, isBot:false, lastSeen:ts, input:emptyInput() };
-      updates["meta/status"]="ready"; updates["meta/updatedAt"]=ts;
-      ref.update(updates).then(function(){
-        self.roomCode=code; self.role="guest"; self.roomRef=ref; self.mode=data.meta.mode; self.mySlot=slot; self.maxPlayers=mode.maxPlayers;
-        self.setPresence(slot); self.listenRoom();
-        if(onDone) onDone(true, code);
-      }).catch(function(e){ if(onDone) onDone(false,"입장 실패"); });
+      const self=this; let claimedSlot=null, claimedMode=null, failReason="입장 실패";
+      // 슬롯 claim을 transaction으로 원자 처리(동시 입장 시 같은 pN 덮어쓰기 방지)
+      ref.transaction(function(room){
+        claimedSlot=null; failReason="입장 실패";
+        if(!room || !room.meta){ failReason="방을 찾을 수 없음"; return; }            // abort
+        if(room.meta.status!=="waiting" && room.meta.status!=="ready"){ failReason="이미 시작된 방"; return; }
+        claimedMode=room.meta.mode; const mode=getOnlineMode(claimedMode);
+        const players=room.players||{};
+        let slot=null;
+        for(let i=1;i<=mode.maxPlayers;i++){ const k="p"+i; if(!players[k] || players[k].connected===false){ slot=k; break; } }
+        if(!slot){ failReason="방이 가득 찼습니다"; return; }                          // abort
+        let team="pve";
+        if(mode.modeType==="pvp"){
+          let blue=0,red=0; for(const k in players){ const pp=players[k]; if(pp && pp.connected!==false){ if(pp.team==="red") red++; else blue++; } }
+          team = (blue<=red && blue<3) ? "blue" : (red<3 ? "red" : "blue");
+        }
+        claimedSlot=slot;
+        if(!room.players) room.players={};
+        room.players[slot]={ uid:self.uid, nickname:profile.nickname, slot:slot, team:team, characterId:selectedCharacterId,
+          weaponId:selectedWeaponId, connected:true, ready:false, isBot:false, lastSeen:firebase.database.ServerValue.TIMESTAMP, input:emptyInput() };
+        room.meta.status="ready"; room.meta.updatedAt=firebase.database.ServerValue.TIMESTAMP;
+        return room; // commit
+      }).then(function(res){
+        if(res && res.committed && claimedSlot){
+          self.roomCode=code; self.role="guest"; self.roomRef=ref; self.mode=claimedMode; self.mySlot=claimedSlot; self.maxPlayers=getOnlineMode(claimedMode).maxPlayers;
+          self.setPresence(claimedSlot); self.listenRoom();
+          if(onDone) onDone(true, code);
+        } else { if(onDone) onDone(false, failReason); }
+      }).catch(function(e){ if(onDone) onDone(false,"입장 오류"); });
     }catch(e){ if(onDone) onDone(false,"입장 오류"); }
   },
 
@@ -1873,6 +1881,7 @@ function doJoinRoom(){
   });
 }
 function hostStartOnlineMatch(){
+  if(OnlineManager.role!=="host") return;
   resetOnlineMatchFromRoom();
   OnlineManager.writeMetaStatus("playing");
   hostWriteOnlineState();
@@ -1882,7 +1891,11 @@ function hostStartOnlineMatch(){
 // 방 상태가 바뀔 때(주로 guest 쪽에서 호출됨)
 function onRoomMetaChanged(){
   const meta=OnlineManager.meta;
-  if(!meta) return;
+  if(!meta){
+    // 방이 종료/삭제됨 → 소프트락 방지: 안내 후 시작 화면으로
+    if(gameState===STATE.ONLINE_LOBBY || gameState===STATE.ONLINE_PLAYING){ showToast("방이 종료되었습니다"); OnlineManager.leaveRoom(); goToStartScreen(); }
+    return;
+  }
   if(meta.status==="playing"){
     if(gameState===STATE.ONLINE_LOBBY){
       if(isTeamOnline()) resetTeamMatchFromRoom(); else resetOnlineMatchFromRoom();
@@ -2379,6 +2392,7 @@ function resetTeamMatchFromRoom(){
 }
 
 function tStartMatch(){
+  if(OnlineManager.role!=="host") return;
   resetTeamMatchFromRoom();
   OnlineManager.writeMetaStatus("playing");
   tHostWriteState();
@@ -2410,6 +2424,8 @@ function tUpdateHost(dt){
   const players=OnlineManager.players||{};
   for(const slot in tFighters){
     const f=tFighters[slot];
+    // 끊긴 실제 플레이어는 AI 봇이 인계(가만히 멈춰 점수 공급원이 되지 않게)
+    if(!f.isBot && slot!==OnlineManager.mySlot){ const p=players[slot]; if(!p || p.connected===false) f.isBot=true; }
     if(f.isBot){ tBotUpdate(f, dt); continue; }
     let input;
     if(slot===OnlineManager.mySlot) input=readLocalInput();
@@ -2528,6 +2544,7 @@ function tHostWriteState(){
   OnlineManager.writeHostState(st);
 }
 function tHostEndMatch(){
+  if(OnlineManager.role!=="host") return;
   let winner="draw";
   if(tTeamScores.blue>tTeamScores.red) winner="blue"; else if(tTeamScores.red>tTeamScores.blue) winner="red";
   tWinner=winner;
@@ -2660,7 +2677,7 @@ function tDrawLobby(){
     for(let r=row;r<3;r++){ ctx.fillStyle="#667099"; ctx.font="15px 'Malgun Gothic',sans-serif"; ctx.fillText("(빈자리 · AI)",col.x,270+r*30); }
   }
   ctx.fillStyle="#dfe6ff"; ctx.font="16px 'Malgun Gothic',sans-serif";
-  ctx.fillText("6명이 모이면 가장 좋아요. 2명 이상이면 시작 가능, 빈자리는 AI가 채웁니다.",LOGW/2,420);
+  ctx.fillText("6명이 모이면 가장 좋아요. 1명도 테스트 시작 가능, 빈자리는 AI가 채웁니다.",LOGW/2,420);
   if(OnlineManager.role==="host") ctx.fillText("Enter 를 눌러 시작!",LOGW/2,452);
   else ctx.fillText("방장이 시작하기를 기다리는 중…",LOGW/2,452);
   ctx.fillStyle="#8893bb"; ctx.font="14px 'Malgun Gothic',sans-serif"; ctx.fillText("Esc 로 방 나가기",LOGW/2,492);
@@ -2729,14 +2746,16 @@ function tPveStartWave(){
   }
   tPve.phase="wave"; tPve.enemiesRemaining=Object.keys(tEnemies).length;
 }
-function tNearestPlayer(e){ let best=null,bd=Infinity; for(const s in tFighters){ const f=tFighters[s]; if(f.dead) continue; const d=dist(e.x,e.y,f.x,f.y); if(d<bd){bd=d;best=f;} } return best; }
+function tNearestPlayer(e){ let best=null,bd=Infinity; for(const s in tFighters){ const f=tFighters[s]; if(f.dead||f.inactive) continue; const d=dist(e.x,e.y,f.x,f.y); if(d<bd){bd=d;best=f;} } return best; }
 
 function tPveUpdateHost(dt){
   const players=OnlineManager.players||{};
   for(const slot in tFighters){ const f=tFighters[slot];
-    let input;
-    if(slot===OnlineManager.mySlot) input=readLocalInput();
-    else { const p=players[slot]; const conn=p&&p.connected!==false; input=(conn&&p.input)?p.input:emptyInput(); }
+    // 끊긴 플레이어는 inactive 처리(적 타겟/피해/접촉/팀라이프 대상에서 제외)
+    const isMe=slot===OnlineManager.mySlot, p=players[slot];
+    f.inactive = !isMe && !(p && p.connected!==false);
+    if(f.inactive) continue;
+    let input = isMe ? readLocalInput() : ((p&&p.input)?p.input:emptyInput());
     tPveUpdatePlayer(f, input, dt);
     f.displayHp=lerp(f.displayHp,f.hp,Math.min(1,dt*8));
   }
@@ -2754,7 +2773,7 @@ function tPveUpdatePlayer(f,input,dt){
   if(input.attack && f.cooldown<=0){ tFire(f); f.cooldown=GAME_CONFIG.playerAttackCooldown*getWeapon(f.weaponId).cooldownMul; }
 }
 function tHurtPlayer(f,dmg){
-  if(f.dead||f.invincibleTimer>0) return;
+  if(f.dead||f.inactive||f.invincibleTimer>0) return;
   f.hp-=dmg; f.hitFlash=0.15;
   if(f.hp<=0){ f.hp=0; f.dead=true; f.respawnTimer=4; tPve.teamLives=Math.max(0, tPve.teamLives-1); }
 }
@@ -2796,7 +2815,7 @@ function tPveUpdateBullets(dt){
         for(const id in tEnemies){ const e=tEnemies[id]; if(e.dead) continue;
           if(dist(b.x,b.y,e.x,e.y)<b.r+e.r){ e.hp-=b.damage; if(e.hp<=0){ const k=tFighters[b.owner]; if(k) k.score+=e.score; delete tEnemies[id]; } b.alive=false; break; } }
       } else {
-        for(const slot in tFighters){ const f=tFighters[slot]; if(f.dead||f.invincibleTimer>0) continue;
+        for(const slot in tFighters){ const f=tFighters[slot]; if(f.dead||f.inactive||f.invincibleTimer>0) continue;
           if(dist(b.x,b.y,f.x,f.y)<b.r+f.r){ tHurtPlayer(f, b.damage); b.alive=false; break; } }
       }
       if(!b.alive) break;
@@ -2837,6 +2856,7 @@ function tPveReposition(){
     f.spawnX=map.playerSpawn.x; f.spawnY=map.playerSpawn.y; }
 }
 function tPveEnd(){
+  if(OnlineManager.role!=="host") return;
   tHostWriteState();
   OnlineManager.writeMetaStatus("ended", { winner:null, resultText:tPve.status });
   tResultText=tPve.status;
