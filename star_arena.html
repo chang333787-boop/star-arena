@@ -353,34 +353,243 @@ function addGold(amount){ profile.gold = Math.max(0, profile.gold + amount); }
 function unlockCharacter(id){ if(profile.unlockedCharacters.indexOf(id) < 0) profile.unlockedCharacters.push(id); }
 function unlockWeapon(id){ if(profile.unlockedWeapons.indexOf(id) < 0) profile.unlockedWeapons.push(id); }
 
-/* ---- 온라인(Firebase) 관리: 설정이 없으면 자동으로 꺼진다 ---- */
-// 나중에 온라인을 쓰려면 아래 FIREBASE_CONFIG 에 자기 프로젝트 설정을 넣으세요.
-// (인터넷 없이도 게임이 돌아가도록 기본값은 null 입니다.)
+/* ---- 온라인(Firebase) 관리 ----
+   온라인 대전을 켜려면 아래 FIREBASE_CONFIG 에 본인 Firebase 프로젝트 설정을 넣으세요.
+   기본값 null 이면 온라인은 자동으로 꺼지고, 인터넷 없이 로컬 게임만 정상 작동합니다.
+
+   예시:
+   const FIREBASE_CONFIG = {
+     apiKey: "여기에 입력",
+     authDomain: "여기에 입력",
+     databaseURL: "여기에 입력",   // Realtime Database 주소 (필수)
+     projectId: "여기에 입력",
+     appId: "여기에 입력"
+   };
+*/
 const FIREBASE_CONFIG = null;
 
+// Firebase compat CDN (설정이 있을 때만 동적으로 불러온다 — 오프라인이면 아예 로드 안 함)
+const FB_SDK_URLS = [
+  "https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js",
+  "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js",
+  "https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"
+];
+function loadScriptsSequential(urls, done){
+  let i=0;
+  function next(){
+    if(i>=urls.length){ done(true); return; }
+    try{
+      const s=document.createElement("script");
+      s.src=urls[i]; s.async=true;
+      s.onload=function(){ i++; next(); };
+      s.onerror=function(){ done(false); };
+      (document.head||document.body).appendChild(s);
+    }catch(e){ done(false); }
+  }
+  next();
+}
+function emptyInput(){ return { up:false, down:false, left:false, right:false, attack:false, super:false }; }
+
 const OnlineManager = {
-  available: false,
-  status: "오프라인",
-  initFirebaseIfAvailable: function(){
-    try {
-      if(!FIREBASE_CONFIG){ this.available=false; this.status="Firebase 설정 없음 (로컬 저장만 사용)"; return; }
-      // 설정이 있다면 여기서 동적으로 Firebase를 불러온다(인터넷 필요).
-      this.status = "Firebase 연결 시도…(현재 베타)";
-      this.available = false; // 실제 SDK 연동은 준비중
-    } catch(e){
-      this.available = false; this.status = "온라인 사용 불가 (로컬 모드)";
-    }
+  available:false, status:"오프라인",
+  app:null, auth:null, db:null, uid:null,
+  roomCode:null, role:null, roomRef:null,
+  unsubs:[], lastSyncAt:0, connected:false, opponentConnected:true,
+  onlineState:null, meta:null, players:{ host:null, guest:null }, onlineInput:{ host:null, guest:null },
+
+  updateStatus:function(msg){ this.status=msg; },
+
+  initFirebaseIfAvailable:function(){
+    try{
+      if(!FIREBASE_CONFIG){ this.available=false; this.status="Firebase 설정 없음 (로컬 전용)"; return; }
+      this.status="Firebase 불러오는 중…";
+      const self=this;
+      loadScriptsSequential(FB_SDK_URLS, function(ok){
+        if(!ok || typeof firebase==="undefined"){ self.available=false; self.status="Firebase 로드 실패 (로컬 전용)"; return; }
+        try{
+          self.app=firebase.initializeApp(FIREBASE_CONFIG);
+          self.auth=firebase.auth();
+          self.db=firebase.database();
+          self.status="로그인 중…";
+          self.signInGuest();
+        }catch(e){ self.available=false; self.status="Firebase 초기화 실패 (로컬 전용)"; }
+      });
+    }catch(e){ this.available=false; this.status="온라인 사용 불가 (로컬 모드)"; }
   },
-  saveCloudProfile: function(p){ try { if(this.available){ /* 준비중 */ } } catch(e){} },
-  loadCloudProfile: function(){ try { return null; } catch(e){ return null; } },
-  createRoom: function(){ return null; },
-  joinRoom: function(code){ return false; }
+
+  signInGuest:function(){
+    const self=this;
+    try{
+      this.auth.signInAnonymously().then(function(cred){
+        self.uid = (cred && cred.user) ? cred.user.uid : (self.auth.currentUser ? self.auth.currentUser.uid : null);
+        self.available=true; self.status="온라인 준비 완료";
+        self.watchConnection();
+      }).catch(function(e){ self.available=false; self.status="로그인 실패 (로컬 모드)"; });
+    }catch(e){ this.available=false; this.status="로그인 실패 (로컬 모드)"; }
+  },
+
+  watchConnection:function(){
+    try{
+      const self=this, cref=this.db.ref(".info/connected");
+      const cb=function(snap){ self.connected = snap.val()===true; };
+      cref.on("value", cb);
+      this.unsubs.push(function(){ try{ cref.off("value", cb); }catch(e){} });
+    }catch(e){}
+  },
+
+  generateRoomCode:function(){
+    const chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; let s="";
+    for(let i=0;i<4;i++) s+=chars.charAt(Math.floor(Math.random()*chars.length));
+    return s;
+  },
+  roomPath:function(code){ return "starArenaOnline/rooms/"+code; },
+
+  createRoom:function(onDone){
+    try{
+      if(!this.available || !this.db){ if(onDone) onDone(false,"온라인 사용 불가"); return; }
+      const self=this;
+      // 방 코드가 이미 있으면(아주 드묾) 다른 코드로 다시 시도해 기존 방을 덮어쓰지 않게 한다
+      const tryCreate=function(triesLeft){
+        const code=self.generateRoomCode(), ref=self.db.ref(self.roomPath(code));
+        ref.get().then(function(snap){
+          if(snap.val()){
+            if(triesLeft>0){ tryCreate(triesLeft-1); return; }
+            if(onDone) onDone(false,"방 생성 실패(코드 충돌)"); return;
+          }
+          const ts=firebase.database.ServerValue.TIMESTAMP;
+          const room={
+            meta:{ status:"waiting", hostUid:self.uid, guestUid:null, createdAt:ts, updatedAt:ts,
+              mapId:"training", characterHost:selectedCharacterId, characterGuest:null,
+              weaponHost:selectedWeaponId, weaponGuest:null, winner:null },
+            players:{ host:{ uid:self.uid, nickname:profile.nickname, characterId:selectedCharacterId,
+              weaponId:selectedWeaponId, connected:true, lastSeen:ts, input:emptyInput() } }
+          };
+          ref.set(room).then(function(){
+            self.roomCode=code; self.role="host"; self.roomRef=ref;
+            self.setPresence("host"); self.listenRoom();
+            if(onDone) onDone(true, code);
+          }).catch(function(e){ if(onDone) onDone(false,"방 생성 실패"); });
+        }).catch(function(e){ if(onDone) onDone(false,"방 생성 오류"); });
+      };
+      tryCreate(5);
+    }catch(e){ if(onDone) onDone(false,"방 생성 오류"); }
+  },
+
+  joinRoom:function(code, onDone){
+    try{
+      if(!this.available || !this.db){ if(onDone) onDone(false,"온라인 사용 불가"); return; }
+      const self=this;
+      code=String(code||"").toUpperCase().trim();
+      if(code.length<4){ if(onDone) onDone(false,"방 코드 형식 오류"); return; }
+      const ref=this.db.ref(this.roomPath(code));
+      ref.get().then(function(snap){
+        const data=snap.val();
+        if(!data || !data.meta){ if(onDone) onDone(false,"방을 찾을 수 없음"); return; }
+        if(data.meta.guestUid && data.meta.guestUid!==self.uid){ if(onDone) onDone(false,"방이 가득 찼습니다"); return; }
+        const ts=firebase.database.ServerValue.TIMESTAMP;
+        const updates={};
+        updates["meta/guestUid"]=self.uid;
+        updates["meta/characterGuest"]=selectedCharacterId;
+        updates["meta/weaponGuest"]=selectedWeaponId;
+        updates["meta/status"]="ready";
+        updates["meta/updatedAt"]=ts;
+        updates["players/guest"]={ uid:self.uid, nickname:profile.nickname, characterId:selectedCharacterId,
+          weaponId:selectedWeaponId, connected:true, lastSeen:ts, input:emptyInput() };
+        ref.update(updates).then(function(){
+          self.roomCode=code; self.role="guest"; self.roomRef=ref;
+          self.setPresence("guest"); self.listenRoom();
+          if(onDone) onDone(true, code);
+        }).catch(function(e){ if(onDone) onDone(false,"입장 실패"); });
+      }).catch(function(e){ if(onDone) onDone(false,"입장 오류"); });
+    }catch(e){ if(onDone) onDone(false,"입장 오류"); }
+  },
+
+  setPresence:function(role){
+    try{
+      if(!this.roomRef) return;
+      const pref=this.roomRef.child("players/"+role);
+      pref.child("connected").set(true);
+      pref.child("connected").onDisconnect().set(false);
+      pref.child("lastSeen").onDisconnect().set(firebase.database.ServerValue.TIMESTAMP);
+      pref.child("input").onDisconnect().set(emptyInput()); // 끊기면 입력도 비워 유령 동작 방지
+      if(role==="host") this.roomRef.child("meta/status").onDisconnect().set("ended"); // 방장 끊기면 방 종료
+    }catch(e){}
+  },
+
+  listenRoom:function(){
+    try{
+      const self=this; if(!this.roomRef) return;
+      const metaRef=this.roomRef.child("meta");
+      const playersRef=this.roomRef.child("players");
+      const stateRef=this.roomRef.child("state");
+      const mcb=function(snap){ self.meta=snap.val(); onRoomMetaChanged(); };
+      const pcb=function(snap){
+        self.players=snap.val()||{ host:null, guest:null };
+        self.onlineInput.host = self.players.host ? self.players.host.input : null;
+        self.onlineInput.guest = self.players.guest ? self.players.guest.input : null;
+      };
+      metaRef.on("value", mcb);
+      playersRef.on("value", pcb);
+      this.unsubs.push(function(){ try{ metaRef.off("value",mcb); }catch(e){} });
+      this.unsubs.push(function(){ try{ playersRef.off("value",pcb); }catch(e){} });
+      if(this.role==="guest"){
+        const scb=function(snap){ self.onlineState=snap.val(); };
+        stateRef.on("value", scb);
+        this.unsubs.push(function(){ try{ stateRef.off("value",scb); }catch(e){} });
+      }
+    }catch(e){}
+  },
+
+  writeInput:function(inputObj){ try{ if(this.roomRef && this.role) this.roomRef.child("players/"+this.role+"/input").set(inputObj); }catch(e){} },
+  writeMetaStatus:function(status, extra){
+    try{ if(!this.roomRef) return; const u={ status:status, updatedAt:firebase.database.ServerValue.TIMESTAMP };
+      if(extra){ for(const k in extra) u[k]=extra[k]; } this.roomRef.child("meta").update(u); }catch(e){}
+  },
+  writeHostState:function(stateObj){
+    try{ if(!this.roomRef) return; stateObj.updatedAt=firebase.database.ServerValue.TIMESTAMP;
+      this.roomRef.child("state").set(stateObj); }catch(e){}
+  },
+
+  leaveRoom:function(){
+    try{
+      for(const u of this.unsubs){ try{ u(); }catch(e){} }
+      this.unsubs=[];
+      // 서버에 등록해 둔 onDisconnect 들을 먼저 취소(떠난 방에 유령 데이터가 되살아나는 것 방지)
+      if(this.roomRef && this.role){
+        try{
+          const pref=this.roomRef.child("players/"+this.role);
+          pref.child("connected").onDisconnect().cancel();
+          pref.child("lastSeen").onDisconnect().cancel();
+          pref.child("input").onDisconnect().cancel();
+          if(this.role==="host") this.roomRef.child("meta/status").onDisconnect().cancel();
+        }catch(e){}
+      }
+      if(this.roomRef){
+        try{
+          if(this.role==="host"){ const rr=this.roomRef; rr.child("meta/status").set("ended");
+            setTimeout(function(){ try{ rr.remove(); }catch(e){} }, 800); }
+          else if(this.role==="guest"){ this.roomRef.child("meta/status").set("ended");
+            this.roomRef.child("players/guest/connected").set(false); }
+        }catch(e){}
+      }
+    }catch(e){}
+    this.roomRef=null; this.roomCode=null; this.role=null;
+    this.onlineState=null; this.meta=null; this.players={ host:null, guest:null };
+    this.onlineInput={ host:null, guest:null }; this.opponentConnected=true;
+    if(this.available && this.db) this.watchConnection(); // 연결 감시 재구독
+  },
+
+  // 프로필 클라우드 저장은 이번 베타에서 사용하지 않음(로컬 localStorage만)
+  saveCloudProfile:function(p){ try{ /* 베타: 미사용 */ }catch(e){} },
+  loadCloudProfile:function(){ try{ return null; }catch(e){ return null; } }
 };
 
 /* =======================================================================
    게임 상태
    ======================================================================= */
-const STATE = { START:"start", SHOP:"shop", ONLINE:"online", PLAYING:"playing", PAUSED:"paused", OVER:"over" };
+const STATE = { START:"start", SHOP:"shop",
+  ONLINE_MENU:"online_menu", ONLINE_LOBBY:"online_lobby", ONLINE_PLAYING:"online_playing", ONLINE_OVER:"online_over",
+  PLAYING:"playing", PAUSED:"paused", OVER:"over" };
 let gameState = STATE.START;
 
 let player = null;        // 내가 조종하는 캐릭터
@@ -448,13 +657,21 @@ window.addEventListener("keydown", (e)=>{
 window.addEventListener("keyup", (e)=>{ keysDown.delete(e.code); });
 window.addEventListener("blur", ()=>{ keysDown.clear(); });
 document.addEventListener("visibilitychange", ()=>{ if(document.hidden) keysDown.clear(); });
+// 페이지를 닫으면 온라인 방을 정리한다(onDisconnect도 별도로 동작)
+window.addEventListener("beforeunload", ()=>{ try{ if(OnlineManager.role) OnlineManager.leaveRoom(); }catch(e){} });
 
 function showToast(text){ toastText = text; toastTimer = 1.8; }
 
 function handleKeyPress(code){
   if(gameState === STATE.START){ handleStartKey(code); return; }
   if(gameState === STATE.SHOP){ handleShopKey(code); return; }
-  if(gameState === STATE.ONLINE){ if(code==="Escape"||code==="Enter"||code==="NumpadEnter") gameState=STATE.START; return; }
+  if(gameState === STATE.ONLINE_MENU){ handleOnlineMenuKey(code); return; }
+  if(gameState === STATE.ONLINE_LOBBY){ handleOnlineLobbyKey(code); return; }
+  if(gameState === STATE.ONLINE_PLAYING){ handleOnlinePlayKey(code); return; }
+  if(gameState === STATE.ONLINE_OVER){
+    if(code==="Enter"||code==="NumpadEnter"||code==="Escape"||code==="KeyR"){ OnlineManager.leaveRoom(); goToStartScreen(); }
+    return;
+  }
   if(gameState === STATE.PLAYING){
     if(code==="KeyX" || code==="Space"){ useCharacterSuper(); return; }
     if(code==="KeyP"){ setPaused(true); return; }
@@ -492,7 +709,7 @@ function handleStartKey(code){
   if(code==="KeyT"){ cycleMode(+1); return; }
   if(code==="KeyN"){ changeNickname(); return; }
   if(code==="KeyS"){ openShop(); return; }
-  if(code==="KeyO"){ gameState=STATE.ONLINE; return; }
+  if(code==="KeyO"){ openOnlineMenu(); return; }
 }
 function changeMenuValue(row, dir){
   if(row===0) cycleCharacter(dir);
@@ -504,7 +721,7 @@ function changeMenuValue(row, dir){
 function activateMenuRow(row){
   if(row===5) changeNickname();
   else if(row===6) openShop();
-  else if(row===7) gameState=STATE.ONLINE;
+  else if(row===7) openOnlineMenu();
   else startGame(); // 값 행 또는 시작 행에서 Enter → 게임 시작
 }
 
@@ -674,7 +891,8 @@ function resetMatch(){
 }
 
 function startGame(){ applyProfileSelections(); resetMatch(); gameState=STATE.PLAYING; }
-function goToStartScreen(){ gameState=STATE.START; keysDown.clear(); }
+function goToStartScreen(){ gameState=STATE.START; keysDown.clear(); restoreLocalArena(); }
+function restoreLocalArena(){ OBSTACLES=getMap(selectedMapId).obstacles; BUSHES=getMap(selectedMapId).bushes; }
 function setPaused(p){
   if(p && gameState===STATE.PLAYING){ gameState=STATE.PAUSED; keysDown.clear(); }
   else if(!p && gameState===STATE.PAUSED){ gameState=STATE.PLAYING; keysDown.clear(); }
@@ -1024,6 +1242,7 @@ function updateEffects(dt){
 function update(dt){
   uiTime+=dt;
   if(toastTimer>0) toastTimer-=dt;
+  if(gameState===STATE.ONLINE_PLAYING){ updateOnline(dt); return; }
   if(gameState!==STATE.PLAYING) return;
   matchElapsed+=dt;
   for(const f of allFighters()) f.displayHp=lerp(f.displayHp, f.hp, Math.min(1,dt*8));
@@ -1135,9 +1354,13 @@ function render(){
     drawHUD();
   }
 
+  if(gameState===STATE.ONLINE_PLAYING) renderOnlineMatch();
+
   if(gameState===STATE.START) drawStartScreen();
   else if(gameState===STATE.SHOP) drawShopScreen();
-  else if(gameState===STATE.ONLINE) drawOnlineScreen();
+  else if(gameState===STATE.ONLINE_MENU) drawOnlineMenu();
+  else if(gameState===STATE.ONLINE_LOBBY) drawOnlineLobby();
+  else if(gameState===STATE.ONLINE_OVER) drawOnlineOver();
   else if(gameState===STATE.PAUSED) drawPauseScreen();
   else if(gameState===STATE.OVER) drawResultScreen();
 
@@ -1152,8 +1375,9 @@ function drawBackground(){
   for(let i=0;i<40;i++){ const x=(i*173.13)%LOGW, y=(i*97.7)%64, tw=0.5+0.5*Math.sin(uiTime*2+i); ctx.globalAlpha=0.25+tw*0.4; ctx.fillStyle="#cfe3ff"; ctx.fillRect(x,y,2,2); }
   ctx.restore();
 }
+function isOnlineState(){ return gameState===STATE.ONLINE_MENU||gameState===STATE.ONLINE_LOBBY||gameState===STATE.ONLINE_PLAYING||gameState===STATE.ONLINE_OVER; }
 function drawArenaFloor(){
-  const map=(MATCH&&MATCH.map)?MATCH.map:getMap(selectedMapId);
+  const map=isOnlineState()?getMap(ONLINE_MAP_ID):((MATCH&&MATCH.map)?MATCH.map:getMap(selectedMapId));
   ctx.save();
   ctx.fillStyle=map.floorColor; roundRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h,18); ctx.fill();
   ctx.beginPath(); ctx.rect(ARENA.x,ARENA.y,ARENA.w,ARENA.h); ctx.clip();
@@ -1469,15 +1693,387 @@ function drawShopScreen(){
 }
 
 /* ---- 온라인 화면 ---- */
-function drawOnlineScreen(){
+/* =======================================================================
+   온라인 1대1 (베타) — 로컬 게임과 분리된 전용 로직
+   host가 권한(authoritative)을 갖고 게임을 계산해 state를 쓰고,
+   guest는 자기 입력만 쓰고 host가 보낸 state를 그린다.
+   ======================================================================= */
+const ONLINE_MAP_ID = "training";   // 베타는 훈련장 맵만 사용
+const ONLINE_STATE_FPS = 18;        // 입력/상태 동기화 빈도(초당 횟수) — DB 사용량 절약
+
+let onlineFighters = { host:null, guest:null };
+let onlineBullets = [];
+let onlineTimeLeft = GAME_CONFIG.gameTime;
+let onlineWinner = null;
+let onlineWriteAcc = 0, onlineInputAcc = 0, onlineLastInputStr = "";
+let onlineMenuIndex = 0;
+let onlineLobbyMsg = "";
+
+function openOnlineMenu(){
+  onlineMenuIndex=0;
+  OBSTACLES=getMap(ONLINE_MAP_ID).obstacles; BUSHES=getMap(ONLINE_MAP_ID).bushes;
+  gameState=STATE.ONLINE_MENU;
+}
+
+/* ---- 입력 처리 ---- */
+function handleOnlineMenuKey(code){
+  if(code==="Escape"){ goToStartScreen(); return; }
+  if(!OnlineManager.available) return; // 설정 없으면 안내만(동작 없음)
+  if(code==="ArrowUp"){ onlineMenuIndex=(onlineMenuIndex+2)%3; return; }
+  if(code==="ArrowDown"){ onlineMenuIndex=(onlineMenuIndex+1)%3; return; }
+  if(code==="Enter"||code==="NumpadEnter"){
+    if(onlineMenuIndex===0) doCreateRoom();
+    else if(onlineMenuIndex===1) doJoinRoom();
+    else goToStartScreen();
+  }
+}
+function handleOnlineLobbyKey(code){
+  if(code==="Escape"){ OnlineManager.leaveRoom(); goToStartScreen(); return; }
+  if(code==="Enter"||code==="NumpadEnter"){
+    if(OnlineManager.role==="host" && OnlineManager.players && OnlineManager.players.guest) hostStartOnlineMatch();
+    else if(OnlineManager.role==="host") showToast("상대가 아직 없어요");
+  }
+}
+function handleOnlinePlayKey(code){
+  if(code==="Escape"){ OnlineManager.leaveRoom(); goToStartScreen(); return; }
+  if(code==="KeyX"||code==="Space"){ showToast("온라인 베타에서는 궁극기 비활성"); return; }
+}
+
+function doCreateRoom(){
+  onlineLobbyMsg="방 만드는 중…";
+  OnlineManager.createRoom(function(ok,info){
+    if(ok){ onlineLobbyMsg=""; gameState=STATE.ONLINE_LOBBY; }
+    else { onlineLobbyMsg=""; showToast(info||"방 생성 실패"); }
+  });
+}
+function doJoinRoom(){
+  let code=null;
+  try{ code=window.prompt("방 코드를 입력하세요 (4글자)"); }catch(e){ code=null; }
+  if(!code) return;
+  onlineLobbyMsg="입장 중…";
+  OnlineManager.joinRoom(code, function(ok,info){
+    if(ok){ onlineLobbyMsg=""; gameState=STATE.ONLINE_LOBBY; }
+    else { onlineLobbyMsg=""; showToast(info||"입장 실패"); }
+  });
+}
+function hostStartOnlineMatch(){
+  resetOnlineMatchFromRoom();
+  OnlineManager.writeMetaStatus("playing");
+  hostWriteOnlineState();
+  gameState=STATE.ONLINE_PLAYING;
+}
+
+// 방 상태가 바뀔 때(주로 guest 쪽에서 호출됨)
+function onRoomMetaChanged(){
+  const meta=OnlineManager.meta;
+  if(!meta) return;
+  if(meta.status==="playing"){
+    if(gameState===STATE.ONLINE_LOBBY){ resetOnlineMatchFromRoom(); gameState=STATE.ONLINE_PLAYING; }
+  } else if(meta.status==="ended"){
+    if(gameState===STATE.ONLINE_PLAYING || gameState===STATE.ONLINE_LOBBY){
+      onlineWinner = meta.winner || onlineWinner;
+      gameState=STATE.ONLINE_OVER;
+    }
+  }
+}
+
+/* ---- 매치 준비 ---- */
+function resetOnlineMatchFromRoom(){
+  const meta=OnlineManager.meta||{};
+  OBSTACLES=getMap(ONLINE_MAP_ID).obstacles; BUSHES=getMap(ONLINE_MAP_ID).bushes;
+  const map=getMap(ONLINE_MAP_ID);
+  onlineFighters.host  = makeOnlineFighter("host",  { x:map.playerSpawn.x, y:map.playerSpawn.y, facing:0,
+                          characterId:meta.characterHost||"lumi", weaponId:meta.weaponHost||"star_blaster" });
+  onlineFighters.guest = makeOnlineFighter("guest", { x:map.enemySpawn.x, y:map.enemySpawn.y, facing:Math.PI,
+                          characterId:meta.characterGuest||"lumi", weaponId:meta.weaponGuest||"star_blaster" });
+  onlineBullets=[]; onlineTimeLeft=GAME_CONFIG.gameTime; onlineWinner=null;
+  onlineWriteAcc=0; onlineInputAcc=0; onlineLastInputStr="";
+}
+function makeOnlineFighter(slot, d){
+  const ch=getCharacter(d.characterId);
+  const maxHp=GAME_CONFIG.playerMaxHp*ch.hpMul;
+  return { slot:slot, x:d.x, y:d.y, r:22, facing:d.facing||0,
+    char:ch, weaponId:d.weaponId, color:ch.color, subColor:ch.subColor, name:ch.name,
+    maxHp:maxHp, hp:maxHp, displayHp:maxHp, moveSpeed:GAME_CONFIG.playerMoveSpeed*ch.speedMul,
+    cooldown:0, score:0, dead:false, respawnTimer:0, invincibleTimer:0, hitFlash:0,
+    spawnX:d.x, spawnY:d.y };
+}
+
+/* ---- 입력 송신(throttle + 변화 시 즉시) ---- */
+function readLocalInput(){
+  return { up:keysDown.has("ArrowUp"), down:keysDown.has("ArrowDown"),
+           left:keysDown.has("ArrowLeft"), right:keysDown.has("ArrowRight"),
+           attack:keysDown.has("KeyZ"), super:false };
+}
+function sendMyInput(dt){
+  const inp=readLocalInput(), str=JSON.stringify(inp);
+  onlineInputAcc+=dt;
+  if(str!==onlineLastInputStr || onlineInputAcc>=1/ONLINE_STATE_FPS){
+    onlineLastInputStr=str; onlineInputAcc=0;
+    OnlineManager.writeInput(inp);
+  }
+}
+
+/* ---- 업데이트 ---- */
+function updateOnline(dt){
+  // host는 자기 입력을 로컬에서 바로 쓰므로 DB에 안 보냄(낭비 방지). guest만 입력을 전송.
+  if(OnlineManager.role==="guest") sendMyInput(dt);
+  if(OnlineManager.role==="host") updateOnlineHost(dt);
+  else updateOnlineGuest(dt);
+  updateEffects(dt);
+}
+function updateOnlineHost(dt){
+  const H=onlineFighters.host, G=onlineFighters.guest;
+  if(!H||!G) return;
+  OnlineManager.opponentConnected = !!(OnlineManager.players && OnlineManager.players.guest && OnlineManager.players.guest.connected);
+  const hi=readLocalInput();
+  // 상대가 끊겼으면 마지막 입력이 남아 유령처럼 계속 움직이지 않도록 입력을 비운다
+  const gi = OnlineManager.opponentConnected ? (OnlineManager.onlineInput.guest || emptyInput()) : emptyInput();
+  updateOnlineFighter(H, hi, dt);
+  updateOnlineFighter(G, gi, dt);
+  updateOnlineBullets(dt);
+  onlineTimeLeft-=dt;
+  H.displayHp=lerp(H.displayHp,H.hp,Math.min(1,dt*8)); G.displayHp=lerp(G.displayHp,G.hp,Math.min(1,dt*8));
+  onlineWriteAcc+=dt;
+  if(onlineWriteAcc>=1/ONLINE_STATE_FPS){ onlineWriteAcc=0; hostWriteOnlineState(); }
+  if(onlineTimeLeft<=0){ onlineTimeLeft=0; hostEndOnlineMatch(); }
+}
+function updateOnlineGuest(dt){
+  OnlineManager.opponentConnected = !!(OnlineManager.players && OnlineManager.players.host && OnlineManager.players.host.connected);
+  // 화면은 onlineState(호스트가 보낸 값)로 그린다. 별도 시뮬레이션 없음.
+}
+function updateOnlineFighter(f, input, dt){
+  if(f.dead){ f.respawnTimer-=dt; if(f.respawnTimer<=0) respawnOnline(f); return; }
+  if(f.hitFlash>0) f.hitFlash-=dt;
+  if(f.invincibleTimer>0) f.invincibleTimer-=dt;
+  let mx=0,my=0;
+  if(input.up)my-=1; if(input.down)my+=1; if(input.left)mx-=1; if(input.right)mx+=1;
+  const ml=Math.hypot(mx,my);
+  if(ml>0){ mx/=ml; my/=ml; moveEntity(f, mx*f.moveSpeed*dt, my*f.moveSpeed*dt); f.facing=Math.atan2(my,mx); }
+  f.cooldown-=dt;
+  if(input.attack && f.cooldown<=0){ fireOnlineWeapon(f); f.cooldown=GAME_CONFIG.playerAttackCooldown*getWeapon(f.weaponId).cooldownMul; }
+}
+function fireOnlineWeapon(f){
+  const w=getWeapon(f.weaponId), c=f.char;
+  const count=w.spreadCount, spread=deg2rad(w.spreadAngleDeg||0);
+  const speed=GAME_CONFIG.playerBulletSpeed*c.bulletSpeedMul*w.bulletSpeedMul;
+  const dmg=GAME_CONFIG.playerDamage*c.damageMul*w.damageMul;
+  const range=GAME_CONFIG.playerRange*w.rangeMul;
+  const radius=GAME_CONFIG.playerBulletRadius*w.bulletRadiusMul;
+  for(let i=0;i<count;i++){
+    let a=f.facing; if(count>1) a=f.facing-spread/2+spread*(i/(count-1));
+    const mz=f.r+6, bx=f.x+Math.cos(a)*mz, by=f.y+Math.sin(a)*mz;
+    onlineBullets.push({ x:bx,y:by,vx:Math.cos(a)*speed,vy:Math.sin(a)*speed,r:radius,damage:dmg,owner:f.slot,color:w.color,alive:true,traveled:0,maxRange:range });
+  }
+}
+function updateOnlineBullets(dt){
+  for(const b of onlineBullets){
+    if(!b.alive) continue;
+    const speed=Math.hypot(b.vx,b.vy);
+    const steps=Math.max(1,Math.ceil(speed*dt/(b.r*0.9)));
+    const sx=b.vx*dt/steps, sy=b.vy*dt/steps, sl=Math.hypot(sx,sy);
+    for(let s=0;s<steps&&b.alive;s++){
+      b.x+=sx; b.y+=sy; b.traveled+=sl;
+      if(b.x<ARENA.x||b.x>ARENA.x+ARENA.w||b.y<ARENA.y||b.y>ARENA.y+ARENA.h){ b.alive=false; break; }
+      let wall=false; for(const o of OBSTACLES){ if(circleRectOverlap(b.x,b.y,b.r,o)){ wall=true; break; } }
+      if(wall){ b.alive=false; break; }
+      const target = b.owner==="host" ? onlineFighters.guest : onlineFighters.host;
+      if(target && !target.dead && target.invincibleTimer<=0 && dist(b.x,b.y,target.x,target.y)<b.r+target.r){
+        applyOnlineDamage(target, b.damage, b.owner); b.alive=false; break;
+      }
+      if(b.traveled>b.maxRange){ b.alive=false; break; }
+    }
+  }
+  onlineBullets=onlineBullets.filter(b=>b.alive);
+  if(onlineBullets.length>40) onlineBullets=onlineBullets.slice(onlineBullets.length-40); // DB payload 제한
+}
+function applyOnlineDamage(target, dmg, fromSlot){
+  if(target.dead || target.invincibleTimer>0) return;
+  target.hp-=dmg; target.hitFlash=0.15;
+  if(target.hp<=0){
+    target.hp=0; target.dead=true; target.respawnTimer=GAME_CONFIG.respawnDelay;
+    const killer = fromSlot==="host" ? onlineFighters.host : onlineFighters.guest;
+    if(killer) killer.score+=1;
+  }
+}
+function respawnOnline(f){
+  f.dead=false; f.hp=f.maxHp; f.displayHp=f.maxHp; f.cooldown=0;
+  const pos=findClearSpawn(f.spawnX,f.spawnY,f.r);
+  f.x=pos.x; f.y=pos.y; f.invincibleTimer=GAME_CONFIG.invincibleTime;
+}
+function packFighter(f){
+  return { x:Math.round(f.x), y:Math.round(f.y), hp:Math.round(f.hp), maxHp:Math.round(f.maxHp),
+    facing:Math.round(f.facing*100)/100, score:f.score, dead:!!f.dead, inv:f.invincibleTimer>0, charId:f.char.id };
+}
+function hostWriteOnlineState(){
+  const H=onlineFighters.host, G=onlineFighters.guest;
+  if(!H||!G) return;
+  const bl=[];
+  for(const b of onlineBullets) bl.push({ x:Math.round(b.x), y:Math.round(b.y), r:Math.round(b.r), o:b.owner, c:b.color });
+  OnlineManager.writeHostState({ timeLeft:Math.max(0,Math.round(onlineTimeLeft)), host:packFighter(H), guest:packFighter(G), bullets:bl });
+}
+function hostEndOnlineMatch(){
+  const H=onlineFighters.host, G=onlineFighters.guest;
+  let winner="draw";
+  if(H.score>G.score) winner="host"; else if(G.score>H.score) winner="guest";
+  onlineWinner=winner;
+  hostWriteOnlineState();
+  OnlineManager.writeMetaStatus("ended", { winner:winner });
+  gameState=STATE.ONLINE_OVER;
+}
+function computeOnlineResultText(){
+  let w=onlineWinner; if(!w && OnlineManager.meta) w=OnlineManager.meta.winner;
+  if(!w || w==="draw") return "무승부!";
+  if(w===OnlineManager.role) return "승리!";
+  return "패배!";
+}
+
+/* ---- 렌더 ---- */
+function getOnlineDrawData(){
+  if(OnlineManager.role==="host"){
+    const H=onlineFighters.host, G=onlineFighters.guest;
+    return {
+      timeLeft:Math.max(0,Math.ceil(onlineTimeLeft)),
+      host: H?{ x:H.x,y:H.y,hp:H.hp,maxHp:H.maxHp,facing:H.facing,dead:H.dead,inv:H.invincibleTimer>0,charId:H.char.id,score:H.score }:null,
+      guest:G?{ x:G.x,y:G.y,hp:G.hp,maxHp:G.maxHp,facing:G.facing,dead:G.dead,inv:G.invincibleTimer>0,charId:G.char.id,score:G.score }:null,
+      bullets: onlineBullets.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.color }))
+    };
+  } else {
+    const s=OnlineManager.onlineState;
+    if(!s) return { timeLeft:GAME_CONFIG.gameTime, host:null, guest:null, bullets:[], waiting:true };
+    const conv=(p)=> p?{ x:p.x,y:p.y,hp:p.hp,maxHp:p.maxHp,facing:p.facing,dead:p.dead,inv:p.inv,charId:p.charId,score:p.score }:null;
+    return { timeLeft:s.timeLeft, host:conv(s.host), guest:conv(s.guest), bullets:(s.bullets||[]).map(b=>({ x:b.x,y:b.y,r:b.r,c:b.c })) };
+  }
+}
+function drawOnlineBullet(b){
+  ctx.save();
+  const color=b.c||"#ffe066";
+  const glow=ctx.createRadialGradient(b.x,b.y,1,b.x,b.y,b.r*2.2);
+  glow.addColorStop(0,color); glow.addColorStop(1,"rgba(0,0,0,0)");
+  ctx.fillStyle=glow; ctx.beginPath(); ctx.arc(b.x,b.y,b.r*2.2,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle="#ffffff"; ctx.beginPath(); ctx.arc(b.x,b.y,b.r*0.7,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle=color; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.stroke();
+  ctx.restore();
+}
+function drawOnlineFighter(d, isMe){
+  if(!d || d.dead) return;
+  const ch=getCharacter(d.charId||"lumi");
+  let alpha=1;
+  if(d.inv && Math.floor(uiTime*12)%2===0) alpha*=0.4;
+  ctx.save(); ctx.globalAlpha=alpha; ctx.translate(d.x,d.y);
+  drawPlayerCharacter({ r:22, color:ch.color, subColor:ch.subColor, facing:d.facing||0 });
+  ctx.restore();
+  // 이름 + 체력바
+  const w=54,h=8,bx=d.x-w/2,by=d.y-22-24;
+  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="bottom";
+  ctx.fillStyle=isMe?"#bfffad":"#dff1ff"; ctx.font="bold 13px 'Malgun Gothic',sans-serif";
+  ctx.fillText(ch.name+(isMe?" (나)":""), d.x, by-2);
+  ctx.fillStyle="rgba(0,0,0,0.5)"; roundRect(bx,by,w,h,4); ctx.fill();
+  const ratio=clamp(d.hp/(d.maxHp||1),0,1);
+  ctx.fillStyle=ratio>0.5?"#4bd86b":(ratio>0.25?"#ffd24d":"#ff5a5a"); roundRect(bx,by,w*ratio,h,4); ctx.fill();
+  ctx.fillStyle="#fff"; ctx.font="bold 11px 'Malgun Gothic',sans-serif"; ctx.textBaseline="alphabetic"; ctx.fillText(Math.ceil(d.hp),d.x,by+h+12);
+  if(d.inv){ ctx.fillStyle="#9fe8ff"; ctx.font="bold 10px 'Malgun Gothic',sans-serif"; ctx.fillText("무적",d.x,by-15); }
+  ctx.restore();
+}
+function renderOnlineMatch(){
+  const data=getOnlineDrawData();
+  for(const b of data.bullets) drawOnlineBullet(b);
+  drawOnlineFighter(data.host, OnlineManager.role==="host");
+  drawOnlineFighter(data.guest, OnlineManager.role==="guest");
+  drawEffects();
+  drawOnlineHUD(data);
+  if(!OnlineManager.opponentConnected) drawCenterBanner("상대 연결 끊김…", "#ff7a7a");
+  if(data.waiting) drawCenterBanner("동기화 대기 중…", "#9fe0ff");
+}
+function drawOnlineHUD(data){
+  ctx.save();
+  ctx.fillStyle="rgba(10,12,32,0.72)"; ctx.fillRect(0,0,LOGW,64);
+  ctx.textBaseline="middle";
+  const meIsHost=(OnlineManager.role==="host");
+  const hostScore=data.host?data.host.score:0, guestScore=data.guest?data.guest.score:0;
+  ctx.textAlign="left"; ctx.fillStyle="#7fd6ff"; ctx.font="bold 20px 'Malgun Gothic',sans-serif";
+  ctx.fillText("방장"+(meIsHost?" (나)":""),24,22);
+  ctx.fillStyle="#ffffff"; ctx.font="bold 30px 'Malgun Gothic',sans-serif"; ctx.fillText(String(hostScore),24,48);
+  ctx.textAlign="right"; ctx.fillStyle="#c98bff"; ctx.font="bold 20px 'Malgun Gothic',sans-serif";
+  ctx.fillText("참가자"+(!meIsHost?" (나)":""),LOGW-24,22);
+  ctx.fillStyle="#ffffff"; ctx.font="bold 30px 'Malgun Gothic',sans-serif"; ctx.fillText(String(guestScore),LOGW-24,48);
+  ctx.textAlign="center"; ctx.fillStyle="#ffffff"; ctx.font="bold 36px 'Malgun Gothic',sans-serif";
+  ctx.fillText(String(data.timeLeft),LOGW/2,26);
+  ctx.fillStyle="#aab4e0"; ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.fillText("온라인 1대1 (베타) · 방 "+(OnlineManager.roomCode||""),LOGW/2,52);
+  ctx.fillStyle="rgba(10,12,32,0.72)"; ctx.fillRect(0,656,LOGW,64);
+  ctx.textAlign="center"; ctx.fillStyle="#aab4e0"; ctx.font="bold 15px 'Malgun Gothic',sans-serif";
+  ctx.fillText("방향키 이동 · Z 공격 · Esc 나가기   (베타: 궁극기 비활성)",LOGW/2,688);
+  ctx.restore();
+}
+function drawCenterBanner(text, color){
+  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillStyle="rgba(6,8,24,0.5)"; ctx.fillRect(0,LOGH/2-40,LOGW,80);
+  ctx.fillStyle=color||"#fff"; ctx.font="bold 34px 'Malgun Gothic',sans-serif"; ctx.fillText(text,LOGW/2,LOGH/2);
+  ctx.restore();
+}
+
+/* ---- 온라인 메뉴/로비/결과 화면 ---- */
+function drawOnlineMenu(){
+  dimScreen(0.7);
+  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillStyle="#9fe0ff"; ctx.font="bold 46px 'Malgun Gothic',sans-serif"; ctx.fillText("온라인 대전 (베타)",LOGW/2,120);
+  ctx.fillStyle="#8893bb"; ctx.font="15px 'Malgun Gothic',sans-serif"; ctx.fillText("상태: "+OnlineManager.status,LOGW/2,160);
+  if(!OnlineManager.available){
+    ctx.fillStyle="#dfe6ff"; ctx.font="20px 'Malgun Gothic',sans-serif";
+    ctx.fillText("온라인은 Firebase 설정 후 사용할 수 있어요.",LOGW/2,300);
+    ctx.fillStyle="#aab4e0"; ctx.font="16px 'Malgun Gothic',sans-serif";
+    ctx.fillText("index.html 의 FIREBASE_CONFIG 에 설정을 넣으면 켜집니다.",LOGW/2,336);
+    ctx.fillText("지금도 로컬(컴퓨터) 모드는 모두 정상 작동합니다.",LOGW/2,366);
+    ctx.fillStyle="#ffe066"; ctx.font="16px 'Malgun Gothic',sans-serif"; ctx.fillText("Esc 로 돌아가기",LOGW/2,430);
+    ctx.restore(); return;
+  }
+  ctx.fillStyle="#e6ecff"; ctx.font="18px 'Malgun Gothic',sans-serif"; ctx.fillText("닉네임: "+profile.nickname,LOGW/2,200);
+  const opts=["방 만들기","방 코드로 입장","뒤로가기"];
+  for(let i=0;i<opts.length;i++){
+    const y=270+i*60, sel=(i===onlineMenuIndex);
+    drawButton(opts[i], LOGW/2, y, 320, 50, sel);
+  }
+  ctx.textAlign="center"; ctx.fillStyle="#aab4e0"; ctx.font="15px 'Malgun Gothic',sans-serif";
+  ctx.fillText("↑↓ 선택 · Enter 실행 · Esc 뒤로",LOGW/2,470);
+  ctx.restore();
+}
+function drawOnlineLobby(){
   dimScreen(0.72);
   ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
-  ctx.fillStyle="#9fe0ff"; ctx.font="bold 44px 'Malgun Gothic',sans-serif"; ctx.fillText("온라인 대전 (베타)",LOGW/2,160);
-  ctx.fillStyle="#dfe6ff"; ctx.font="20px 'Malgun Gothic',sans-serif";
-  ctx.fillText(OnlineManager.available?"온라인 준비 완료!":"온라인 기능은 Firebase 설정 후 사용할 수 있어요.",LOGW/2,250);
-  ctx.fillStyle="#8893bb"; ctx.font="16px 'Malgun Gothic',sans-serif"; ctx.fillText("상태: "+OnlineManager.status,LOGW/2,290);
-  ctx.fillText("지금은 모든 모드를 컴퓨터(로컬 AI)와 즐길 수 있어요.",LOGW/2,330);
-  ctx.fillStyle="#aab4e0"; ctx.font="15px 'Malgun Gothic',sans-serif"; ctx.fillText("Esc 또는 Enter 로 돌아가기",LOGW/2,420);
+  ctx.fillStyle="#9fe0ff"; ctx.font="bold 40px 'Malgun Gothic',sans-serif"; ctx.fillText("대기실",LOGW/2,90);
+  ctx.fillStyle="#fff"; ctx.font="bold 22px 'Malgun Gothic',sans-serif"; ctx.fillText("방 코드",LOGW/2,150);
+  ctx.fillStyle="#ffe066"; ctx.font="bold 64px 'Malgun Gothic',sans-serif"; ctx.fillText(OnlineManager.roomCode||"----",LOGW/2,210);
+  ctx.fillStyle="#aab4e0"; ctx.font="16px 'Malgun Gothic',sans-serif";
+  ctx.fillText("내 역할: "+(OnlineManager.role==="host"?"방장":"참가자"),LOGW/2,260);
+  const p=OnlineManager.players||{};
+  const hostName=p.host?p.host.nickname:"(없음)";
+  const guestName=p.guest?p.guest.nickname:"(대기 중…)";
+  ctx.fillStyle="#7fd6ff"; ctx.font="bold 20px 'Malgun Gothic',sans-serif"; ctx.fillText("방장: "+hostName,LOGW/2,310);
+  ctx.fillStyle="#c98bff"; ctx.font="bold 20px 'Malgun Gothic',sans-serif"; ctx.fillText("참가자: "+guestName,LOGW/2,344);
+  ctx.fillStyle="#dfe6ff"; ctx.font="18px 'Malgun Gothic',sans-serif";
+  if(OnlineManager.role==="host"){
+    if(p.guest) ctx.fillText("Enter 를 눌러 시작!",LOGW/2,410);
+    else ctx.fillText("친구에게 방 코드를 알려주세요. 입장하면 시작할 수 있어요.",LOGW/2,410);
+  } else {
+    ctx.fillText("방장이 시작하기를 기다리는 중…",LOGW/2,410);
+  }
+  ctx.fillStyle="#8893bb"; ctx.font="15px 'Malgun Gothic',sans-serif"; ctx.fillText("Esc 로 방 나가기",LOGW/2,460);
+  ctx.restore();
+}
+function drawOnlineOver(){
+  dimScreen(0.72);
+  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
+  const txt=computeOnlineResultText();
+  const col = txt==="승리!"?"#ffe066":(txt==="패배!"?"#ff7a7a":"#9fe0ff");
+  ctx.shadowColor=col; ctx.shadowBlur=30; ctx.fillStyle=col; ctx.font="bold 70px 'Malgun Gothic',sans-serif";
+  ctx.fillText(txt,LOGW/2,180); ctx.shadowBlur=0;
+  const s=OnlineManager.onlineState;
+  let hs=0,gs=0;
+  if(OnlineManager.role==="host" && onlineFighters.host){ hs=onlineFighters.host.score; gs=onlineFighters.guest.score; }
+  else if(s){ hs=s.host?s.host.score:0; gs=s.guest?s.guest.score:0; }
+  ctx.fillStyle="#fff"; ctx.font="bold 30px 'Malgun Gothic',sans-serif"; ctx.fillText("방장 "+hs+" : "+gs+" 참가자",LOGW/2,250);
+  ctx.fillStyle="#aab4e0"; ctx.font="17px 'Malgun Gothic',sans-serif"; ctx.fillText("온라인 베타는 골드 보상이 없어요.",LOGW/2,300);
+  ctx.fillStyle="#ffe066"; ctx.font="18px 'Malgun Gothic',sans-serif"; ctx.fillText("Enter / Esc 로 시작 화면으로",LOGW/2,360);
   ctx.restore();
 }
 
