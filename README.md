@@ -49,8 +49,13 @@
 - 저장 위치 키: `starArena.profile.v2`
 
 ### 온라인 1대1 대전 (베타)
-친구와 인터넷으로 1대1 대결을 할 수 있습니다. **Firebase 설정을 넣어야** 켜지고,
+친구와 인터넷으로 1대1 대결을 할 수 있습니다. Firebase 설정이 있어야 켜지고,
 설정이 없으면 자동으로 꺼져 로컬(컴퓨터 AI) 모드만 정상 작동합니다.
+
+> **현재 상태:** `index.html`의 `FIREBASE_CONFIG`가 **class-rpg(`class-rpg-6f409`) 프로젝트로 설정되어 있습니다.**
+> 온라인이 실제로 동작하려면 그 Firebase 콘솔에서 ① **Authentication → 익명(Anonymous) 로그인 사용**,
+> ② **Realtime Database 규칙**에 아래 `starArenaOnline` 규칙 추가, ③ **Authentication → 설정 → 승인된 도메인**에
+> `chang333787-boop.github.io` 추가가 되어 있어야 합니다. (셋 다 콘솔에서 직접 설정)
 
 플레이 방법(설정을 넣은 뒤):
 1. 시작 화면에서 **O** 키 → 온라인 메뉴
