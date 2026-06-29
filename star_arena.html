@@ -98,13 +98,58 @@ const REWARD_CONFIG = {
   weaponDropChance: 0.35 // 승리/보스 처치 시 새 무기를 얻을 확률
 };
 
-/* 4) 캐릭터 20명 -------------------------------------------------------
-   superType: "burst"(원형폭발) / "dash"(돌진) / "triple"(다중탄환)
-   처음 3명(루미·볼트·노바)만 기본 해금, 나머지는 골드로 상점에서 해금 */
-const CHARACTERS = [
-  { id:"lumi",    name:"루미",   desc:"균형형. 무난하게 강한 기본 캐릭터", color:"#5fc8ff", subColor:"#ffe14d", hpMul:1.0, speedMul:1.0, damageMul:1.0, bulletSpeedMul:1.0, superType:"burst",  superName:"별빛 폭발", unlockCost:0,    unlockedByDefault:true },
-  { id:"bolt",    name:"볼트",   desc:"빠른 이동형. 체력은 조금 낮음",     color:"#ffd23f", subColor:"#fff3b0", hpMul:0.85,speedMul:1.25,damageMul:0.95,bulletSpeedMul:1.0, superType:"dash",   superName:"번개 돌진", unlockCost:0,    unlockedByDefault:true },
-  { id:"nova",    name:"노바",   desc:"원거리형. 탄환이 빠르고 멀리 감",   color:"#ff7ad9", subColor:"#c98bff", hpMul:0.9, speedMul:1.0, damageMul:1.0, bulletSpeedMul:1.25,superType:"triple", superName:"삼중 유성", unlockCost:0,    unlockedByDefault:true },
+/* =======================================================================
+   ★★★ 학생 캐릭터 6슬롯 (내일 수업에서 학생 디자인으로 교체) ★★★
+   -----------------------------------------------------------------------
+   - 오늘은 임시값(placeholder)입니다. 내일 학생 그림→PNG가 준비되면
+     name / desc / color / subColor / superName / assetId 만 바꾸면 됩니다.
+   - 능력치(hpMul 등)는 이미 균형이 맞춰진 값이라 그대로 두세요(밸런스 변경 금지).
+   - assetId  : assets/characters/<assetId>/ 폴더의 그림을 사용(없으면 도형 fallback)
+   - defaultWeaponId : 이 캐릭터의 추천 기본 도구(아래 STUDENT_WEAPONS의 id)
+   - superType: "burst"(원형폭발) / "dash"(돌진) / "triple"(다중탄환)  ← 그대로 두세요
+   - 자세한 교체 방법은 ASSET_GUIDE.md / STUDENT_CHARACTER_SLOTS.md 참고
+   ======================================================================= */
+const STUDENT_CHARACTERS = [
+  // 슬롯1 · 균형형
+  { id:"student_01", name:"캐릭터1" /* STUDENT_EDIT 이름 */, role:"균형형", desc:"STUDENT_EDIT: 학생 캐릭터 설명",
+    color:"#5fc8ff", subColor:"#ffe14d", hpMul:1.0, speedMul:1.0, damageMul:1.0, bulletSpeedMul:1.0,
+    superType:"burst", superName:"STUDENT_EDIT: 특별기술 이름", defaultWeaponId:"tool_01", assetId:"student_01",
+    unlockCost:0, unlockedByDefault:true },
+  // 슬롯2 · 튼튼형
+  { id:"student_02", name:"캐릭터2" /* STUDENT_EDIT 이름 */, role:"튼튼형", desc:"STUDENT_EDIT: 학생 캐릭터 설명",
+    color:"#8fd9ff", subColor:"#e6f7ff", hpMul:1.15, speedMul:0.9, damageMul:1.05, bulletSpeedMul:1.0,
+    superType:"burst", superName:"STUDENT_EDIT: 특별기술 이름", defaultWeaponId:"tool_02", assetId:"student_02",
+    unlockCost:0, unlockedByDefault:true },
+  // 슬롯3 · 빠른형
+  { id:"student_03", name:"캐릭터3" /* STUDENT_EDIT 이름 */, role:"빠른형", desc:"STUDENT_EDIT: 학생 캐릭터 설명",
+    color:"#ffd23f", subColor:"#fff3b0", hpMul:0.85, speedMul:1.25, damageMul:0.95, bulletSpeedMul:1.0,
+    superType:"dash", superName:"STUDENT_EDIT: 특별기술 이름", defaultWeaponId:"tool_04", assetId:"student_03",
+    unlockCost:0, unlockedByDefault:true },
+  // 슬롯4 · 원거리형
+  { id:"student_04", name:"캐릭터4" /* STUDENT_EDIT 이름 */, role:"원거리형", desc:"STUDENT_EDIT: 학생 캐릭터 설명",
+    color:"#ff7ad9", subColor:"#c98bff", hpMul:0.9, speedMul:1.0, damageMul:1.0, bulletSpeedMul:1.25,
+    superType:"triple", superName:"STUDENT_EDIT: 특별기술 이름", defaultWeaponId:"tool_03", assetId:"student_04",
+    unlockCost:0, unlockedByDefault:true },
+  // 슬롯5 · 지원형
+  { id:"student_05", name:"캐릭터5" /* STUDENT_EDIT 이름 */, role:"지원형", desc:"STUDENT_EDIT: 학생 캐릭터 설명",
+    color:"#5cf0c0", subColor:"#c7fff0", hpMul:1.05, speedMul:1.0, damageMul:1.0, bulletSpeedMul:1.0,
+    superType:"burst", superName:"STUDENT_EDIT: 특별기술 이름", defaultWeaponId:"tool_06", assetId:"student_05",
+    unlockCost:0, unlockedByDefault:true },
+  // 슬롯6 · 방해형/광역형
+  { id:"student_06", name:"캐릭터6" /* STUDENT_EDIT 이름 */, role:"방해형/광역형", desc:"STUDENT_EDIT: 학생 캐릭터 설명",
+    color:"#b98bff", subColor:"#e6d3ff", hpMul:1.1, speedMul:1.0, damageMul:1.0, bulletSpeedMul:1.0,
+    superType:"burst", superName:"STUDENT_EDIT: 특별기술 이름", defaultWeaponId:"tool_05", assetId:"student_06",
+    unlockCost:0, unlockedByDefault:true }
+];
+
+/* 4-보존) 기존 캐릭터 20명 (밸런스/상점/테스트 호환용으로 보존)
+   - 내일 수업 기본 화면에는 보이지 않습니다(기본 해금 = 위 학생 6명).
+   - 상점에서 골드로 해금하면 보너스로 사용할 수 있습니다(삭제하지 않음).
+   - superType: "burst"/"dash"/"triple" */
+const LEGACY_CHARACTERS = [
+  { id:"lumi",    name:"루미",   desc:"균형형. 무난하게 강한 기본 캐릭터", color:"#5fc8ff", subColor:"#ffe14d", hpMul:1.0, speedMul:1.0, damageMul:1.0, bulletSpeedMul:1.0, superType:"burst",  superName:"별빛 폭발", unlockCost:0,    unlockedByDefault:false },
+  { id:"bolt",    name:"볼트",   desc:"빠른 이동형. 체력은 조금 낮음",     color:"#ffd23f", subColor:"#fff3b0", hpMul:0.85,speedMul:1.25,damageMul:0.95,bulletSpeedMul:1.0, superType:"dash",   superName:"번개 돌진", unlockCost:0,    unlockedByDefault:false },
+  { id:"nova",    name:"노바",   desc:"원거리형. 탄환이 빠르고 멀리 감",   color:"#ff7ad9", subColor:"#c98bff", hpMul:0.9, speedMul:1.0, damageMul:1.0, bulletSpeedMul:1.25,superType:"triple", superName:"삼중 유성", unlockCost:0,    unlockedByDefault:false },
   { id:"solar",   name:"솔라",   desc:"불꽃의 전사",   color:"#ff9a3d", subColor:"#ffd98a", hpMul:1.1, speedMul:0.95,damageMul:1.05,bulletSpeedMul:1.0, superType:"burst",  superName:"태양 폭발", unlockCost:300,  unlockedByDefault:false },
   { id:"luna",    name:"루나",   desc:"달빛 궁수",     color:"#7c83ff", subColor:"#c2c6ff", hpMul:0.95,speedMul:1.05,damageMul:1.0, bulletSpeedMul:1.15,superType:"triple", superName:"달빛 화살", unlockCost:350,  unlockedByDefault:false },
   { id:"comet",   name:"코멧",   desc:"혜성처럼 질주", color:"#46e0d0", subColor:"#bff8f1", hpMul:0.9, speedMul:1.2, damageMul:0.95,bulletSpeedMul:1.05,superType:"dash",   superName:"혜성 질주", unlockCost:400,  unlockedByDefault:false },
@@ -124,11 +169,49 @@ const CHARACTERS = [
   { id:"stella",  name:"스텔라", desc:"전설의 별",     color:"#ffd700", subColor:"#fff2a8", hpMul:1.1, speedMul:1.1, damageMul:1.1, bulletSpeedMul:1.15,superType:"triple", superName:"스텔라",   unlockCost:1000, unlockedByDefault:false }
 ];
 
-/* 5) 무기 10종 --------------------------------------------------------
-   spreadCount: 한 번에 나가는 탄 수 / spreadAngleDeg: 퍼지는 각도(도)
-   처음엔 "별빛 블래스터"만 해금, 나머지는 골드/보상으로 획득 */
-const WEAPONS = [
-  { id:"star_blaster",   name:"별빛 블래스터", desc:"기본 단발 탄환",                 color:"#ffe066", damageMul:1.0, cooldownMul:1.0, bulletSpeedMul:1.0, rangeMul:1.0, bulletRadiusMul:1.0, spreadCount:1, spreadAngleDeg:0,  unlockCost:0,    unlockedByDefault:true },
+// 최종 캐릭터 목록 = 학생 6슬롯 + 보존 캐릭터. getCharacter(id)는 양쪽 모두에서 찾습니다.
+const CHARACTERS = STUDENT_CHARACTERS.concat(LEGACY_CHARACTERS);
+
+/* =======================================================================
+   ★★★ 학생 도구(놀이도구) 6슬롯 (내일 학생 디자인으로 교체) ★★★
+   -----------------------------------------------------------------------
+   - 무기 = "놀이도구". 총/칼/폭탄 같은 폭력적 명칭은 쓰지 않습니다.
+   - 능력치는 균형 잡힌 값이라 그대로 두세요(밸런스 변경 금지).
+   - assetId : assets/weapons/<assetId>/ 폴더의 그림 사용(없으면 도형 fallback)
+     · icon.png(선택 UI) · projectile.png(발사체) · held_*.png(드는 모습) · effect_hit.png(적중)
+   - spreadCount: 한 번에 나가는 발사 수 / spreadAngleDeg: 퍼지는 각도(도)
+   ======================================================================= */
+const STUDENT_WEAPONS = [
+  // 도구1 · 별조각 발사기 (기본 단발)
+  { id:"tool_01", name:"별조각 발사기", desc:"STUDENT_EDIT: 도구 설명", color:"#ffe066",
+    damageMul:1.0, cooldownMul:1.0, bulletSpeedMul:1.0, rangeMul:1.0, bulletRadiusMul:1.0, spreadCount:1, spreadAngleDeg:0,
+    assetId:"tool_01", unlockCost:0, unlockedByDefault:true },
+  // 도구2 · 쿠션 방패 (크고 느리고 든든)
+  { id:"tool_02", name:"쿠션 방패", desc:"STUDENT_EDIT: 도구 설명", color:"#b08bff",
+    damageMul:1.9, cooldownMul:1.6, bulletSpeedMul:0.7, rangeMul:0.9, bulletRadiusMul:2.0, spreadCount:1, spreadAngleDeg:0,
+    assetId:"tool_02", unlockCost:0, unlockedByDefault:true },
+  // 도구3 · 반짝 부메랑 (빠르고 멀리)
+  { id:"tool_03", name:"반짝 부메랑", desc:"STUDENT_EDIT: 도구 설명", color:"#ffd0a0",
+    damageMul:1.1, cooldownMul:1.3, bulletSpeedMul:1.4, rangeMul:1.4, bulletRadiusMul:0.9, spreadCount:1, spreadAngleDeg:0,
+    assetId:"tool_03", unlockCost:0, unlockedByDefault:true },
+  // 도구4 · 종이비행기 런처 (가볍고 빠른 연사)
+  { id:"tool_04", name:"종이비행기 런처", desc:"STUDENT_EDIT: 도구 설명", color:"#fff7c2",
+    damageMul:0.45, cooldownMul:0.45, bulletSpeedMul:1.1, rangeMul:0.9, bulletRadiusMul:0.7, spreadCount:1, spreadAngleDeg:0,
+    assetId:"tool_04", unlockCost:0, unlockedByDefault:true },
+  // 도구5 · 비눗방울 부채 (5갈래 퍼짐, 근거리)
+  { id:"tool_05", name:"비눗방울 부채", desc:"STUDENT_EDIT: 도구 설명", color:"#fff0a0",
+    damageMul:0.5, cooldownMul:1.1, bulletSpeedMul:0.95, rangeMul:0.6, bulletRadiusMul:0.8, spreadCount:5, spreadAngleDeg:42,
+    assetId:"tool_05", unlockCost:0, unlockedByDefault:true },
+  // 도구6 · 젤리 캡슐 (3갈래 부채꼴)
+  { id:"tool_06", name:"젤리 캡슐", desc:"STUDENT_EDIT: 도구 설명", color:"#7affd0",
+    damageMul:0.8, cooldownMul:1.1, bulletSpeedMul:1.0, rangeMul:1.0, bulletRadiusMul:1.0, spreadCount:3, spreadAngleDeg:24,
+    assetId:"tool_06", unlockCost:0, unlockedByDefault:true }
+];
+
+/* 5-보존) 기존 무기 10종 (밸런스/상점/테스트 호환용으로 보존, 기본 화면엔 안 보임)
+   spreadCount: 한 번에 나가는 탄 수 / spreadAngleDeg: 퍼지는 각도(도) */
+const LEGACY_WEAPONS = [
+  { id:"star_blaster",   name:"별빛 블래스터", desc:"기본 단발 탄환",                 color:"#ffe066", damageMul:1.0, cooldownMul:1.0, bulletSpeedMul:1.0, rangeMul:1.0, bulletRadiusMul:1.0, spreadCount:1, spreadAngleDeg:0,  unlockCost:0,    unlockedByDefault:false },
   { id:"twin_pistol",    name:"쌍별 권총",     desc:"양옆으로 2발, 피해는 낮음",       color:"#9be7ff", damageMul:0.65,cooldownMul:0.95,bulletSpeedMul:1.0, rangeMul:1.0, bulletRadiusMul:0.9, spreadCount:2, spreadAngleDeg:10, unlockCost:200,  unlockedByDefault:false },
   { id:"meteor_rifle",   name:"유성 라이플",   desc:"빠르고 멀리, 쿨다운 김",           color:"#ffd0a0", damageMul:1.1, cooldownMul:1.3, bulletSpeedMul:1.4, rangeMul:1.4, bulletRadiusMul:0.9, spreadCount:1, spreadAngleDeg:0,  unlockCost:250,  unlockedByDefault:false },
   { id:"wave_cannon",    name:"파동 캐논",     desc:"크고 느리지만 강력",               color:"#b08bff", damageMul:1.9, cooldownMul:1.6, bulletSpeedMul:0.7, rangeMul:0.9, bulletRadiusMul:2.0, spreadCount:1, spreadAngleDeg:0,  unlockCost:300,  unlockedByDefault:false },
@@ -139,6 +222,9 @@ const WEAPONS = [
   { id:"mini_stargun",   name:"미니 스타건",   desc:"연사 빠름, 한 발은 약함",          color:"#fff7c2", damageMul:0.45,cooldownMul:0.45,bulletSpeedMul:1.1, rangeMul:0.9, bulletRadiusMul:0.7, spreadCount:1, spreadAngleDeg:0,  unlockCost:350,  unlockedByDefault:false },
   { id:"blackhole_core", name:"블랙홀 코어",   desc:"크고 느린 5발 폭풍",               color:"#c79bff", damageMul:0.9, cooldownMul:1.6, bulletSpeedMul:0.7, rangeMul:0.8, bulletRadiusMul:1.6, spreadCount:5, spreadAngleDeg:50, unlockCost:700,  unlockedByDefault:false }
 ];
+
+// 최종 무기(도구) 목록 = 학생 6슬롯 + 보존 무기. getWeapon(id)는 양쪽 모두에서 찾습니다.
+const WEAPONS = STUDENT_WEAPONS.concat(LEGACY_WEAPONS);
 
 /* 6) 맵 3종 -----------------------------------------------------------
    장애물(obstacles)·풀숲(bushes)은 {x,y,w,h}. 좌표는 1280x720 기준. */
@@ -224,6 +310,123 @@ function getDifficulty(id){ for(const d of DIFFICULTIES){ if(d.id===id) return d
 function getMode(id){ for(const m of MODES){ if(m.id===id) return m; } return MODES[0]; }
 
 /* =======================================================================
+   ★ 에셋 교체 준비 구조 (오늘은 placeholder만, 내일 PNG를 넣으면 자동 사용) ★
+   -----------------------------------------------------------------------
+   동작 원리:
+   - ASSETS_ENABLED 가 false 면 이미지를 아예 불러오지 않습니다(404·콘솔오류 없음).
+     → 오늘은 기존 도형(Canvas) 렌더링이 그대로 쓰입니다.
+   - 내일 PNG 파일을 assets/ 아래에 넣고 ASSETS_ENABLED=true 로 바꾸면,
+     파일이 있는 캐릭터/도구만 이미지로 그려지고, 없으면 도형으로 fallback 됩니다.
+   - 온라인 동기화에는 이미지가 들어가지 않습니다(캐릭터/도구 id만 전송 → assetId는 id로 역산).
+   ======================================================================= */
+// 내일 교사가 PNG를 넣은 뒤 true 로만 바꾸면 됩니다. (오늘은 false 유지)
+let ASSETS_ENABLED = false;
+const ASSET_BASE = "assets/";
+
+// 캐릭터 에셋 파일 이름 규칙(방향+모션). 없는 파일은 자동으로 fallback.
+const CHAR_ASSET_KEYS = [
+  "down_idle","down_walk1","down_walk2",
+  "up_idle","up_walk1","up_walk2",
+  "left_idle","left_walk1","left_walk2",
+  "right_idle","right_walk1","right_walk2",
+  "hit","ko",
+  "hold_down","hold_up","hold_left","hold_right"
+];
+// 도구(무기) 에셋 파일 이름 규칙.
+const WEAPON_ASSET_KEYS = ["icon","projectile","held_down","held_up","held_left","held_right","effect_hit"];
+
+// 경로만 만들어 두는 함수. (파일 존재 여부와 무관 — 로더가 실패 시 fallback 처리)
+function charAssetPath(assetId, key){ return assetId ? (ASSET_BASE+"characters/"+assetId+"/"+key+".png") : null; }
+function weaponAssetPath(assetId, key){ return assetId ? (ASSET_BASE+"weapons/"+assetId+"/"+key+".png") : null; }
+
+// 그 외(타일/장애물/풀숲/UI) 경로 모음 — 내일 확장용. 오늘은 사용처에서 호출하지 않음.
+const ASSET_MANIFEST = {
+  tiles:     { ground_basic:ASSET_BASE+"tiles/ground_basic.png", ground_path:ASSET_BASE+"tiles/ground_path.png", capture_zone:ASSET_BASE+"tiles/capture_zone.png" },
+  obstacles: { block_01:ASSET_BASE+"obstacles/block_01.png", crystal_01:ASSET_BASE+"obstacles/crystal_01.png", cushion_wall:ASSET_BASE+"obstacles/cushion_wall.png" },
+  bushes:    { bush_01:ASSET_BASE+"bushes/bush_01.png", bush_02:ASSET_BASE+"bushes/bush_02.png" },
+  ui:        { icon_hp:ASSET_BASE+"ui/icon_hp.png", icon_attack:ASSET_BASE+"ui/icon_attack.png", icon_speed:ASSET_BASE+"ui/icon_speed.png", icon_super:ASSET_BASE+"ui/icon_super.png" }
+};
+
+// 이미지 캐시. 상태: undefined=미시도, Image(complete&&naturalWidth>0)=성공, null=실패(파일 없음)
+const _imageCache = {};
+function _loadImage(path){
+  if(path==null) return;
+  if(path in _imageCache) return;
+  // 브라우저가 아니거나(헤드리스 테스트) Image가 없으면 시도하지 않음 → fallback
+  if(typeof Image === "undefined"){ _imageCache[path]=null; return; }
+  try{
+    const img=new Image();
+    img.onload=function(){ _imageCache[path]=(img.naturalWidth>0)?img:null; };
+    img.onerror=function(){ _imageCache[path]=null; }; // 파일 없음 → 조용히 fallback
+    img.src=path;
+    _imageCache[path]=undefined; // 로딩 중
+  }catch(e){ _imageCache[path]=null; }
+}
+// 사용 가능한(로드 성공) 이미지면 반환, 아니면 null(→ fallback 도형 사용)
+function _readyImage(path){
+  if(!ASSETS_ENABLED || path==null) return null;
+  const v=_imageCache[path];
+  if(v===undefined){ return null; }     // 아직 로딩 중 → 이번 프레임은 fallback
+  return v || null;
+}
+function getCharImage(assetId, key){ return _readyImage(charAssetPath(assetId, key)); }
+function getWeaponImage(assetId, key){ return _readyImage(weaponAssetPath(assetId, key)); }
+
+// 모든 학생 에셋을 미리 불러오기 시도. ASSETS_ENABLED=false 면 아무것도 하지 않음(오늘).
+function loadGameAssets(){
+  if(!ASSETS_ENABLED) return;
+  for(const c of STUDENT_CHARACTERS){ if(!c.assetId) continue; for(const k of CHAR_ASSET_KEYS) _loadImage(charAssetPath(c.assetId,k)); }
+  for(const w of STUDENT_WEAPONS){ if(!w.assetId) continue; for(const k of WEAPON_ASSET_KEYS) _loadImage(weaponAssetPath(w.assetId,k)); }
+}
+
+// facing(라디안) → "down"/"up"/"left"/"right"
+function dirFromFacing(facing){
+  const a=((facing%(Math.PI*2))+Math.PI*2)%(Math.PI*2);
+  if(a>=Math.PI*0.25 && a<Math.PI*0.75) return "down";
+  if(a>=Math.PI*0.75 && a<Math.PI*1.25) return "left";
+  if(a>=Math.PI*1.25 && a<Math.PI*1.75) return "up";
+  return "right";
+}
+// 이동중이면 walk1/walk2 번갈아, 아니면 idle
+function motionSuffix(moving){
+  if(!moving) return "idle";
+  return (Math.floor(uiTime*6)%2===0) ? "walk1" : "walk2";
+}
+// 캐릭터 스프라이트 그리기(성공 시 true). 실패하면 false → 호출부가 fallback 도형을 그림.
+// ctx는 이미 translate(x,y) 된 상태로 호출한다(기존 fallback과 동일 좌표계).
+function drawCharacterSprite(charId, r, facing, opts){
+  opts=opts||{};
+  if(!ASSETS_ENABLED) return false;
+  const ch=getCharacter(charId); if(!ch || !ch.assetId) return false;
+  let key;
+  if(opts.ko) key="ko";
+  else if(opts.hit) key="hit";
+  else key = dirFromFacing(facing)+"_"+motionSuffix(opts.moving);
+  let img=getCharImage(ch.assetId, key);
+  if(!img && (opts.ko||opts.hit)) img=getCharImage(ch.assetId, dirFromFacing(facing)+"_idle"); // hit/ko 없으면 idle
+  if(!img) img=getCharImage(ch.assetId, "down_idle"); // 최후 보루
+  if(!img) return false;
+  const sz=r*2.4;
+  ctx.drawImage(img, -sz/2, -sz/2, sz, sz);
+  // 도구를 든 모습(있으면 캐릭터 위에 덧그림)
+  if(opts.weaponId){ const w=getWeapon(opts.weaponId); if(w && w.assetId){ const held=getWeaponImage(w.assetId,"held_"+dirFromFacing(facing)); if(held) ctx.drawImage(held,-sz/2,-sz/2,sz,sz); } }
+  return true;
+}
+// 렌더 위치 변화로 "이동 중" 추정(walk/idle 모션 선택용). ASSETS_ENABLED=false 면 호출되지 않음.
+const _spriteLastPos={};
+function spriteMoving(key,x,y){ const p=_spriteLastPos[key]; let moving=false; if(p){ const dx=x-p.x,dy=y-p.y; moving=(dx*dx+dy*dy)>0.25; } _spriteLastPos[key]={x:x,y:y}; return moving; }
+
+// 탄환(발사체) 스프라이트. 성공 시 true.
+function drawProjectileSprite(weaponId, x, y, r, facing){
+  if(!ASSETS_ENABLED || !weaponId) return false;
+  const w=getWeapon(weaponId); if(!w || !w.assetId) return false;
+  const img=getWeaponImage(w.assetId,"projectile"); if(!img) return false;
+  const sz=r*3;
+  ctx.save(); ctx.translate(x,y); if(facing!=null) ctx.rotate(facing); ctx.drawImage(img,-sz/2,-sz/2,sz,sz); ctx.restore();
+  return true;
+}
+
+/* =======================================================================
    캔버스 / 화면 크기
    ======================================================================= */
 const LOGW = 1280, LOGH = 720;                 // 고정 논리 좌표
@@ -298,15 +501,18 @@ const PLAYER_PROFILE_DEFAULT = {
   gold: 0,
   wins: 0, losses: 0, draws: 0,
   totalPlays: 0, totalKills: 0, bossKills: 0,
-  selectedCharacterId: "lumi",
-  selectedWeaponId: "star_blaster",
+  selectedCharacterId: "student_01",
+  selectedWeaponId: "tool_01",
   selectedDifficultyId: "normal",
   selectedMapId: "training",
   selectedModeId: "solo",
-  unlockedCharacters: ["lumi","bolt","nova"],
-  unlockedWeapons: ["star_blaster"],
+  // 기본 해금 = 학생 6슬롯(캐릭터/도구). 보존 캐릭터·무기는 상점에서 추가 해금 가능.
+  unlockedCharacters: STUDENT_CHARACTERS.filter(c=>c.unlockedByDefault).map(c=>c.id),
+  unlockedWeapons: STUDENT_WEAPONS.filter(w=>w.unlockedByDefault).map(w=>w.id),
   lastUpdated: 0
 };
+const DEFAULT_UNLOCKED_CHARACTERS = STUDENT_CHARACTERS.filter(c=>c.unlockedByDefault).map(c=>c.id);
+const DEFAULT_UNLOCKED_WEAPONS = STUDENT_WEAPONS.filter(w=>w.unlockedByDefault).map(w=>w.id);
 
 let profile = null;
 
@@ -320,8 +526,8 @@ function mergeProfile(saved){
     }
   }
   // 배열/선택값 무결성 보정
-  if(!Array.isArray(p.unlockedCharacters) || p.unlockedCharacters.length===0) p.unlockedCharacters = ["lumi","bolt","nova"];
-  if(!Array.isArray(p.unlockedWeapons) || p.unlockedWeapons.length===0) p.unlockedWeapons = ["star_blaster"];
+  if(!Array.isArray(p.unlockedCharacters) || p.unlockedCharacters.length===0) p.unlockedCharacters = DEFAULT_UNLOCKED_CHARACTERS.slice();
+  if(!Array.isArray(p.unlockedWeapons) || p.unlockedWeapons.length===0) p.unlockedWeapons = DEFAULT_UNLOCKED_WEAPONS.slice();
   if(p.unlockedCharacters.indexOf(p.selectedCharacterId) < 0) p.selectedCharacterId = p.unlockedCharacters[0];
   if(p.unlockedWeapons.indexOf(p.selectedWeaponId) < 0) p.selectedWeaponId = p.unlockedWeapons[0];
   if(getDifficulty(p.selectedDifficultyId).id !== p.selectedDifficultyId) p.selectedDifficultyId = "normal";
@@ -681,7 +887,7 @@ const OnlineManager = {
    ======================================================================= */
 const STATE = { START:"start", SHOP:"shop",
   ONLINE_MENU:"online_menu", ONLINE_LOBBY:"online_lobby", ONLINE_PLAYING:"online_playing", ONLINE_OVER:"online_over",
-  PLAYING:"playing", PAUSED:"paused", OVER:"over" };
+  PLAYING:"playing", PAUSED:"paused", OVER:"over", ASSET_CHECK:"asset_check" };
 let gameState = STATE.START;
 
 let player = null;        // 내가 조종하는 캐릭터
@@ -699,8 +905,8 @@ let superGauge = 0;
 let uiTime = 0;
 
 // 선택값(프로필과 연동)
-let selectedCharacterId = "lumi";
-let selectedWeaponId = "star_blaster";
+let selectedCharacterId = "student_01";
+let selectedWeaponId = "tool_01";
 let selectedDifficultyId = "normal";
 let selectedMapId = "training";
 let selectedModeId = "solo";
@@ -743,6 +949,11 @@ const PREVENT_KEYS = new Set(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Sp
 
 window.addEventListener("keydown", (e)=>{
   if(PREVENT_KEYS.has(e.code)) e.preventDefault();
+  // F2: 에셋 확인 화면 토글(시작 화면에서만 진입 — 플레이 중 방해 없음)
+  if(!e.repeat && e.code==="F2"){
+    if(gameState===STATE.START){ gameState=STATE.ASSET_CHECK; return; }
+    if(gameState===STATE.ASSET_CHECK){ gameState=STATE.START; return; }
+  }
   if(!e.repeat) handleKeyPress(e.code);
   keysDown.add(e.code);
 });
@@ -755,6 +966,7 @@ window.addEventListener("beforeunload", ()=>{ try{ if(OnlineManager.role) Online
 function showToast(text){ toastText = text; toastTimer = 1.8; }
 
 function handleKeyPress(code){
+  if(gameState === STATE.ASSET_CHECK){ if(code==="Escape"||code==="Enter"||code==="NumpadEnter") gameState=STATE.START; return; }
   if(gameState === STATE.START){ handleStartKey(code); return; }
   if(gameState === STATE.SHOP){ handleShopKey(code); return; }
   if(gameState === STATE.ONLINE_MENU){ handleOnlineMenuKey(code); return; }
@@ -1449,6 +1661,7 @@ function render(){
   if(gameState===STATE.ONLINE_PLAYING) renderOnlineMatch();
 
   if(gameState===STATE.START) drawStartScreen();
+  else if(gameState===STATE.ASSET_CHECK) drawAssetCheckScreen();
   else if(gameState===STATE.SHOP) drawShopScreen();
   else if(gameState===STATE.ONLINE_MENU) drawOnlineMenu();
   else if(gameState===STATE.ONLINE_LOBBY) drawOnlineLobby();
@@ -1457,6 +1670,58 @@ function render(){
   else if(gameState===STATE.OVER) drawResultScreen();
 
   drawToast();
+}
+
+// F2 에셋 확인 화면 — 6슬롯의 이미지 연결 상태를 한눈에. 게임 로직에 영향 없음.
+function drawAssetCheckScreen(){
+  dimScreen(0.82);
+  ctx.save(); ctx.textAlign="center";
+  ctx.fillStyle="#ffe066"; ctx.font="bold 30px 'Malgun Gothic',sans-serif";
+  ctx.fillText("에셋 확인 (F2)", LOGW/2, 56);
+  ctx.fillStyle = ASSETS_ENABLED ? "#9fffb0" : "#ff9a9a";
+  ctx.font="bold 15px 'Malgun Gothic',sans-serif";
+  ctx.fillText(ASSETS_ENABLED ? "ASSETS_ENABLED = true (이미지 사용 시도 중)"
+                              : "ASSETS_ENABLED = false → 지금은 도형(fallback)만 사용. PNG 넣은 뒤 코드에서 true 로 변경하세요.",
+               LOGW/2, 80);
+  ctx.restore();
+
+  const yes="✅", no="—";
+  const cw=400, ch=176, gap=18, cols=3;
+  const startX=(LOGW-(cw*cols+gap*(cols-1)))/2, startY=104;
+  for(let i=0;i<STUDENT_CHARACTERS.length;i++){
+    const c=STUDENT_CHARACTERS[i], w=getWeapon(c.defaultWeaponId);
+    const col=i%cols, row=Math.floor(i/cols);
+    const x=startX+col*(cw+gap), y=startY+row*(ch+gap);
+    ctx.save();
+    ctx.fillStyle="rgba(20,26,60,0.92)"; roundRect(x,y,cw,ch,12); ctx.fill();
+    ctx.strokeStyle=c.color; ctx.lineWidth=3; roundRect(x,y,cw,ch,12); ctx.stroke();
+    // 캐릭터 미리보기(이미지 있으면 이미지, 없으면 도형)
+    ctx.save(); ctx.translate(x+44,y+50);
+    if(!drawCharacterSprite(c.id,24,Math.PI/2,{moving:false})) drawPlayerCharacter({r:24,color:c.color,subColor:c.subColor,facing:Math.PI/2});
+    ctx.restore();
+    ctx.textAlign="left";
+    ctx.fillStyle="#fff"; ctx.font="bold 17px 'Malgun Gothic',sans-serif";
+    ctx.fillText((i+1)+". "+c.name+"  ["+c.role+"]", x+82, y+30);
+    ctx.fillStyle="#aab4e0"; ctx.font="13px 'Malgun Gothic',sans-serif";
+    ctx.fillText("assetId: "+c.assetId, x+82, y+50);
+    const cdir=k=>getCharImage(c.assetId,k)?yes:no;
+    ctx.fillStyle="#dfe6ff"; ctx.font="13px 'Malgun Gothic',sans-serif";
+    ctx.fillText("앞 "+cdir("down_idle")+"  뒤 "+cdir("up_idle")+"  좌 "+cdir("left_idle")+"  우 "+cdir("right_idle"), x+16, y+86);
+    ctx.fillText("걷기 "+(getCharImage(c.assetId,"down_walk1")?yes:no)+"  맞음 "+cdir("hit")+"  탈락 "+cdir("ko"), x+16, y+108);
+    // 연결된 도구
+    ctx.fillStyle="#ffe066"; ctx.font="bold 14px 'Malgun Gothic',sans-serif";
+    ctx.fillText("도구: "+(w?w.name:"?")+"  ("+c.defaultWeaponId+")", x+16, y+134);
+    const wimg=k=>(w&&getWeaponImage(w.assetId,k))?yes:no;
+    ctx.fillStyle="#dfe6ff"; ctx.font="13px 'Malgun Gothic',sans-serif";
+    ctx.fillText("아이콘 "+wimg("icon")+"  발사체 "+wimg("projectile")+"  드는모습 "+wimg("held_down"), x+16, y+156);
+    // fallback 표시
+    const anyChar=getCharImage(c.assetId,"down_idle");
+    if(!anyChar){ ctx.fillStyle="#ff9a9a"; ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.textAlign="right"; ctx.fillText("fallback 사용 중", x+cw-14, y+30); }
+    ctx.restore();
+  }
+  ctx.save(); ctx.textAlign="center"; ctx.fillStyle="#aab4e0"; ctx.font="bold 14px 'Malgun Gothic',sans-serif";
+  ctx.fillText("Esc / Enter / F2 → 시작 화면으로", LOGW/2, LOGH-18);
+  ctx.restore();
 }
 
 function drawBackground(){
@@ -1529,7 +1794,13 @@ function drawFighter(f){
   }
   if(f.invincibleTimer>0 && Math.floor(f.invincibleTimer*12)%2===0) alpha*=0.35;
   ctx.save(); ctx.globalAlpha=alpha; ctx.translate(f.x,f.y);
-  if(f.team==="player") drawPlayerCharacter(f); else drawChrome(f);
+  // 학생 캐릭터(아군/플레이어)는 이미지 우선, 실패 시 도형. 적(크롬)은 항상 도형.
+  let drew=false;
+  if(f.team==="player" && f.characterId){
+    drew=drawCharacterSprite(f.characterId, f.r, f.facing,
+      { moving:spriteMoving("L"+f.id,f.x,f.y), hit:f.hitFlash>0, weaponId:f.isPlayer?selectedWeaponId:null });
+  }
+  if(!drew){ if(f.team==="player") drawPlayerCharacter(f); else drawChrome(f); }
   ctx.restore();
   if(f.hitFlash>0){ ctx.save(); ctx.globalAlpha=0.5*(f.hitFlash/0.15)*alpha; ctx.fillStyle="#ffffff"; ctx.beginPath(); ctx.arc(f.x,f.y,f.r+2,0,Math.PI*2); ctx.fill(); ctx.restore(); }
   drawFighterInfo(f, alpha);
@@ -1587,6 +1858,8 @@ function drawFighterInfo(f, alpha){
 }
 function drawBullets(){
   for(const b of bullets){
+    // 도구 발사체 이미지가 있으면 사용, 없으면 기존 원형 탄환.
+    if(b.team==="player" && drawProjectileSprite(selectedWeaponId, b.x, b.y, b.r, Math.atan2(b.vy||0,b.vx||0))) continue;
     ctx.save();
     const color=b.color||"#ffe066";
     const glow=ctx.createRadialGradient(b.x,b.y,1,b.x,b.y,b.r*2.2);
@@ -1750,6 +2023,8 @@ function drawStartScreen(){
   ctx.fillText("↑↓ 항목 이동 · ←→ 값 변경 · Enter 실행 · (단축키 C/W/D/M/T/N/S/O)", LOGW/2, startY+rows.length*rowH+14);
   ctx.fillStyle="#8893bb"; ctx.font="14px 'Malgun Gothic',sans-serif";
   ctx.fillText("게임 중 조작 — 방향키 이동 · Z 공격 · X 궁극기 · P 일시정지", LOGW/2, startY+rows.length*rowH+38);
+  ctx.fillStyle="#6f7aa0"; ctx.font="13px 'Malgun Gothic',sans-serif";
+  ctx.fillText("F2 — 에셋 확인(교사용)", LOGW/2, startY+rows.length*rowH+60);
   ctx.restore();
 }
 
@@ -2174,7 +2449,8 @@ function drawOnlineFighter(d, isMe){
   let alpha=1;
   if(d.inv && Math.floor(uiTime*12)%2===0) alpha*=0.4;
   ctx.save(); ctx.globalAlpha=alpha; ctx.translate(d.x,d.y);
-  drawPlayerCharacter({ r:22, color:ch.color, subColor:ch.subColor, facing:d.facing||0 });
+  if(!drawCharacterSprite(d.charId||"student_01", 22, d.facing||0, { moving:spriteMoving("O"+(isMe?"me":"op"),d.x,d.y) }))
+    drawPlayerCharacter({ r:22, color:ch.color, subColor:ch.subColor, facing:d.facing||0 });
   ctx.restore();
   // 이름 + 체력바
   const w=54,h=8,bx=d.x-w/2,by=d.y-22-24;
@@ -2619,7 +2895,8 @@ function tDrawFighter(d){
   ctx.save(); ctx.globalAlpha=alpha; ctx.translate(d.x,d.y);
   // 팀 색 링
   ctx.strokeStyle=TEAM_COLOR[d.team]||"#fff"; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(0,0,28,0,Math.PI*2); ctx.stroke();
-  drawPlayerCharacter({ r:22, color:ch.color, subColor:ch.subColor, facing:d.facing||0 });
+  if(!drawCharacterSprite(d.charId||"student_01", 22, d.facing||0, { moving:spriteMoving("T"+d.slot,d.x,d.y) }))
+    drawPlayerCharacter({ r:22, color:ch.color, subColor:ch.subColor, facing:d.facing||0 });
   ctx.restore();
   const w=54,h=8,bx=d.x-w/2,by=d.y-22-24;
   ctx.save(); ctx.textAlign="center"; ctx.textBaseline="bottom";
@@ -3015,6 +3292,7 @@ function startLoopOnce(){
   if(loopStarted) return;
   loopStarted=true;
   loadProfile();
+  loadGameAssets();            // ASSETS_ENABLED=false 면 아무것도 안 함(오늘)
   OnlineManager.initFirebaseIfAvailable();
   applyProfileSelections();
   OBSTACLES=getMap(selectedMapId).obstacles;   // 시작 화면 배경용
