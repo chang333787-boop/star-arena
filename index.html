@@ -1716,6 +1716,11 @@ let onlineWinner = null;
 let onlineWriteAcc = 0, onlineInputAcc = 0, onlineLastInputStr = "";
 let onlineMenuIndex = 0;
 let onlineLobbyMsg = "";
+// 참가자(guest) 화면을 부드럽게: 받은 위치 사이를 보간(interpolation)/외삽(extrapolation)
+let onlineRender = { host:null, guest:null };
+let onlineBulletsView = [];
+let onlineLastStateRef = null;
+function lerpAngle(a,b,t){ let d=b-a; while(d>Math.PI)d-=Math.PI*2; while(d<-Math.PI)d+=Math.PI*2; return a+d*t; }
 
 function openOnlineMenu(){
   onlineMenuIndex=0;
@@ -1796,6 +1801,7 @@ function resetOnlineMatchFromRoom(){
                           characterId:meta.characterGuest||"lumi", weaponId:meta.weaponGuest||"star_blaster" });
   onlineBullets=[]; onlineTimeLeft=GAME_CONFIG.gameTime; onlineWinner=null;
   onlineWriteAcc=0; onlineInputAcc=0; onlineLastInputStr="";
+  onlineRender={ host:null, guest:null }; onlineBulletsView=[]; onlineLastStateRef=null;
 }
 function makeOnlineFighter(slot, d){
   const ch=getCharacter(d.characterId);
@@ -1848,7 +1854,26 @@ function updateOnlineHost(dt){
 }
 function updateOnlineGuest(dt){
   OnlineManager.opponentConnected = !!(OnlineManager.players && OnlineManager.players.host && OnlineManager.players.host.connected);
-  // 화면은 onlineState(호스트가 보낸 값)로 그린다. 별도 시뮬레이션 없음.
+  const s=OnlineManager.onlineState;
+  if(!s) return;
+  // 새 스냅샷이 도착하면 탄환 뷰를 받은 값으로 갱신(권한값 기준 보정)
+  if(s !== onlineLastStateRef){
+    onlineLastStateRef=s;
+    onlineBulletsView=(s.bullets||[]).map(b=>({ x:b.x, y:b.y, vx:b.vx||0, vy:b.vy||0, r:b.r, c:b.c }));
+  }
+  // 스냅샷 사이에는 탄환을 속도로 외삽해 부드럽게 진행
+  for(const b of onlineBulletsView){ b.x+=b.vx*dt; b.y+=b.vy*dt; }
+  // 두 캐릭터 위치/방향을 받은 값 쪽으로 부드럽게 보간
+  const k=Math.min(1, dt*15);
+  for(const slot of ["host","guest"]){
+    const p=s[slot]; if(!p) continue;
+    if(!onlineRender[slot] || p.dead) onlineRender[slot]={ x:p.x, y:p.y, facing:p.facing||0 };
+    else {
+      onlineRender[slot].x += (p.x-onlineRender[slot].x)*k;
+      onlineRender[slot].y += (p.y-onlineRender[slot].y)*k;
+      onlineRender[slot].facing = lerpAngle(onlineRender[slot].facing, p.facing||0, k);
+    }
+  }
 }
 function updateOnlineFighter(f, input, dt){
   if(f.dead){ f.respawnTimer-=dt; if(f.respawnTimer<=0) respawnOnline(f); return; }
@@ -1917,7 +1942,7 @@ function hostWriteOnlineState(){
   const H=onlineFighters.host, G=onlineFighters.guest;
   if(!H||!G) return;
   const bl=[];
-  for(const b of onlineBullets) bl.push({ x:Math.round(b.x), y:Math.round(b.y), r:Math.round(b.r), o:b.owner, c:b.color });
+  for(const b of onlineBullets) bl.push({ x:Math.round(b.x), y:Math.round(b.y), r:Math.round(b.r), o:b.owner, c:b.color, vx:Math.round(b.vx), vy:Math.round(b.vy) });
   OnlineManager.writeHostState({ timeLeft:Math.max(0,Math.round(onlineTimeLeft)), host:packFighter(H), guest:packFighter(G), bullets:bl });
 }
 function hostEndOnlineMatch(){
@@ -1949,8 +1974,10 @@ function getOnlineDrawData(){
   } else {
     const s=OnlineManager.onlineState;
     if(!s) return { timeLeft:GAME_CONFIG.gameTime, host:null, guest:null, bullets:[], waiting:true };
-    const conv=(p)=> p?{ x:p.x,y:p.y,hp:p.hp,maxHp:p.maxHp,facing:p.facing,dead:p.dead,inv:p.inv,charId:p.charId,score:p.score }:null;
-    return { timeLeft:s.timeLeft, host:conv(s.host), guest:conv(s.guest), bullets:(s.bullets||[]).map(b=>({ x:b.x,y:b.y,r:b.r,c:b.c })) };
+    // 위치/방향은 보간된 onlineRender 값을 사용(부드럽게), 체력/점수 등은 권한값 그대로
+    const conv=(p,slot)=>{ if(!p) return null; const r=onlineRender[slot]||p;
+      return { x:r.x, y:r.y, facing:r.facing, hp:p.hp, maxHp:p.maxHp, dead:p.dead, inv:p.inv, charId:p.charId, score:p.score }; };
+    return { timeLeft:s.timeLeft, host:conv(s.host,"host"), guest:conv(s.guest,"guest"), bullets:onlineBulletsView.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.c })) };
   }
 }
 function drawOnlineBullet(b){
