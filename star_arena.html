@@ -402,6 +402,7 @@ const OnlineManager = {
   available:false, status:"오프라인",
   app:null, auth:null, db:null, uid:null,
   roomCode:null, role:null, roomRef:null,
+  mode:null, mySlot:null, maxPlayers:2,   // 다인(슬롯) 모드용
   unsubs:[], lastSyncAt:0, connected:false, opponentConnected:true,
   onlineState:null, meta:null, players:{ host:null, guest:null }, onlineInput:{ host:null, guest:null },
 
@@ -473,7 +474,7 @@ const OnlineManager = {
               weaponId:selectedWeaponId, connected:true, lastSeen:ts, input:emptyInput() } }
           };
           ref.set(room).then(function(){
-            self.roomCode=code; self.role="host"; self.roomRef=ref;
+            self.roomCode=code; self.role="host"; self.roomRef=ref; self.mode="online1v1"; self.mySlot=null; self.maxPlayers=2;
             self.setPresence("host"); self.listenRoom();
             if(onDone) onDone(true, code);
           }).catch(function(e){ if(onDone) onDone(false,"방 생성 실패"); });
@@ -504,7 +505,7 @@ const OnlineManager = {
         updates["players/guest"]={ uid:self.uid, nickname:profile.nickname, characterId:selectedCharacterId,
           weaponId:selectedWeaponId, connected:true, lastSeen:ts, input:emptyInput() };
         ref.update(updates).then(function(){
-          self.roomCode=code; self.role="guest"; self.roomRef=ref;
+          self.roomCode=code; self.role="guest"; self.roomRef=ref; self.mode="online1v1"; self.mySlot=null; self.maxPlayers=2;
           self.setPresence("guest"); self.listenRoom();
           if(onDone) onDone(true, code);
         }).catch(function(e){ if(onDone) onDone(false,"입장 실패"); });
@@ -520,7 +521,7 @@ const OnlineManager = {
       pref.child("connected").onDisconnect().set(false);
       pref.child("lastSeen").onDisconnect().set(firebase.database.ServerValue.TIMESTAMP);
       pref.child("input").onDisconnect().set(emptyInput()); // 끊기면 입력도 비워 유령 동작 방지
-      if(role==="host") this.roomRef.child("meta/status").onDisconnect().set("ended"); // 방장 끊기면 방 종료
+      if(this.role==="host") this.roomRef.child("meta/status").onDisconnect().set("ended"); // 방장 끊기면 방 종료
     }catch(e){}
   },
 
@@ -548,7 +549,7 @@ const OnlineManager = {
     }catch(e){}
   },
 
-  writeInput:function(inputObj){ try{ if(this.roomRef && this.role) this.roomRef.child("players/"+this.role+"/input").set(inputObj); }catch(e){} },
+  writeInput:function(inputObj){ try{ const key=this.mySlot||this.role; if(this.roomRef && key) this.roomRef.child("players/"+key+"/input").set(inputObj); }catch(e){} },
   writeMetaStatus:function(status, extra){
     try{ if(!this.roomRef) return; const u={ status:status, updatedAt:firebase.database.ServerValue.TIMESTAMP };
       if(extra){ for(const k in extra) u[k]=extra[k]; } this.roomRef.child("meta").update(u); }catch(e){}
@@ -563,9 +564,10 @@ const OnlineManager = {
       for(const u of this.unsubs){ try{ u(); }catch(e){} }
       this.unsubs=[];
       // 서버에 등록해 둔 onDisconnect 들을 먼저 취소(떠난 방에 유령 데이터가 되살아나는 것 방지)
-      if(this.roomRef && this.role){
+      const slotKey=this.mySlot||this.role;
+      if(this.roomRef && slotKey){
         try{
-          const pref=this.roomRef.child("players/"+this.role);
+          const pref=this.roomRef.child("players/"+slotKey);
           pref.child("connected").onDisconnect().cancel();
           pref.child("lastSeen").onDisconnect().cancel();
           pref.child("input").onDisconnect().cancel();
@@ -574,17 +576,91 @@ const OnlineManager = {
       }
       if(this.roomRef){
         try{
+          const isTeam = (this.mode==="online3v3" || this.mode==="onlinePve6");
           if(this.role==="host"){ const rr=this.roomRef; rr.child("meta/status").set("ended");
             setTimeout(function(){ try{ rr.remove(); }catch(e){} }, 800); }
-          else if(this.role==="guest"){ this.roomRef.child("meta/status").set("ended");
-            this.roomRef.child("players/guest/connected").set(false); }
+          else if(slotKey && isTeam){
+            // 팀 모드: 매치는 계속, 내 슬롯만 비활성 처리(host가 빈자리로 다룸)
+            this.roomRef.child("players/"+slotKey+"/connected").set(false);
+            this.roomRef.child("players/"+slotKey+"/input").set(emptyInput());
+          }
+          else if(slotKey){ // 1대1: 참가자가 1명뿐이라 매치 종료가 맞음
+            this.roomRef.child("meta/status").set("ended");
+            this.roomRef.child("players/"+slotKey+"/connected").set(false);
+          }
         }catch(e){}
       }
     }catch(e){}
-    this.roomRef=null; this.roomCode=null; this.role=null;
+    this.roomRef=null; this.roomCode=null; this.role=null; this.mode=null; this.mySlot=null;
     this.onlineState=null; this.meta=null; this.players={ host:null, guest:null };
     this.onlineInput={ host:null, guest:null }; this.opponentConnected=true;
     if(this.available && this.db) this.watchConnection(); // 연결 감시 재구독
+  },
+
+  // ---- 다인(슬롯) 모드 방 생성/입장 ----
+  createTeamRoom:function(modeId, onDone){
+    try{
+      if(!this.available || !this.db){ if(onDone) onDone(false,"온라인 사용 불가"); return; }
+      const self=this, mode=getOnlineMode(modeId);
+      const tryCreate=function(triesLeft){
+        const code=self.generateRoomCode(), ref=self.db.ref(self.roomPath(code));
+        ref.get().then(function(snap){
+          if(snap.val()){ if(triesLeft>0){ tryCreate(triesLeft-1); return; } if(onDone) onDone(false,"방 생성 실패(코드 충돌)"); return; }
+          const ts=firebase.database.ServerValue.TIMESTAMP;
+          const team = mode.modeType==="pve" ? "pve" : "blue";
+          const room={ meta:{ mode:modeId, status:"waiting", hostUid:self.uid, createdAt:ts, updatedAt:ts,
+              mapId:"training", maxPlayers:mode.maxPlayers, winner:null, resultText:"", stageIndex:0, waveIndex:0 },
+            players:{ p1:{ uid:self.uid, nickname:profile.nickname, slot:"p1", team:team, characterId:selectedCharacterId,
+              weaponId:selectedWeaponId, connected:true, ready:false, isBot:false, lastSeen:ts, input:emptyInput() } } };
+          ref.set(room).then(function(){
+            self.roomCode=code; self.role="host"; self.roomRef=ref; self.mode=modeId; self.mySlot="p1"; self.maxPlayers=mode.maxPlayers;
+            self.setPresence("p1"); self.listenRoom();
+            if(onDone) onDone(true, code);
+          }).catch(function(e){ if(onDone) onDone(false,"방 생성 실패"); });
+        }).catch(function(e){ if(onDone) onDone(false,"방 생성 오류"); });
+      };
+      tryCreate(5);
+    }catch(e){ if(onDone) onDone(false,"방 생성 오류"); }
+  },
+  joinRoomAny:function(code, onDone){
+    try{
+      if(!this.available || !this.db){ if(onDone) onDone(false,"온라인 사용 불가"); return; }
+      const self=this; code=String(code||"").toUpperCase().trim();
+      if(code.length<4){ if(onDone) onDone(false,"방 코드 형식 오류"); return; }
+      const ref=this.db.ref(this.roomPath(code));
+      ref.get().then(function(snap){
+        const data=snap.val();
+        if(!data || !data.meta){ if(onDone) onDone(false,"방을 찾을 수 없음"); return; }
+        const m=data.meta.mode;
+        if(m==="online3v3" || m==="onlinePve6"){ self._joinTeamRoom(code, data, ref, onDone); }
+        else { self.joinRoom(code, onDone); }
+      }).catch(function(e){ if(onDone) onDone(false,"입장 오류"); });
+    }catch(e){ if(onDone) onDone(false,"입장 오류"); }
+  },
+  _joinTeamRoom:function(code, data, ref, onDone){
+    try{
+      const self=this, mode=getOnlineMode(data.meta.mode);
+      if(data.meta.status!=="waiting" && data.meta.status!=="ready"){ if(onDone) onDone(false,"이미 시작된 방"); return; }
+      const players=data.players||{};
+      let slot=null;
+      for(let i=1;i<=mode.maxPlayers;i++){ const k="p"+i; if(!players[k] || players[k].connected===false){ slot=k; break; } }
+      if(!slot){ if(onDone) onDone(false,"방이 가득 찼습니다"); return; }
+      let team="pve";
+      if(mode.modeType==="pvp"){
+        let blue=0,red=0; for(const k in players){ const pp=players[k]; if(pp && pp.connected!==false){ if(pp.team==="red") red++; else blue++; } }
+        team = (blue<=red && blue<3) ? "blue" : (red<3 ? "red" : "blue");
+      }
+      const ts=firebase.database.ServerValue.TIMESTAMP;
+      const updates={};
+      updates["players/"+slot]={ uid:self.uid, nickname:profile.nickname, slot:slot, team:team, characterId:selectedCharacterId,
+        weaponId:selectedWeaponId, connected:true, ready:false, isBot:false, lastSeen:ts, input:emptyInput() };
+      updates["meta/status"]="ready"; updates["meta/updatedAt"]=ts;
+      ref.update(updates).then(function(){
+        self.roomCode=code; self.role="guest"; self.roomRef=ref; self.mode=data.meta.mode; self.mySlot=slot; self.maxPlayers=mode.maxPlayers;
+        self.setPresence(slot); self.listenRoom();
+        if(onDone) onDone(true, code);
+      }).catch(function(e){ if(onDone) onDone(false,"입장 실패"); });
+    }catch(e){ if(onDone) onDone(false,"입장 오류"); }
   },
 
   // 프로필 클라우드 저장은 이번 베타에서 사용하지 않음(로컬 localStorage만)
@@ -1385,7 +1461,7 @@ function drawBackground(){
 }
 function isOnlineState(){ return gameState===STATE.ONLINE_MENU||gameState===STATE.ONLINE_LOBBY||gameState===STATE.ONLINE_PLAYING||gameState===STATE.ONLINE_OVER; }
 function drawArenaFloor(){
-  const map=isOnlineState()?getMap(ONLINE_MAP_ID):((MATCH&&MATCH.map)?MATCH.map:getMap(selectedMapId));
+  const map=isTeamOnline()?getMap(tMapId):(isOnlineState()?getMap(ONLINE_MAP_ID):((MATCH&&MATCH.map)?MATCH.map:getMap(selectedMapId)));
   ctx.save();
   ctx.fillStyle=map.floorColor; roundRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h,18); ctx.fill();
   ctx.beginPath(); ctx.rect(ARENA.x,ARENA.y,ARENA.w,ARENA.h); ctx.clip();
@@ -1732,20 +1808,44 @@ function openOnlineMenu(){
 }
 
 /* ---- 입력 처리 ---- */
+function onlineMenuOptions(){
+  const opts=[];
+  for(const m of ONLINE_MODES){ if(m.ready) opts.push({ kind:"create", modeId:m.id, label:m.name+" 만들기" }); }
+  opts.push({ kind:"join", label:"방 코드로 입장" });
+  opts.push({ kind:"back", label:"뒤로가기" });
+  return opts;
+}
 function handleOnlineMenuKey(code){
   if(code==="Escape"){ goToStartScreen(); return; }
   if(!OnlineManager.available) return; // 설정 없으면 안내만(동작 없음)
-  if(code==="ArrowUp"){ onlineMenuIndex=(onlineMenuIndex+2)%3; return; }
-  if(code==="ArrowDown"){ onlineMenuIndex=(onlineMenuIndex+1)%3; return; }
+  const opts=onlineMenuOptions(), n=opts.length;
+  if(onlineMenuIndex>=n) onlineMenuIndex=0;
+  if(code==="ArrowUp"){ onlineMenuIndex=(onlineMenuIndex+n-1)%n; return; }
+  if(code==="ArrowDown"){ onlineMenuIndex=(onlineMenuIndex+1)%n; return; }
   if(code==="Enter"||code==="NumpadEnter"){
-    if(onlineMenuIndex===0) doCreateRoom();
-    else if(onlineMenuIndex===1) doJoinRoom();
+    const o=opts[onlineMenuIndex];
+    if(o.kind==="create"){ if(o.modeId==="online1v1") doCreateRoom(); else doCreateTeamRoom(o.modeId); }
+    else if(o.kind==="join") doJoinAny();
     else goToStartScreen();
   }
+}
+function doCreateTeamRoom(modeId){
+  onlineLobbyMsg="방 만드는 중…";
+  OnlineManager.createTeamRoom(modeId, function(ok,info){
+    if(ok){ onlineLobbyMsg=""; gameState=STATE.ONLINE_LOBBY; } else { onlineLobbyMsg=""; showToast(info||"방 생성 실패"); }
+  });
+}
+function doJoinAny(){
+  let code=null; try{ code=window.prompt("방 코드를 입력하세요 (4글자)"); }catch(e){ code=null; }
+  if(!code) return; onlineLobbyMsg="입장 중…";
+  OnlineManager.joinRoomAny(code, function(ok,info){
+    if(ok){ onlineLobbyMsg=""; gameState=STATE.ONLINE_LOBBY; } else { onlineLobbyMsg=""; showToast(info||"입장 실패"); }
+  });
 }
 function handleOnlineLobbyKey(code){
   if(code==="Escape"){ OnlineManager.leaveRoom(); goToStartScreen(); return; }
   if(code==="Enter"||code==="NumpadEnter"){
+    if(isTeamOnline()){ if(OnlineManager.role==="host") tStartMatch(); return; }
     if(OnlineManager.role==="host" && OnlineManager.players && OnlineManager.players.guest) hostStartOnlineMatch();
     else if(OnlineManager.role==="host") showToast("상대가 아직 없어요");
   }
@@ -1784,10 +1884,13 @@ function onRoomMetaChanged(){
   const meta=OnlineManager.meta;
   if(!meta) return;
   if(meta.status==="playing"){
-    if(gameState===STATE.ONLINE_LOBBY){ resetOnlineMatchFromRoom(); gameState=STATE.ONLINE_PLAYING; }
+    if(gameState===STATE.ONLINE_LOBBY){
+      if(isTeamOnline()) resetTeamMatchFromRoom(); else resetOnlineMatchFromRoom();
+      gameState=STATE.ONLINE_PLAYING;
+    }
   } else if(meta.status==="ended"){
     if(gameState===STATE.ONLINE_PLAYING || gameState===STATE.ONLINE_LOBBY){
-      onlineWinner = meta.winner || onlineWinner;
+      if(isTeamOnline()) tWinner = meta.winner || tWinner; else onlineWinner = meta.winner || onlineWinner;
       gameState=STATE.ONLINE_OVER;
     }
   }
@@ -1834,6 +1937,7 @@ function sendMyInput(dt){
 
 /* ---- 업데이트 ---- */
 function updateOnline(dt){
+  if(isTeamOnline()){ tUpdate(dt); return; }
   // host는 자기 입력을 로컬에서 바로 쓰므로 DB에 안 보냄(낭비 방지). guest만 입력을 전송.
   if(OnlineManager.role==="guest") sendMyInput(dt);
   if(OnlineManager.role==="host") updateOnlineHost(dt);
@@ -2071,6 +2175,7 @@ function drawOnlineFighter(d, isMe){
   ctx.restore();
 }
 function renderOnlineMatch(){
+  if(isTeamOnline()){ tRender(); return; }
   const data=getOnlineDrawData();
   for(const b of data.bullets) drawOnlineBullet(b);
   drawOnlineFighter(data.host, OnlineManager.role==="host");
@@ -2122,17 +2227,19 @@ function drawOnlineMenu(){
     ctx.fillStyle="#ffe066"; ctx.font="16px 'Malgun Gothic',sans-serif"; ctx.fillText("Esc 로 돌아가기",LOGW/2,430);
     ctx.restore(); return;
   }
-  ctx.fillStyle="#e6ecff"; ctx.font="18px 'Malgun Gothic',sans-serif"; ctx.fillText("닉네임: "+profile.nickname,LOGW/2,200);
-  const opts=["방 만들기","방 코드로 입장","뒤로가기"];
+  ctx.fillStyle="#e6ecff"; ctx.font="18px 'Malgun Gothic',sans-serif"; ctx.fillText("닉네임: "+profile.nickname,LOGW/2,196);
+  const opts=onlineMenuOptions();
+  if(onlineMenuIndex>=opts.length) onlineMenuIndex=0;
   for(let i=0;i<opts.length;i++){
-    const y=270+i*60, sel=(i===onlineMenuIndex);
-    drawButton(opts[i], LOGW/2, y, 320, 50, sel);
+    const y=240+i*52, sel=(i===onlineMenuIndex);
+    drawButton(opts[i].label, LOGW/2, y, 380, 44, sel);
   }
   ctx.textAlign="center"; ctx.fillStyle="#aab4e0"; ctx.font="15px 'Malgun Gothic',sans-serif";
-  ctx.fillText("↑↓ 선택 · Enter 실행 · Esc 뒤로",LOGW/2,470);
+  ctx.fillText("↑↓ 선택 · Enter 실행 · Esc 뒤로",LOGW/2,240+opts.length*52+18);
   ctx.restore();
 }
 function drawOnlineLobby(){
+  if(isTeamOnline()){ tDrawLobby(); return; }
   dimScreen(0.72);
   ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
   ctx.fillStyle="#9fe0ff"; ctx.font="bold 40px 'Malgun Gothic',sans-serif"; ctx.fillText("대기실",LOGW/2,90);
@@ -2156,6 +2263,7 @@ function drawOnlineLobby(){
   ctx.restore();
 }
 function drawOnlineOver(){
+  if(isTeamOnline()){ tDrawOver(); return; }
   dimScreen(0.72);
   ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
   const txt=computeOnlineResultText();
@@ -2167,6 +2275,645 @@ function drawOnlineOver(){
   if(OnlineManager.role==="host" && onlineFighters.host){ hs=onlineFighters.host.score; gs=onlineFighters.guest.score; }
   else if(s){ hs=s.host?s.host.score:0; gs=s.guest?s.guest.score:0; }
   ctx.fillStyle="#fff"; ctx.font="bold 30px 'Malgun Gothic',sans-serif"; ctx.fillText("방장 "+hs+" : "+gs+" 참가자",LOGW/2,250);
+  ctx.fillStyle="#aab4e0"; ctx.font="17px 'Malgun Gothic',sans-serif"; ctx.fillText("온라인 베타는 골드 보상이 없어요.",LOGW/2,300);
+  ctx.fillStyle="#ffe066"; ctx.font="18px 'Malgun Gothic',sans-serif"; ctx.fillText("Enter / Esc 로 시작 화면으로",LOGW/2,360);
+  ctx.restore();
+}
+
+/* =======================================================================
+   온라인 슬롯/팀 엔진 (3대3 PVP 등 다인 모드) — 1대1/로컬과 분리된 추가 엔진
+   host가 모든 슬롯을 권한으로 계산하고, 각 클라이언트는 자기 slot input만 보낸다.
+   ======================================================================= */
+const ONLINE_MODES = [
+  { id:"online1v1", name:"온라인 1대1", desc:"친구와 1대1 대전",            maxPlayers:2, teams:["blue","red"], modeType:"pvp", ready:true },
+  { id:"online3v3", name:"온라인 3대3", desc:"최대 6명, 3명씩 팀 대전(빈자리 AI)", maxPlayers:6, teams:["blue","red"], modeType:"pvp", ready:true },
+  { id:"onlinePve6", name:"6인 협동 PVE", desc:"최대 6명 협동 스테이지(베타)", maxPlayers:6, teams:["pve"], modeType:"pve", ready:true }
+];
+function getOnlineMode(id){ for(const m of ONLINE_MODES){ if(m.id===id) return m; } return ONLINE_MODES[0]; }
+function isTeamOnline(){ return OnlineManager.mode==="online3v3" || OnlineManager.mode==="onlinePve6"; }
+
+const T_STATE_FPS = 15;   // 다인 모드 상태 동기화(초당) — payload가 크므로 1대1보다 낮게
+const T_INPUT_FPS = 20;
+const T_MAX_BULLETS = 80;
+const TEAM_COLOR = { blue:"#5aa0ff", red:"#ff6a6a" };
+
+let tFighters = {};        // slot -> fighter (host 권한)
+let tBullets = [];
+let tTimeLeft = 90;
+let tTeamScores = { blue:0, red:0 };
+let tWriteAcc = 0, tInputAcc = 0, tLastInputStr = "";
+let tWinner = null, tResultText = "";
+// guest 렌더 보간/예측
+let tRenderFighters = {};  // slot -> {x,y,facing}
+let tPredict = null;       // 내 슬롯 예측
+let tBulletsView = [];
+let tLastStateRef = null;
+let tMapId = "training";   // 현재 온라인 맵(PVE는 스테이지별로 바뀜)
+let tEnemies = {};         // PVE 적: id -> enemy (host 권한)
+let tEnemyId = 0;
+let tPve = { stageIndex:0, waveIndex:0, teamLives:0, status:"playing", phase:"wave", phaseTimer:0, enemiesRemaining:0 };
+let tEnemiesView = {};     // guest 적 보간용
+
+function tSpawnPos(base, idx){ const off=[[0,0],[64,-54],[-64,54],[64,54],[-64,-54],[0,78]]; const o=off[idx%off.length]; return { x:base.x+o[0], y:base.y+o[1] }; }
+
+function tMakeFighter(slot, team, characterId, weaponId, isBot, idx, map){
+  const ch=getCharacter(characterId);
+  const base = (team==="red") ? map.enemySpawn : map.playerSpawn;
+  const p=tSpawnPos(base, idx), sp=findClearSpawn(p.x,p.y,22);
+  const maxHp=GAME_CONFIG.playerMaxHp*ch.hpMul;
+  return { slot:slot, team:team, isBot:!!isBot, char:ch, weaponId:weaponId||"star_blaster",
+    name:ch.name, color:ch.color, subColor:ch.subColor,
+    x:sp.x, y:sp.y, spawnX:base.x, spawnY:base.y, r:22, facing: team==="red"?Math.PI:0,
+    maxHp:maxHp, hp:maxHp, displayHp:maxHp, moveSpeed:GAME_CONFIG.playerMoveSpeed*ch.speedMul,
+    cooldown:0, score:0, dead:false, respawnTimer:0, invincibleTimer:0, hitFlash:0,
+    ai:{ fireTimer:rand(0,0.5), strafeDir:1, strafeTimer:0, reTimer:0, stuckTimer:0, stuckDir:1 } };
+}
+
+function tBuildFighters(){
+  const meta=OnlineManager.meta||{}, mode=getOnlineMode(meta.mode), map=getMap(tMapId);
+  OBSTACLES=map.obstacles; BUSHES=map.bushes;
+  tFighters={};
+  const players=OnlineManager.players||{};
+  let blueIdx=0, redIdx=0;
+  // 1) 접속한 실제 플레이어
+  for(let i=1;i<=mode.maxPlayers;i++){
+    const slot="p"+i, p=players[slot];
+    if(p && p.connected!==false){
+      let team=p.team || (i%2===1?"blue":"red");
+      const idx = team==="red"?redIdx++:blueIdx++;
+      tFighters[slot]=tMakeFighter(slot, team, p.characterId, p.weaponId, false, idx, map);
+    }
+  }
+  // 2) host만 빈자리를 AI 봇으로 채운다(3대3 PVP)
+  if(OnlineManager.role==="host" && mode.modeType==="pvp"){
+    for(let i=1;i<=mode.maxPlayers;i++){
+      const slot="p"+i; if(tFighters[slot]) continue;
+      const blueCount=Object.keys(tFighters).filter(s=>tFighters[s].team==="blue").length;
+      const redCount=Object.keys(tFighters).filter(s=>tFighters[s].team==="red").length;
+      let team=null;
+      if(blueCount<3 && (blueCount<=redCount || redCount>=3)) team="blue";
+      else if(redCount<3) team="red";
+      if(!team) continue;
+      const idx = team==="red"?redIdx++:blueIdx++;
+      const botChar = CHARACTERS[i%3];
+      tFighters[slot]=tMakeFighter(slot, team, botChar.id, "star_blaster", true, idx, map);
+    }
+  }
+}
+
+function resetTeamMatchFromRoom(){
+  const mode=getOnlineMode(OnlineManager.mode);
+  tBullets=[]; tWriteAcc=0; tInputAcc=0; tLastInputStr=""; tWinner=null; tResultText="";
+  tRenderFighters={}; tPredict=null; tBulletsView=[]; tLastStateRef=null;
+  tEnemies={}; tEnemyId=0; tEnemiesView={};
+  if(mode.modeType==="pve"){
+    const stage=PVE_STAGES[0]; tMapId=stage.mapId;
+    tPve={ stageIndex:0, waveIndex:0, teamLives:stage.teamLives, status:"playing", phase:"wave", phaseTimer:0, enemiesRemaining:0 };
+    tBuildFighters();
+    if(OnlineManager.role==="host") tPveStartWave();
+  } else {
+    tMapId="training";
+    tBuildFighters();
+    tTimeLeft=GAME_CONFIG.gameTime; tTeamScores={blue:0,red:0};
+  }
+}
+
+function tStartMatch(){
+  resetTeamMatchFromRoom();
+  OnlineManager.writeMetaStatus("playing");
+  tHostWriteState();
+  gameState=STATE.ONLINE_PLAYING;
+}
+
+function tNearestEnemyFighter(f){
+  let best=null, bd=Infinity;
+  for(const slot in tFighters){ const o=tFighters[slot]; if(o.dead||o.team===f.team) continue;
+    const d=dist(f.x,f.y,o.x,o.y); if(d<bd){bd=d; best=o;} }
+  return best;
+}
+
+function tSendInput(dt){
+  const inp=readLocalInput(), str=JSON.stringify(inp);
+  tInputAcc+=dt;
+  if(str!==tLastInputStr || tInputAcc>=1/T_INPUT_FPS){ tLastInputStr=str; tInputAcc=0; OnlineManager.writeInput(inp); }
+}
+
+function tUpdate(dt){
+  const isPve=getOnlineMode(OnlineManager.mode).modeType==="pve";
+  if(OnlineManager.role==="guest") tSendInput(dt);
+  if(OnlineManager.role==="host"){ if(isPve) tPveUpdateHost(dt); else tUpdateHost(dt); }
+  else tUpdateGuest(dt);
+  updateEffects(dt);
+}
+
+function tUpdateHost(dt){
+  const players=OnlineManager.players||{};
+  for(const slot in tFighters){
+    const f=tFighters[slot];
+    if(f.isBot){ tBotUpdate(f, dt); continue; }
+    let input;
+    if(slot===OnlineManager.mySlot) input=readLocalInput();
+    else { const p=players[slot]; const conn=p && p.connected!==false; input = (conn && p.input) ? p.input : emptyInput(); }
+    tUpdateFighter(f, input, dt);
+  }
+  tUpdateBullets(dt);
+  for(const slot in tFighters){ const f=tFighters[slot]; f.displayHp=lerp(f.displayHp,f.hp,Math.min(1,dt*8)); }
+  tTimeLeft-=dt;
+  tWriteAcc+=dt; if(tWriteAcc>=1/T_STATE_FPS){ tWriteAcc=0; tHostWriteState(); }
+  if(tTimeLeft<=0){ tTimeLeft=0; tHostEndMatch(); }
+}
+
+function tUpdateFighter(f, input, dt){
+  if(f.dead){ f.respawnTimer-=dt; if(f.respawnTimer<=0) tRespawn(f); return; }
+  if(f.hitFlash>0) f.hitFlash-=dt; if(f.invincibleTimer>0) f.invincibleTimer-=dt;
+  let mx=0,my=0; if(input.up)my-=1; if(input.down)my+=1; if(input.left)mx-=1; if(input.right)mx+=1;
+  const ml=Math.hypot(mx,my);
+  if(ml>0){ mx/=ml; my/=ml; moveEntity(f, mx*f.moveSpeed*dt, my*f.moveSpeed*dt); f.facing=Math.atan2(my,mx); }
+  f.cooldown-=dt;
+  if(input.attack && f.cooldown<=0){ tFire(f); f.cooldown=GAME_CONFIG.playerAttackCooldown*getWeapon(f.weaponId).cooldownMul; }
+}
+
+function tBotUpdate(f, dt){
+  if(f.dead){ f.respawnTimer-=dt; if(f.respawnTimer<=0) tRespawn(f); return; }
+  if(f.hitFlash>0) f.hitFlash-=dt; if(f.invincibleTimer>0) f.invincibleTimer-=dt;
+  const t=tNearestEnemyFighter(f);
+  if(t){
+    const dx=t.x-f.x, dy=t.y-f.y, d=Math.hypot(dx,dy)||1;
+    let mvx=0,mvy=0;
+    if(d>320){ mvx=dx/d; mvy=dy/d; }
+    else if(d<200){ mvx=-dx/d; mvy=-dy/d; }
+    else { f.ai.strafeTimer-=dt; if(f.ai.strafeTimer<=0){ f.ai.strafeDir=Math.random()<0.5?1:-1; f.ai.strafeTimer=rand(0.5,1.2); } mvx=-dy/d*f.ai.strafeDir; mvy=dx/d*f.ai.strafeDir; }
+    if(f.ai.stuckTimer>0){ f.ai.stuckTimer-=dt; mvx=-dy/d*f.ai.stuckDir; mvy=dx/d*f.ai.stuckDir; } // 벽끼임 탈출: 옆으로 우회
+    const ml=Math.hypot(mvx,mvy);
+    if(ml>0){ mvx/=ml; mvy/=ml; const step=f.moveSpeed*0.9*dt, ox=f.x, oy=f.y;
+      moveEntity(f, mvx*step, mvy*step);
+      if(f.ai.stuckTimer<=0 && Math.hypot(f.x-ox,f.y-oy) < step*0.3){ f.ai.stuckDir=Math.random()<0.5?1:-1; f.ai.stuckTimer=rand(0.4,0.8); } }
+    f.facing=Math.atan2(dy,dx);
+    f.cooldown-=dt; f.ai.reTimer-=dt;
+    if(d<GAME_CONFIG.playerRange && f.cooldown<=0 && f.ai.reTimer<=0 && hasLineOfSight(f.x,f.y,t.x,t.y)){
+      tFire(f); f.cooldown=GAME_CONFIG.playerAttackCooldown*1.3; f.ai.reTimer=rand(0.1,0.4);
+    }
+  }
+}
+
+function tFire(f){
+  const w=getWeapon(f.weaponId), c=f.char;
+  const count=w.spreadCount, spread=deg2rad(w.spreadAngleDeg||0);
+  const speed=GAME_CONFIG.playerBulletSpeed*c.bulletSpeedMul*w.bulletSpeedMul;
+  const dmg=GAME_CONFIG.playerDamage*c.damageMul*w.damageMul;
+  const range=GAME_CONFIG.playerRange*w.rangeMul, radius=GAME_CONFIG.playerBulletRadius*w.bulletRadiusMul;
+  for(let i=0;i<count;i++){
+    let a=f.facing; if(count>1) a=f.facing-spread/2+spread*(i/(count-1));
+    const mz=f.r+6;
+    tBullets.push({ x:f.x+Math.cos(a)*mz, y:f.y+Math.sin(a)*mz, vx:Math.cos(a)*speed, vy:Math.sin(a)*speed,
+      r:radius, damage:dmg, team:f.team, owner:f.slot, color:w.color, alive:true, traveled:0, maxRange:range });
+  }
+}
+
+function tUpdateBullets(dt){
+  for(const b of tBullets){
+    if(!b.alive) continue;
+    const speed=Math.hypot(b.vx,b.vy), steps=Math.max(1,Math.ceil(speed*dt/(b.r*0.9)));
+    const sx=b.vx*dt/steps, sy=b.vy*dt/steps, sl=Math.hypot(sx,sy);
+    for(let s=0;s<steps&&b.alive;s++){
+      b.x+=sx; b.y+=sy; b.traveled+=sl;
+      if(b.x<ARENA.x||b.x>ARENA.x+ARENA.w||b.y<ARENA.y||b.y>ARENA.y+ARENA.h){ b.alive=false; break; }
+      let wall=false; for(const o of OBSTACLES){ if(circleRectOverlap(b.x,b.y,b.r,o)){ wall=true; break; } }
+      if(wall){ b.alive=false; break; }
+      for(const slot in tFighters){ const t=tFighters[slot];
+        if(t.team===b.team || t.dead || t.invincibleTimer>0) continue;
+        if(dist(b.x,b.y,t.x,t.y) < b.r+t.r){ tApplyDamage(t, b.damage, b.team, b.owner); b.alive=false; break; }
+      }
+      if(!b.alive) break;
+      if(b.traveled>b.maxRange){ b.alive=false; break; }
+    }
+  }
+  tBullets=tBullets.filter(b=>b.alive);
+  if(tBullets.length>T_MAX_BULLETS) tBullets=tBullets.slice(tBullets.length-T_MAX_BULLETS);
+}
+
+function tApplyDamage(target, dmg, fromTeam, fromSlot){
+  if(target.dead || target.invincibleTimer>0 || target.team===fromTeam) return;
+  target.hp-=dmg; target.hitFlash=0.15;
+  if(target.hp<=0){
+    target.hp=0; target.dead=true; target.respawnTimer=GAME_CONFIG.respawnDelay;
+    if(TEAM_COLOR[fromTeam]!==undefined) tTeamScores[fromTeam]=(tTeamScores[fromTeam]||0)+1;
+    const killer=tFighters[fromSlot]; if(killer) killer.score+=1;
+  }
+}
+
+function tRespawn(f){
+  f.dead=false; f.hp=f.maxHp; f.displayHp=f.maxHp; f.cooldown=0;
+  const pos=findClearSpawn(f.spawnX,f.spawnY,f.r);
+  f.x=pos.x; f.y=pos.y; f.invincibleTimer=GAME_CONFIG.invincibleTime;
+}
+
+function tPackFighter(f){
+  return { x:Math.round(f.x), y:Math.round(f.y), hp:Math.round(f.hp), maxHp:Math.round(f.maxHp),
+    facing:Math.round(f.facing*100)/100, score:f.score, dead:!!f.dead, inv:f.invincibleTimer>0,
+    charId:f.char.id, team:f.team, slot:f.slot };
+}
+function tHostWriteState(){
+  const fighters={};
+  for(const slot in tFighters) fighters[slot]=tPackFighter(tFighters[slot]);
+  const bl=[];
+  for(const b of tBullets) bl.push({ x:Math.round(b.x), y:Math.round(b.y), r:Math.round(b.r), o:b.owner, c:b.color, vx:Math.round(b.vx), vy:Math.round(b.vy), team:b.team });
+  const st={ timeLeft:Math.max(0,Math.round(tTimeLeft)), teamScores:tTeamScores, fighters:fighters, bullets:bl };
+  // PVE면 적/스테이지 정보도 함께 보낸다
+  if(getOnlineMode(OnlineManager.mode).modeType==="pve"){
+    const en={}; for(const id in tEnemies){ const e=tEnemies[id]; en[id]={ x:Math.round(e.x), y:Math.round(e.y), r:e.r, hp:Math.round(e.hp), maxHp:Math.round(e.maxHp), facing:Math.round(e.facing*100)/100, type:e.type, color:e.color, dead:!!e.dead, boss:!!e.isBoss }; }
+    st.enemies=en;
+    st.pve={ stageIndex:tPve.stageIndex, waveIndex:tPve.waveIndex, teamLives:tPve.teamLives, status:tPve.status, phase:tPve.phase, enemiesRemaining:Object.keys(tEnemies).length, mapId:tMapId };
+  }
+  OnlineManager.writeHostState(st);
+}
+function tHostEndMatch(){
+  let winner="draw";
+  if(tTeamScores.blue>tTeamScores.red) winner="blue"; else if(tTeamScores.red>tTeamScores.blue) winner="red";
+  tWinner=winner;
+  tHostWriteState();
+  OnlineManager.writeMetaStatus("ended", { winner:winner });
+  gameState=STATE.ONLINE_OVER;
+}
+
+function tMyTeam(){
+  const s=OnlineManager.mySlot;
+  if(OnlineManager.role==="host" && tFighters[s]) return tFighters[s].team;
+  const st=OnlineManager.onlineState;
+  if(st && st.fighters && st.fighters[s]) return st.fighters[s].team;
+  const p=OnlineManager.players; if(p && p[s]) return p[s].team;
+  return "blue";
+}
+function tComputeResultText(){
+  let w=tWinner; if(!w && OnlineManager.meta) w=OnlineManager.meta.winner;
+  if(!w || w==="draw") return "무승부!";
+  return (w===tMyTeam()) ? "승리!" : "패배!";
+}
+
+/* ---- guest 렌더(보간 + 내 슬롯 이동 예측) ---- */
+function tUpdateGuest(dt){
+  const s=OnlineManager.onlineState; if(!s || !s.fighters) return;
+  // PVE: host가 보낸 현재 스테이지 맵으로 장애물/풀숲을 맞춘다(보이는 벽=실제 충돌)
+  if(s.pve && s.pve.mapId && s.pve.mapId!==tMapId){ tMapId=s.pve.mapId; const m=getMap(tMapId); OBSTACLES=m.obstacles; BUSHES=m.bushes; }
+  if(s!==tLastStateRef){ tLastStateRef=s; tBulletsView=(s.bullets||[]).map(b=>({ x:b.x,y:b.y,vx:b.vx||0,vy:b.vy||0,r:b.r,c:b.c,o:b.o })); }
+  for(const b of tBulletsView){ b.x+=b.vx*dt; b.y+=b.vy*dt; }
+  const myslot=OnlineManager.mySlot, k=Math.min(1,dt*18);
+  for(const slot in s.fighters){
+    const p=s.fighters[slot];
+    if(slot===myslot){
+      if(!tPredict || p.dead){ const ch=getCharacter(p.charId); tPredict={ x:p.x,y:p.y,facing:p.facing||0,r:22,moveSpeed:GAME_CONFIG.playerMoveSpeed*ch.speedMul }; }
+      else { const inp=readLocalInput(); let mx=0,my=0; if(inp.up)my-=1; if(inp.down)my+=1; if(inp.left)mx-=1; if(inp.right)mx+=1; const ml=Math.hypot(mx,my);
+        if(ml>0){ mx/=ml; my/=ml; moveEntity(tPredict, mx*tPredict.moveSpeed*dt, my*tPredict.moveSpeed*dt); tPredict.facing=Math.atan2(my,mx); }
+        if(Math.hypot(p.x-tPredict.x,p.y-tPredict.y)>70){ tPredict.x=p.x; tPredict.y=p.y; } }
+    } else {
+      if(!tRenderFighters[slot] || p.dead) tRenderFighters[slot]={ x:p.x,y:p.y,facing:p.facing||0 };
+      else { tRenderFighters[slot].x+=(p.x-tRenderFighters[slot].x)*k; tRenderFighters[slot].y+=(p.y-tRenderFighters[slot].y)*k;
+        tRenderFighters[slot].facing=lerpAngle(tRenderFighters[slot].facing, p.facing||0, k); }
+    }
+  }
+}
+
+function tGetDrawData(){
+  const out={ fighters:[], bullets:[], teamScores:{blue:0,red:0}, timeLeft:0, waiting:false };
+  if(OnlineManager.role==="host"){
+    for(const slot in tFighters){ const f=tFighters[slot];
+      out.fighters.push({ x:f.x,y:f.y,facing:f.facing,hp:f.hp,maxHp:f.maxHp,dead:f.dead,inv:f.invincibleTimer>0,charId:f.char.id,team:f.team,slot:slot,isMe:slot===OnlineManager.mySlot }); }
+    out.bullets=tBullets.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.color }));
+    out.teamScores=tTeamScores; out.timeLeft=Math.max(0,Math.ceil(tTimeLeft));
+  } else {
+    const s=OnlineManager.onlineState;
+    if(!s || !s.fighters){ out.waiting=true; out.timeLeft=GAME_CONFIG.gameTime; return out; }
+    const myslot=OnlineManager.mySlot;
+    for(const slot in s.fighters){ const p=s.fighters[slot]; let rx=p.x,ry=p.y,rf=p.facing;
+      if(slot===myslot && tPredict && !p.dead){ rx=tPredict.x; ry=tPredict.y; rf=tPredict.facing; }
+      else if(tRenderFighters[slot] && !p.dead){ rx=tRenderFighters[slot].x; ry=tRenderFighters[slot].y; rf=tRenderFighters[slot].facing; }
+      out.fighters.push({ x:rx,y:ry,facing:rf,hp:p.hp,maxHp:p.maxHp,dead:p.dead,inv:p.inv,charId:p.charId,team:p.team,slot:slot,isMe:slot===myslot }); }
+    out.bullets=tBulletsView.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.c }));
+    out.teamScores=s.teamScores||{blue:0,red:0}; out.timeLeft=s.timeLeft;
+  }
+  return out;
+}
+
+function tDrawFighter(d){
+  if(d.dead) return;
+  const ch=getCharacter(d.charId||"lumi");
+  let alpha=1; if(d.inv && Math.floor(uiTime*12)%2===0) alpha*=0.4;
+  ctx.save(); ctx.globalAlpha=alpha; ctx.translate(d.x,d.y);
+  // 팀 색 링
+  ctx.strokeStyle=TEAM_COLOR[d.team]||"#fff"; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(0,0,28,0,Math.PI*2); ctx.stroke();
+  drawPlayerCharacter({ r:22, color:ch.color, subColor:ch.subColor, facing:d.facing||0 });
+  ctx.restore();
+  const w=54,h=8,bx=d.x-w/2,by=d.y-22-24;
+  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="bottom";
+  ctx.fillStyle=d.isMe?"#bfffad":(TEAM_COLOR[d.team]||"#dff1ff"); ctx.font="bold 12px 'Malgun Gothic',sans-serif";
+  ctx.fillText(ch.name+(d.isMe?" (나)":""), d.x, by-2);
+  ctx.fillStyle="rgba(0,0,0,0.5)"; roundRect(bx,by,w,h,4); ctx.fill();
+  const ratio=clamp(d.hp/(d.maxHp||1),0,1);
+  ctx.fillStyle=ratio>0.5?"#4bd86b":(ratio>0.25?"#ffd24d":"#ff5a5a"); roundRect(bx,by,w*ratio,h,4); ctx.fill();
+  ctx.restore();
+}
+
+function tRender(){
+  if(getOnlineMode(OnlineManager.mode).modeType==="pve"){ tPveRender(); return; }
+  const data=tGetDrawData();
+  for(const b of data.bullets) drawOnlineBullet(b);
+  for(const f of data.fighters) tDrawFighter(f);
+  drawEffects();
+  // HUD
+  ctx.save();
+  ctx.fillStyle="rgba(10,12,32,0.72)"; ctx.fillRect(0,0,LOGW,64); ctx.textBaseline="middle";
+  const myTeam=tMyTeam();
+  ctx.textAlign="left"; ctx.fillStyle=TEAM_COLOR.blue; ctx.font="bold 20px 'Malgun Gothic',sans-serif";
+  ctx.fillText("블루"+(myTeam==="blue"?" (우리)":""),24,22);
+  ctx.fillStyle="#fff"; ctx.font="bold 30px 'Malgun Gothic',sans-serif"; ctx.fillText(String(data.teamScores.blue||0),24,48);
+  ctx.textAlign="right"; ctx.fillStyle=TEAM_COLOR.red; ctx.font="bold 20px 'Malgun Gothic',sans-serif";
+  ctx.fillText((myTeam==="red"?"(우리) ":"")+"레드",LOGW-24,22);
+  ctx.fillStyle="#fff"; ctx.font="bold 30px 'Malgun Gothic',sans-serif"; ctx.fillText(String(data.teamScores.red||0),LOGW-24,48);
+  ctx.textAlign="center"; ctx.fillStyle="#fff"; ctx.font="bold 36px 'Malgun Gothic',sans-serif"; ctx.fillText(String(data.timeLeft),LOGW/2,26);
+  ctx.fillStyle="#aab4e0"; ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.fillText("온라인 3대3 (베타) · 방 "+(OnlineManager.roomCode||""),LOGW/2,52);
+  ctx.fillStyle="rgba(10,12,32,0.72)"; ctx.fillRect(0,656,LOGW,64);
+  ctx.textAlign="center"; ctx.fillStyle="#aab4e0"; ctx.font="bold 15px 'Malgun Gothic',sans-serif";
+  ctx.fillText("방향키 이동 · Z 공격 · Esc 나가기   (베타: 궁극기 비활성)",LOGW/2,688);
+  ctx.restore();
+  if(!OnlineManager.connected) drawCenterBanner("네트워크 연결 확인 중…","#ff7a7a");
+  if(data.waiting) drawCenterBanner("동기화 대기 중…","#9fe0ff");
+}
+
+function tDrawLobby(){
+  dimScreen(0.72);
+  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
+  const mode=getOnlineMode(OnlineManager.mode);
+  ctx.fillStyle="#9fe0ff"; ctx.font="bold 36px 'Malgun Gothic',sans-serif"; ctx.fillText("대기실 · "+mode.name,LOGW/2,70);
+  ctx.fillStyle="#fff"; ctx.font="bold 18px 'Malgun Gothic',sans-serif"; ctx.fillText("방 코드",LOGW/2,112);
+  ctx.fillStyle="#ffe066"; ctx.font="bold 52px 'Malgun Gothic',sans-serif"; ctx.fillText(OnlineManager.roomCode||"----",LOGW/2,158);
+  ctx.fillStyle="#aab4e0"; ctx.font="14px 'Malgun Gothic',sans-serif";
+  ctx.fillText("내 역할: "+(OnlineManager.role==="host"?"방장":"참가자")+" · 내 슬롯: "+(OnlineManager.mySlot||"-"),LOGW/2,192);
+  const players=OnlineManager.players||{};
+  // 팀별 표시
+  const cols=[{team:"blue",x:LOGW/2-220,label:"블루 팀"},{team:"red",x:LOGW/2+220,label:"레드 팀"}];
+  for(const col of cols){
+    ctx.fillStyle=TEAM_COLOR[col.team]; ctx.font="bold 20px 'Malgun Gothic',sans-serif"; ctx.fillText(col.label,col.x,236);
+    let row=0;
+    for(let i=1;i<=mode.maxPlayers;i++){ const p=players["p"+i]; if(!p||p.connected===false) continue; if((p.team||"blue")!==col.team) continue;
+      ctx.fillStyle="#dfe6ff"; ctx.font="16px 'Malgun Gothic',sans-serif";
+      ctx.fillText("• "+p.nickname+(p.slot===OnlineManager.mySlot?" (나)":""),col.x,270+row*30); row++; }
+    for(let r=row;r<3;r++){ ctx.fillStyle="#667099"; ctx.font="15px 'Malgun Gothic',sans-serif"; ctx.fillText("(빈자리 · AI)",col.x,270+r*30); }
+  }
+  ctx.fillStyle="#dfe6ff"; ctx.font="16px 'Malgun Gothic',sans-serif";
+  ctx.fillText("6명이 모이면 가장 좋아요. 2명 이상이면 시작 가능, 빈자리는 AI가 채웁니다.",LOGW/2,420);
+  if(OnlineManager.role==="host") ctx.fillText("Enter 를 눌러 시작!",LOGW/2,452);
+  else ctx.fillText("방장이 시작하기를 기다리는 중…",LOGW/2,452);
+  ctx.fillStyle="#8893bb"; ctx.font="14px 'Malgun Gothic',sans-serif"; ctx.fillText("Esc 로 방 나가기",LOGW/2,492);
+  ctx.restore();
+}
+
+function tDrawOver(){
+  if(getOnlineMode(OnlineManager.mode).modeType==="pve"){ tPveDrawOver(); return; }
+  dimScreen(0.72);
+  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
+  const txt=tComputeResultText();
+  const col = txt==="승리!"?"#ffe066":(txt==="패배!"?"#ff7a7a":"#9fe0ff");
+  ctx.shadowColor=col; ctx.shadowBlur=30; ctx.fillStyle=col; ctx.font="bold 70px 'Malgun Gothic',sans-serif"; ctx.fillText(txt,LOGW/2,180); ctx.shadowBlur=0;
+  let bs=tTeamScores.blue, rs=tTeamScores.red;
+  const s=OnlineManager.onlineState; if(OnlineManager.role!=="host" && s && s.teamScores){ bs=s.teamScores.blue; rs=s.teamScores.red; }
+  ctx.fillStyle="#fff"; ctx.font="bold 30px 'Malgun Gothic',sans-serif"; ctx.fillText("블루 "+bs+" : "+rs+" 레드",LOGW/2,250);
+  ctx.fillStyle="#aab4e0"; ctx.font="17px 'Malgun Gothic',sans-serif"; ctx.fillText("온라인 베타는 골드 보상이 없어요.",LOGW/2,300);
+  ctx.fillStyle="#ffe066"; ctx.font="18px 'Malgun Gothic',sans-serif"; ctx.fillText("Enter / Esc 로 시작 화면으로",LOGW/2,360);
+  ctx.restore();
+}
+
+/* =======================================================================
+   온라인 6인 협동 PVE — 슬롯/팀 엔진 위에 스테이지/웨이브/적 AI를 추가
+   ======================================================================= */
+const PVE_ENEMY_TYPES = {
+  grunt:    { hp:60,  speed:120, dmg:10, r:20, color:"#8a3fd0", ranged:false, contactCd:0.8, score:1 },
+  runner:   { hp:45,  speed:205, dmg:8,  r:18, color:"#ff8f4d", ranged:false, contactCd:0.6, score:1 },
+  shooter:  { hp:55,  speed:110, dmg:12, r:20, color:"#46c0e0", ranged:true,  range:380, fireCd:1.4, bulletSpeed:360, score:2 },
+  tank:     { hp:230, speed:78,  dmg:16, r:30, color:"#5a5f78", ranged:false, contactCd:1.0, score:3 },
+  elite:    { hp:160, speed:130, dmg:14, r:24, color:"#b266ff", ranged:true,  range:420, fireCd:1.0, bulletSpeed:400, score:4 },
+  miniBoss: { hp:380, speed:108, dmg:20, r:34, color:"#ff4d6d", ranged:true,  range:460, fireCd:0.85,bulletSpeed:420, score:8,  threeWay:true },
+  boss:     { hp:900, speed:95,  dmg:26, r:46, color:"#b3203a", ranged:true,  range:520, fireCd:0.7, bulletSpeed:440, score:30, threeWay:true }
+};
+const PVE_STAGES = [
+  { id:"stage1", name:"1스테이지: 별빛 훈련장 침입", mapId:"training", teamLives:12,
+    waves:[ {enemies:[{type:"grunt",count:6}]}, {enemies:[{type:"grunt",count:8},{type:"shooter",count:2}]}, {enemies:[{type:"elite",count:2},{type:"grunt",count:8}]} ] },
+  { id:"stage2", name:"2스테이지: 수정 동굴 방어전", mapId:"crystal_cave", teamLives:12,
+    waves:[ {enemies:[{type:"grunt",count:8},{type:"shooter",count:3}]}, {enemies:[{type:"tank",count:2},{type:"grunt",count:8}]}, {enemies:[{type:"elite",count:3}]} ] },
+  { id:"stage3", name:"3스테이지: 은하 정원 습격", mapId:"galaxy_garden", teamLives:10,
+    waves:[ {enemies:[{type:"runner",count:8}]}, {enemies:[{type:"runner",count:10},{type:"shooter",count:4}]}, {enemies:[{type:"miniBoss",count:1},{type:"grunt",count:8}]} ] },
+  { id:"stage4", name:"4스테이지: 보스 전초전", mapId:"training", teamLives:10,
+    waves:[ {enemies:[{type:"tank",count:3},{type:"shooter",count:5}]}, {enemies:[{type:"elite",count:5}]}, {enemies:[{type:"miniBoss",count:2}]} ] },
+  { id:"stage5", name:"최종 스테이지: 보스 크롬 MK2", mapId:"crystal_cave", teamLives:8,
+    waves:[ {enemies:[{type:"grunt",count:8},{type:"shooter",count:4}]}, {enemies:[{type:"elite",count:4},{type:"tank",count:2}]}, {enemies:[{type:"boss",count:1}]} ] }
+];
+
+function tActivePlayerCount(){ let n=0; for(const s in tFighters){ if(!tFighters[s].isBot) n++; } return Math.max(1,n); }
+
+function tSpawnEnemy(type, hpMul, map){
+  const def=PVE_ENEMY_TYPES[type]||PVE_ENEMY_TYPES.grunt;
+  const ex=clamp(map.enemySpawn.x+rand(-170,170), ARENA.x+def.r, ARENA.x+ARENA.w-def.r);
+  const ey=clamp(map.enemySpawn.y+rand(-90,180), ARENA.y+def.r, ARENA.y+ARENA.h-def.r);
+  const pos=findClearSpawn(ex,ey,def.r);
+  const id="e"+(++tEnemyId), hp=def.hp*hpMul;
+  tEnemies[id]={ id:id, type:type, x:pos.x, y:pos.y, r:def.r, hp:hp, maxHp:hp, speed:def.speed, dmg:def.dmg,
+    color:def.color, ranged:!!def.ranged, range:def.range||0, fireCd:def.fireCd||1.2, fireTimer:rand(0.2,1.2),
+    bulletSpeed:def.bulletSpeed||360, contactCd:def.contactCd||0.8, contactTimer:0, threeWay:!!def.threeWay,
+    facing:Math.PI, dead:false, score:def.score||1, isBoss:(type==="boss"||type==="miniBoss") };
+}
+function tPveStartWave(){
+  const stage=PVE_STAGES[tPve.stageIndex], wave=stage.waves[tPve.waveIndex];
+  const n=tActivePlayerCount(), hpMul=0.7+n*0.12, countMul=0.6+n*0.1, map=getMap(tMapId);
+  for(const grp of wave.enemies){
+    const cnt=Math.max(1,Math.round(grp.count*countMul));
+    for(let i=0;i<cnt;i++){ if(Object.keys(tEnemies).length>=40) break; tSpawnEnemy(grp.type, hpMul, map); }
+  }
+  tPve.phase="wave"; tPve.enemiesRemaining=Object.keys(tEnemies).length;
+}
+function tNearestPlayer(e){ let best=null,bd=Infinity; for(const s in tFighters){ const f=tFighters[s]; if(f.dead) continue; const d=dist(e.x,e.y,f.x,f.y); if(d<bd){bd=d;best=f;} } return best; }
+
+function tPveUpdateHost(dt){
+  const players=OnlineManager.players||{};
+  for(const slot in tFighters){ const f=tFighters[slot];
+    let input;
+    if(slot===OnlineManager.mySlot) input=readLocalInput();
+    else { const p=players[slot]; const conn=p&&p.connected!==false; input=(conn&&p.input)?p.input:emptyInput(); }
+    tPveUpdatePlayer(f, input, dt);
+    f.displayHp=lerp(f.displayHp,f.hp,Math.min(1,dt*8));
+  }
+  for(const id in tEnemies) tEnemyUpdate(tEnemies[id], dt);
+  tPveUpdateBullets(dt);
+  tPveProgress(dt);
+  tWriteAcc+=dt; if(tWriteAcc>=1/T_STATE_FPS){ tWriteAcc=0; tHostWriteState(); }
+}
+function tPveUpdatePlayer(f,input,dt){
+  if(f.dead){ f.respawnTimer-=dt; if(f.respawnTimer<=0 && tPve.teamLives>0) tRespawn(f); return; }
+  if(f.hitFlash>0)f.hitFlash-=dt; if(f.invincibleTimer>0)f.invincibleTimer-=dt;
+  let mx=0,my=0; if(input.up)my-=1; if(input.down)my+=1; if(input.left)mx-=1; if(input.right)mx+=1;
+  const ml=Math.hypot(mx,my); if(ml>0){mx/=ml;my/=ml; moveEntity(f,mx*f.moveSpeed*dt,my*f.moveSpeed*dt); f.facing=Math.atan2(my,mx);}
+  f.cooldown-=dt;
+  if(input.attack && f.cooldown<=0){ tFire(f); f.cooldown=GAME_CONFIG.playerAttackCooldown*getWeapon(f.weaponId).cooldownMul; }
+}
+function tHurtPlayer(f,dmg){
+  if(f.dead||f.invincibleTimer>0) return;
+  f.hp-=dmg; f.hitFlash=0.15;
+  if(f.hp<=0){ f.hp=0; f.dead=true; f.respawnTimer=4; tPve.teamLives=Math.max(0, tPve.teamLives-1); }
+}
+function tEnemyUpdate(e,dt){
+  if(e.dead) return;
+  const t=tNearestPlayer(e); if(!t) return;
+  const dx=t.x-e.x, dy=t.y-e.y, d=Math.hypot(dx,dy)||1;
+  e.facing=Math.atan2(dy,dx);
+  if(e.ranged){
+    let mvx=0,mvy=0;
+    if(d>e.range*0.75){ mvx=dx/d; mvy=dy/d; } else if(d<e.range*0.4){ mvx=-dx/d; mvy=-dy/d; }
+    if(mvx||mvy) moveEntity(e, mvx*e.speed*dt, mvy*e.speed*dt);
+    e.fireTimer-=dt;
+    if(d<e.range && e.fireTimer<=0 && hasLineOfSight(e.x,e.y,t.x,t.y)){ tEnemyFire(e); e.fireTimer=e.fireCd; }
+  } else {
+    moveEntity(e, dx/d*e.speed*dt, dy/d*e.speed*dt);
+    e.contactTimer-=dt;
+    if(d < e.r+t.r+4 && e.contactTimer<=0){ tHurtPlayer(t, e.dmg); e.contactTimer=e.contactCd; }
+  }
+}
+function tEnemyFire(e){
+  const a0=e.facing, n=e.threeWay?3:1, spread=deg2rad(26);
+  for(let i=0;i<n;i++){ let a=a0; if(n>1) a=a0-spread/2+spread*(i/(n-1));
+    const mz=e.r+6;
+    tBullets.push({ x:e.x+Math.cos(a)*mz, y:e.y+Math.sin(a)*mz, vx:Math.cos(a)*e.bulletSpeed, vy:Math.sin(a)*e.bulletSpeed,
+      r:e.isBoss?14:9, damage:e.dmg, team:"enemy", owner:e.id, color:"#ff8f6b", alive:true, traveled:0, maxRange:(e.range||400)+140 });
+  }
+}
+function tPveUpdateBullets(dt){
+  for(const b of tBullets){
+    if(!b.alive) continue;
+    const speed=Math.hypot(b.vx,b.vy), steps=Math.max(1,Math.ceil(speed*dt/(b.r*0.9)));
+    const sx=b.vx*dt/steps, sy=b.vy*dt/steps, sl=Math.hypot(sx,sy);
+    for(let s=0;s<steps&&b.alive;s++){
+      b.x+=sx; b.y+=sy; b.traveled+=sl;
+      if(b.x<ARENA.x||b.x>ARENA.x+ARENA.w||b.y<ARENA.y||b.y>ARENA.y+ARENA.h){ b.alive=false; break; }
+      let wall=false; for(const o of OBSTACLES){ if(circleRectOverlap(b.x,b.y,b.r,o)){ wall=true; break; } } if(wall){ b.alive=false; break; }
+      if(b.team==="pve"){
+        for(const id in tEnemies){ const e=tEnemies[id]; if(e.dead) continue;
+          if(dist(b.x,b.y,e.x,e.y)<b.r+e.r){ e.hp-=b.damage; if(e.hp<=0){ const k=tFighters[b.owner]; if(k) k.score+=e.score; delete tEnemies[id]; } b.alive=false; break; } }
+      } else {
+        for(const slot in tFighters){ const f=tFighters[slot]; if(f.dead||f.invincibleTimer>0) continue;
+          if(dist(b.x,b.y,f.x,f.y)<b.r+f.r){ tHurtPlayer(f, b.damage); b.alive=false; break; } }
+      }
+      if(!b.alive) break;
+      if(b.traveled>b.maxRange){ b.alive=false; break; }
+    }
+  }
+  tBullets=tBullets.filter(b=>b.alive);
+  if(tBullets.length>T_MAX_BULLETS) tBullets=tBullets.slice(tBullets.length-T_MAX_BULLETS);
+}
+function tPveProgress(dt){
+  if(tPve.status!=="playing") return;
+  if(tPve.teamLives<=0){ tPve.status="failed"; tPveEnd(); return; }
+  const alive=Object.keys(tEnemies).length;
+  if(tPve.phase==="wave"){
+    if(alive===0){
+      const stage=PVE_STAGES[tPve.stageIndex];
+      if(tPve.waveIndex < stage.waves.length-1){ tPve.phase="gap"; tPve.phaseTimer=2; }
+      else if(tPve.stageIndex < PVE_STAGES.length-1){ tPve.phase="stageclear"; tPve.phaseTimer=5; }
+      else { tPve.status="complete"; tPveEnd(); }
+    }
+  } else if(tPve.phase==="gap"){
+    tPve.phaseTimer-=dt; if(tPve.phaseTimer<=0){ tPve.waveIndex++; tPveStartWave(); }
+  } else if(tPve.phase==="stageclear"){
+    tPve.phaseTimer-=dt;
+    if(tPve.phaseTimer<=0){
+      tPve.stageIndex++; tPve.waveIndex=0;
+      const st=PVE_STAGES[tPve.stageIndex]; tMapId=st.mapId;
+      OBSTACLES=getMap(tMapId).obstacles; BUSHES=getMap(tMapId).bushes;
+      tPve.teamLives=st.teamLives; tBullets=[]; tEnemies={};
+      tPveReposition(); tPveStartWave();
+    }
+  }
+}
+function tPveReposition(){
+  const map=getMap(tMapId); let i=0;
+  for(const slot in tFighters){ const f=tFighters[slot]; const p=tSpawnPos(map.playerSpawn,i++); const sp=findClearSpawn(p.x,p.y,f.r);
+    f.x=sp.x; f.y=sp.y; f.dead=false; f.hp=f.maxHp; f.displayHp=f.maxHp; f.invincibleTimer=GAME_CONFIG.invincibleTime;
+    f.spawnX=map.playerSpawn.x; f.spawnY=map.playerSpawn.y; }
+}
+function tPveEnd(){
+  tHostWriteState();
+  OnlineManager.writeMetaStatus("ended", { winner:null, resultText:tPve.status });
+  tResultText=tPve.status;
+  gameState=STATE.ONLINE_OVER;
+}
+
+/* ---- PVE 렌더 ---- */
+function tPveGetDrawData(){
+  const out={ fighters:[], enemies:[], bullets:[], pve:null, waiting:false };
+  if(OnlineManager.role==="host"){
+    for(const s in tFighters){ const f=tFighters[s]; out.fighters.push({ x:f.x,y:f.y,facing:f.facing,hp:f.hp,maxHp:f.maxHp,dead:f.dead,inv:f.invincibleTimer>0,charId:f.char.id,team:"pve",slot:s,isMe:s===OnlineManager.mySlot }); }
+    for(const id in tEnemies){ const e=tEnemies[id]; out.enemies.push({ x:e.x,y:e.y,r:e.r,hp:e.hp,maxHp:e.maxHp,facing:e.facing,color:e.color,boss:e.isBoss,type:e.type }); }
+    out.bullets=tBullets.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.color }));
+    out.pve={ stageIndex:tPve.stageIndex, waveIndex:tPve.waveIndex, teamLives:tPve.teamLives, status:tPve.status, phase:tPve.phase, enemiesRemaining:Object.keys(tEnemies).length };
+  } else {
+    const st=OnlineManager.onlineState;
+    if(!st || !st.fighters){ out.waiting=true; return out; }
+    const myslot=OnlineManager.mySlot;
+    for(const s in st.fighters){ const p=st.fighters[s]; let rx=p.x,ry=p.y,rf=p.facing;
+      if(s===myslot && tPredict && !p.dead){ rx=tPredict.x; ry=tPredict.y; rf=tPredict.facing; }
+      else if(tRenderFighters[s] && !p.dead){ rx=tRenderFighters[s].x; ry=tRenderFighters[s].y; rf=tRenderFighters[s].facing; }
+      out.fighters.push({ x:rx,y:ry,facing:rf,hp:p.hp,maxHp:p.maxHp,dead:p.dead,inv:p.inv,charId:p.charId,team:"pve",slot:s,isMe:s===myslot }); }
+    const en=st.enemies||{}; for(const id in en){ const e=en[id]; if(e.dead) continue; out.enemies.push({ x:e.x,y:e.y,r:e.r,hp:e.hp,maxHp:e.maxHp,facing:e.facing,color:e.color,boss:e.boss,type:e.type }); }
+    out.bullets=tBulletsView.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.c }));
+    out.pve=st.pve||null;
+  }
+  return out;
+}
+function tDrawEnemy(e){
+  ctx.save(); ctx.translate(e.x,e.y);
+  ctx.fillStyle=e.color; ctx.beginPath();
+  for(let i=0;i<6;i++){ const a=Math.PI/6+i*Math.PI/3; const px=Math.cos(a)*e.r,py=Math.sin(a)*e.r; if(i===0)ctx.moveTo(px,py); else ctx.lineTo(px,py); }
+  ctx.closePath(); ctx.fill(); ctx.strokeStyle="#ffd0d8"; ctx.lineWidth=2; ctx.stroke();
+  ctx.save(); ctx.rotate(e.facing); ctx.fillStyle="#ff4d6d"; roundRect(2,-5,e.r-4,10,3); ctx.fill(); ctx.restore();
+  ctx.restore();
+  const w=Math.max(28,e.r*1.6),h=5,bx=e.x-w/2,by=e.y-e.r-12;
+  ctx.save(); ctx.fillStyle="rgba(0,0,0,0.5)"; roundRect(bx,by,w,h,3); ctx.fill();
+  ctx.fillStyle="#ff5a5a"; roundRect(bx,by,w*clamp(e.hp/(e.maxHp||1),0,1),h,3); ctx.fill(); ctx.restore();
+}
+function tPveRender(){
+  const data=tPveGetDrawData();
+  for(const b of data.bullets) drawOnlineBullet(b);
+  for(const e of data.enemies) tDrawEnemy(e);
+  for(const f of data.fighters) tDrawFighter(f);
+  drawEffects();
+  const pve=data.pve||{ stageIndex:0, waveIndex:0, teamLives:0, enemiesRemaining:0, status:"playing", phase:"wave" };
+  const stage=PVE_STAGES[pve.stageIndex]||PVE_STAGES[0];
+  ctx.save();
+  ctx.fillStyle="rgba(10,12,32,0.72)"; ctx.fillRect(0,0,LOGW,64); ctx.textBaseline="middle";
+  ctx.textAlign="left"; ctx.fillStyle="#9fe0ff"; ctx.font="bold 17px 'Malgun Gothic',sans-serif"; ctx.fillText(stage.name,24,24);
+  ctx.fillStyle="#aab4e0"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.fillText("웨이브 "+(pve.waveIndex+1)+"/"+stage.waves.length+" · 남은 적 "+pve.enemiesRemaining,24,46);
+  ctx.textAlign="right"; ctx.fillStyle="#ff8f8f"; ctx.font="bold 20px 'Malgun Gothic',sans-serif"; ctx.fillText("팀 라이프 ♥ "+pve.teamLives,LOGW-24,32);
+  ctx.fillStyle="rgba(10,12,32,0.72)"; ctx.fillRect(0,656,LOGW,64);
+  ctx.textAlign="center"; ctx.fillStyle="#aab4e0"; ctx.font="bold 15px 'Malgun Gothic',sans-serif"; ctx.fillText("방향키 이동 · Z 공격 · Esc 나가기   (최대 6인 협동 · 베타)",LOGW/2,688);
+  ctx.restore();
+  let boss=null; for(const e of data.enemies){ if(e.boss){ boss=e; break; } }
+  if(boss){ const bw=420,bh=16,bx=LOGW/2-bw/2,by=72;
+    ctx.save(); ctx.fillStyle="rgba(0,0,0,0.5)"; roundRect(bx,by,bw,bh,8); ctx.fill();
+    ctx.fillStyle="#ff4d6d"; roundRect(bx,by,bw*clamp(boss.hp/boss.maxHp,0,1),bh,8); ctx.fill();
+    ctx.strokeStyle="#ffd400"; ctx.lineWidth=2; roundRect(bx,by,bw,bh,8); ctx.stroke();
+    ctx.fillStyle="#fff"; ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("보스",LOGW/2,by+bh/2); ctx.restore(); }
+  if(data.waiting) drawCenterBanner("동기화 대기 중…","#9fe0ff");
+  else if(pve.status==="failed") drawCenterBanner("실패…","#ff7a7a");
+  else if(pve.status==="complete") drawCenterBanner("올 클리어! 🎉","#ffe066");
+  else if(pve.phase==="stageclear") drawCenterBanner("스테이지 클리어!","#ffe066");
+  else if(pve.phase==="gap") drawCenterBanner("다음 웨이브 준비…","#9fe0ff");
+}
+
+function tPveDrawOver(){
+  dimScreen(0.72);
+  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
+  let status=tResultText; if(!status && OnlineManager.onlineState && OnlineManager.onlineState.pve) status=OnlineManager.onlineState.pve.status;
+  const txt = status==="complete" ? "올 클리어! 🎉" : (status==="failed" ? "실패…" : "스테이지 클리어!");
+  const col = status==="failed" ? "#ff7a7a" : "#ffe066";
+  ctx.shadowColor=col; ctx.shadowBlur=30; ctx.fillStyle=col; ctx.font="bold 64px 'Malgun Gothic',sans-serif"; ctx.fillText(txt,LOGW/2,180); ctx.shadowBlur=0;
+  let reached=tPve.stageIndex+1; const st=(OnlineManager.onlineState&&OnlineManager.onlineState.pve)?OnlineManager.onlineState.pve:null; if(st) reached=st.stageIndex+1;
+  ctx.fillStyle="#fff"; ctx.font="bold 24px 'Malgun Gothic',sans-serif"; ctx.fillText("도달 스테이지: "+reached+" / "+PVE_STAGES.length,LOGW/2,250);
   ctx.fillStyle="#aab4e0"; ctx.font="17px 'Malgun Gothic',sans-serif"; ctx.fillText("온라인 베타는 골드 보상이 없어요.",LOGW/2,300);
   ctx.fillStyle="#ffe066"; ctx.font="18px 'Malgun Gothic',sans-serif"; ctx.fillText("Enter / Esc 로 시작 화면으로",LOGW/2,360);
   ctx.restore();
