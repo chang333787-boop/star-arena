@@ -1720,6 +1720,7 @@ let onlineLobbyMsg = "";
 let onlineRender = { host:null, guest:null };
 let onlineBulletsView = [];
 let onlineLastStateRef = null;
+let onlinePredict = null;   // 참가자 본인 캐릭터의 로컬 예측 위치(즉시 반응)
 function lerpAngle(a,b,t){ let d=b-a; while(d>Math.PI)d-=Math.PI*2; while(d<-Math.PI)d+=Math.PI*2; return a+d*t; }
 
 function openOnlineMenu(){
@@ -1801,7 +1802,7 @@ function resetOnlineMatchFromRoom(){
                           characterId:meta.characterGuest||"lumi", weaponId:meta.weaponGuest||"star_blaster" });
   onlineBullets=[]; onlineTimeLeft=GAME_CONFIG.gameTime; onlineWinner=null;
   onlineWriteAcc=0; onlineInputAcc=0; onlineLastInputStr="";
-  onlineRender={ host:null, guest:null }; onlineBulletsView=[]; onlineLastStateRef=null;
+  onlineRender={ host:null, guest:null }; onlineBulletsView=[]; onlineLastStateRef=null; onlinePredict=null;
 }
 function makeOnlineFighter(slot, d){
   const ch=getCharacter(d.characterId);
@@ -1863,15 +1864,34 @@ function updateOnlineGuest(dt){
   }
   // 스냅샷 사이에는 탄환을 속도로 외삽해 부드럽게 진행
   for(const b of onlineBulletsView){ b.x+=b.vx*dt; b.y+=b.vy*dt; }
-  // 두 캐릭터 위치/방향을 받은 값 쪽으로 부드럽게 보간(빠릿하게)
-  const k=Math.min(1, dt*22);
-  for(const slot of ["host","guest"]){
-    const p=s[slot]; if(!p) continue;
-    if(!onlineRender[slot] || p.dead) onlineRender[slot]={ x:p.x, y:p.y, facing:p.facing||0 };
+  const ownSlot = (OnlineManager.role==="host") ? "host" : "guest";
+  const oppSlot = (ownSlot==="host") ? "guest" : "host";
+
+  // 상대 캐릭터: 받은 위치 사이를 부드럽게 보간
+  const op=s[oppSlot];
+  if(op){
+    const k=Math.min(1, dt*22);
+    if(!onlineRender[oppSlot] || op.dead) onlineRender[oppSlot]={ x:op.x, y:op.y, facing:op.facing||0 };
     else {
-      onlineRender[slot].x += (p.x-onlineRender[slot].x)*k;
-      onlineRender[slot].y += (p.y-onlineRender[slot].y)*k;
-      onlineRender[slot].facing = lerpAngle(onlineRender[slot].facing, p.facing||0, k);
+      onlineRender[oppSlot].x += (op.x-onlineRender[oppSlot].x)*k;
+      onlineRender[oppSlot].y += (op.y-onlineRender[oppSlot].y)*k;
+      onlineRender[oppSlot].facing = lerpAngle(onlineRender[oppSlot].facing, op.facing||0, k);
+    }
+  }
+
+  // 내 캐릭터: 로컬 입력으로 "정확한 속도"로 즉시 이동(예측). 평소엔 보정하지 않아 빨라지지 않음.
+  // 차이가 크게 벌어질 때(넉백/리스폰/랙)에만 한 번 권한값으로 맞춘다.
+  const mine=s[ownSlot];
+  if(mine){
+    if(!onlinePredict || mine.dead){
+      const ch=getCharacter(mine.charId);
+      onlinePredict={ x:mine.x, y:mine.y, facing:mine.facing||0, r:22, moveSpeed:GAME_CONFIG.playerMoveSpeed*ch.speedMul };
+    } else {
+      const inp=readLocalInput();
+      let mx=0,my=0; if(inp.up)my-=1; if(inp.down)my+=1; if(inp.left)mx-=1; if(inp.right)mx+=1;
+      const ml=Math.hypot(mx,my);
+      if(ml>0){ mx/=ml; my/=ml; moveEntity(onlinePredict, mx*onlinePredict.moveSpeed*dt, my*onlinePredict.moveSpeed*dt); onlinePredict.facing=Math.atan2(my,mx); }
+      if(Math.hypot(mine.x-onlinePredict.x, mine.y-onlinePredict.y) > 70){ onlinePredict.x=mine.x; onlinePredict.y=mine.y; } // 큰 차이만 스냅(연속 보정 X → 가속 없음)
     }
   }
 }
@@ -1974,10 +1994,15 @@ function getOnlineDrawData(){
   } else {
     const s=OnlineManager.onlineState;
     if(!s) return { timeLeft:GAME_CONFIG.gameTime, host:null, guest:null, bullets:[], waiting:true };
-    // 위치/방향은 보간된 onlineRender 값을 사용(부드럽게), 체력/점수 등은 권한값 그대로
-    const conv=(p,slot)=>{ if(!p) return null; const r=onlineRender[slot]||p;
+    // 상대는 보간값, 내 캐릭터는 예측값으로 그린다(즉시 반응). 체력/점수 등은 권한값 그대로.
+    const ownSlot=(OnlineManager.role==="host")?"host":"guest";
+    const mkOpp=(p,slot)=>{ if(!p) return null; const r=onlineRender[slot]||p;
       return { x:r.x, y:r.y, facing:r.facing, hp:p.hp, maxHp:p.maxHp, dead:p.dead, inv:p.inv, charId:p.charId, score:p.score }; };
-    return { timeLeft:s.timeLeft, host:conv(s.host,"host"), guest:conv(s.guest,"guest"), bullets:onlineBulletsView.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.c })) };
+    const mkOwn=(p)=>{ if(!p) return null; const r=(onlinePredict&&!p.dead)?onlinePredict:p;
+      return { x:r.x, y:r.y, facing:r.facing, hp:p.hp, maxHp:p.maxHp, dead:p.dead, inv:p.inv, charId:p.charId, score:p.score }; };
+    const host = (ownSlot==="host") ? mkOwn(s.host) : mkOpp(s.host,"host");
+    const guest = (ownSlot==="guest") ? mkOwn(s.guest) : mkOpp(s.guest,"guest");
+    return { timeLeft:s.timeLeft, host:host, guest:guest, bullets:onlineBulletsView.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.c })) };
   }
 }
 function drawOnlineBullet(b){
