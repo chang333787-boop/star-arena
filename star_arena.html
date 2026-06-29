@@ -366,15 +366,7 @@ function unlockWeapon(id){ if(profile.unlockedWeapons.indexOf(id) < 0) profile.u
      appId: "여기에 입력"
    };
 */
-const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyCV_u6yKdGInPuCJanK4bzBfnLJuvIbyX4",
-  authDomain: "class-rpg-6f409.firebaseapp.com",
-  databaseURL: "https://class-rpg-6f409-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "class-rpg-6f409",
-  storageBucket: "class-rpg-6f409.firebasestorage.app",
-  messagingSenderId: "408824743154",
-  appId: "1:408824743154:web:382fdd431f7e2dbce13c6b"
-};
+const FIREBASE_CONFIG = null;  // 새 전용 Firebase 프로젝트 설정을 받으면 여기에 넣습니다.
 
 // Firebase compat CDN (설정이 있을 때만 동적으로 불러온다 — 오프라인이면 아예 로드 안 함)
 const FB_SDK_URLS = [

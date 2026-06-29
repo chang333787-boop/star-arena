@@ -52,10 +52,10 @@
 친구와 인터넷으로 1대1 대결을 할 수 있습니다. Firebase 설정이 있어야 켜지고,
 설정이 없으면 자동으로 꺼져 로컬(컴퓨터 AI) 모드만 정상 작동합니다.
 
-> **현재 상태:** `index.html`의 `FIREBASE_CONFIG`가 **class-rpg(`class-rpg-6f409`) 프로젝트로 설정되어 있습니다.**
-> 온라인이 실제로 동작하려면 그 Firebase 콘솔에서 ① **Authentication → 익명(Anonymous) 로그인 사용**,
-> ② **Realtime Database 규칙**에 아래 `starArenaOnline` 규칙 추가, ③ **Authentication → 설정 → 승인된 도메인**에
-> `chang333787-boop.github.io` 추가가 되어 있어야 합니다. (셋 다 콘솔에서 직접 설정)
+> **현재 상태:** `FIREBASE_CONFIG = null` (온라인 비활성, 로컬 게임만 동작).
+> 온라인을 켜려면 **별빛 아레나 전용 Firebase 프로젝트**를 새로 만들어 설정값을 `index.html`의 `FIREBASE_CONFIG`에 넣고,
+> 그 콘솔에서 ① **Authentication → 익명(Anonymous) 로그인 사용**, ② **Realtime Database 규칙**에 아래 `starArenaOnline` 규칙 적용,
+> ③ **Authentication → 설정 → 승인된 도메인**에 `chang333787-boop.github.io` 추가를 해야 합니다.
 
 플레이 방법(설정을 넣은 뒤):
 1. 시작 화면에서 **O** 키 → 온라인 메뉴
