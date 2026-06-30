@@ -2806,19 +2806,26 @@ function tRespawn(f){
 }
 
 function tPackFighter(f){
-  return { x:Math.round(f.x), y:Math.round(f.y), hp:Math.round(f.hp), maxHp:Math.round(f.maxHp),
-    facing:Math.round(f.facing*100)/100, score:f.score, dead:!!f.dead, inv:f.invincibleTimer>0,
-    charId:f.char.id, team:f.team, slot:f.slot };
+  // 매 틱 전송 최소화: 변하는 값만 보낸다.
+  // 정적인 값(charId/team/slot/maxHp)은 players 로스터로 게스트가 역산한다(렉 최적화).
+  return { x:Math.round(f.x), y:Math.round(f.y), hp:Math.round(f.hp),
+    facing:Math.round(f.facing*100)/100, dead:!!f.dead, inv:f.invincibleTimer>0 };
 }
+// 게스트가 정적 정보를 로스터(OnlineManager.players)에서 역산하는 도우미
+function tRosterCharId(slot){ const p=OnlineManager.players&&OnlineManager.players[slot]; return (p&&p.characterId)||"student_01"; }
+function tRosterTeam(slot){ const p=OnlineManager.players&&OnlineManager.players[slot]; return (p&&p.team)||"blue"; }
+function tRosterMaxHp(slot){ return GAME_CONFIG.playerMaxHp*getCharacter(tRosterCharId(slot)).hpMul; }
+function getEnemyDef(type){ return PVE_ENEMY_TYPES[type]||PVE_ENEMY_TYPES.grunt; }
 function tHostWriteState(){
   const fighters={};
   for(const slot in tFighters) fighters[slot]=tPackFighter(tFighters[slot]);
   const bl=[];
-  for(const b of tBullets) bl.push({ x:Math.round(b.x), y:Math.round(b.y), r:Math.round(b.r), o:b.owner, c:b.color, vx:Math.round(b.vx), vy:Math.round(b.vy), team:b.team });
+  // 게스트 렌더에 필요한 것만(x,y,r,c,vx,vy). owner/team은 게스트가 안 써서 제외(렉 최적화).
+  for(const b of tBullets) bl.push({ x:Math.round(b.x), y:Math.round(b.y), r:Math.round(b.r), c:b.color, vx:Math.round(b.vx), vy:Math.round(b.vy) });
   const st={ timeLeft:Math.max(0,Math.round(tTimeLeft)), teamScores:tTeamScores, fighters:fighters, bullets:bl };
-  // PVE면 적/스테이지 정보도 함께 보낸다
+  // PVE면 적/스테이지 정보도 함께 보낸다. color/r/boss는 type으로 게스트가 역산(전송 제외).
   if(getOnlineMode(OnlineManager.mode).modeType==="pve"){
-    const en={}; for(const id in tEnemies){ const e=tEnemies[id]; en[id]={ x:Math.round(e.x), y:Math.round(e.y), r:e.r, hp:Math.round(e.hp), maxHp:Math.round(e.maxHp), facing:Math.round(e.facing*100)/100, type:e.type, color:e.color, dead:!!e.dead, boss:!!e.isBoss }; }
+    const en={}; for(const id in tEnemies){ const e=tEnemies[id]; en[id]={ x:Math.round(e.x), y:Math.round(e.y), hp:Math.round(e.hp), maxHp:Math.round(e.maxHp), facing:Math.round(e.facing*100)/100, type:e.type, dead:!!e.dead }; }
     st.enemies=en;
     st.pve={ stageIndex:tPve.stageIndex, waveIndex:tPve.waveIndex, teamLives:tPve.teamLives, status:tPve.status, phase:tPve.phase, enemiesRemaining:Object.keys(tEnemies).length, mapId:tMapId };
   }
@@ -2853,13 +2860,13 @@ function tUpdateGuest(dt){
   const s=OnlineManager.onlineState; if(!s || !s.fighters) return;
   // PVE: host가 보낸 현재 스테이지 맵으로 장애물/풀숲을 맞춘다(보이는 벽=실제 충돌)
   if(s.pve && s.pve.mapId && s.pve.mapId!==tMapId){ tMapId=s.pve.mapId; const m=getMap(tMapId); OBSTACLES=m.obstacles; BUSHES=m.bushes; }
-  if(s!==tLastStateRef){ tLastStateRef=s; tBulletsView=(s.bullets||[]).map(b=>({ x:b.x,y:b.y,vx:b.vx||0,vy:b.vy||0,r:b.r,c:b.c,o:b.o })); }
+  if(s!==tLastStateRef){ tLastStateRef=s; tBulletsView=(s.bullets||[]).map(b=>({ x:b.x,y:b.y,vx:b.vx||0,vy:b.vy||0,r:b.r,c:b.c })); }
   for(const b of tBulletsView){ b.x+=b.vx*dt; b.y+=b.vy*dt; }
   const myslot=OnlineManager.mySlot, k=Math.min(1,dt*18);
   for(const slot in s.fighters){
     const p=s.fighters[slot];
     if(slot===myslot){
-      if(!tPredict || p.dead){ const ch=getCharacter(p.charId); tPredict={ x:p.x,y:p.y,facing:p.facing||0,r:22,moveSpeed:GAME_CONFIG.playerMoveSpeed*ch.speedMul }; }
+      if(!tPredict || p.dead){ const ch=getCharacter(p.charId||tRosterCharId(slot)); tPredict={ x:p.x,y:p.y,facing:p.facing||0,r:22,moveSpeed:GAME_CONFIG.playerMoveSpeed*ch.speedMul }; }
       else { const inp=readLocalInput(); let mx=0,my=0; if(inp.up)my-=1; if(inp.down)my+=1; if(inp.left)mx-=1; if(inp.right)mx+=1; const ml=Math.hypot(mx,my);
         if(ml>0){ mx/=ml; my/=ml; moveEntity(tPredict, mx*tPredict.moveSpeed*dt, my*tPredict.moveSpeed*dt); tPredict.facing=Math.atan2(my,mx); }
         if(Math.hypot(p.x-tPredict.x,p.y-tPredict.y)>70){ tPredict.x=p.x; tPredict.y=p.y; } }
@@ -2885,7 +2892,7 @@ function tGetDrawData(){
     for(const slot in s.fighters){ const p=s.fighters[slot]; let rx=p.x,ry=p.y,rf=p.facing;
       if(slot===myslot && tPredict && !p.dead){ rx=tPredict.x; ry=tPredict.y; rf=tPredict.facing; }
       else if(tRenderFighters[slot] && !p.dead){ rx=tRenderFighters[slot].x; ry=tRenderFighters[slot].y; rf=tRenderFighters[slot].facing; }
-      out.fighters.push({ x:rx,y:ry,facing:rf,hp:p.hp,maxHp:p.maxHp,dead:p.dead,inv:p.inv,charId:p.charId,team:p.team,slot:slot,isMe:slot===myslot }); }
+      out.fighters.push({ x:rx,y:ry,facing:rf,hp:p.hp,maxHp:p.maxHp||tRosterMaxHp(slot),dead:p.dead,inv:p.inv,charId:p.charId||tRosterCharId(slot),team:p.team||tRosterTeam(slot),slot:slot,isMe:slot===myslot }); }
     out.bullets=tBulletsView.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.c }));
     out.teamScores=s.teamScores||{blue:0,red:0}; out.timeLeft=s.timeLeft;
   }
@@ -3171,8 +3178,9 @@ function tPveGetDrawData(){
     for(const s in st.fighters){ const p=st.fighters[s]; let rx=p.x,ry=p.y,rf=p.facing;
       if(s===myslot && tPredict && !p.dead){ rx=tPredict.x; ry=tPredict.y; rf=tPredict.facing; }
       else if(tRenderFighters[s] && !p.dead){ rx=tRenderFighters[s].x; ry=tRenderFighters[s].y; rf=tRenderFighters[s].facing; }
-      out.fighters.push({ x:rx,y:ry,facing:rf,hp:p.hp,maxHp:p.maxHp,dead:p.dead,inv:p.inv,charId:p.charId,team:"pve",slot:s,isMe:s===myslot }); }
-    const en=st.enemies||{}; for(const id in en){ const e=en[id]; if(e.dead) continue; out.enemies.push({ x:e.x,y:e.y,r:e.r,hp:e.hp,maxHp:e.maxHp,facing:e.facing,color:e.color,boss:e.boss,type:e.type }); }
+      out.fighters.push({ x:rx,y:ry,facing:rf,hp:p.hp,maxHp:p.maxHp||tRosterMaxHp(s),dead:p.dead,inv:p.inv,charId:p.charId||tRosterCharId(s),team:"pve",slot:s,isMe:s===myslot }); }
+    const en=st.enemies||{}; for(const id in en){ const e=en[id]; if(e.dead) continue; const def=getEnemyDef(e.type);
+      out.enemies.push({ x:e.x,y:e.y,r:e.r||def.r,hp:e.hp,maxHp:e.maxHp,facing:e.facing,color:e.color||def.color,boss:(e.boss!==undefined?e.boss:(e.type==="boss"||e.type==="miniBoss")),type:e.type }); }
     out.bullets=tBulletsView.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.c }));
     out.pve=st.pve||null;
   }
