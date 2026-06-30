@@ -27,7 +27,7 @@ FRAMES = ["idle","move","attack","hit","return"]
 # ── 그리드 비율(0~1). 어긋나면 여기를 조정 후 재실행 ──
 # 02_basic_motion_master.png(1672x941): 6행(캐릭터) x 5열(대기/이동/공격/피격/리턴)
 MOTION = dict(top=0.142, left=0.145, right=0.999, bottom=0.996, rows=6, cols=5,
-              attack_w=0.62)   # 공격 칸은 발사체 꼬리를 빼려고 왼쪽 일부만 사용
+              attack_w=0.78)   # 공격 칸: 무기+근접 궤적 포함(바깥 궤적은 feather로 페이드)
 # 01_fixed_character_weapon_master.png(1491x1055): 마지막 열이 무기 아이콘(아래 이름 글자는 제외)
 MASTER = dict(top=0.07, bottom=0.999, rows=6, icon_x0=0.80, icon_x1=1.0, icon_h=0.64)
 
@@ -59,6 +59,20 @@ def cell(im, x0,y0,x1,y1, ixl=0.09, ixr=0.09, iy=0.05):
     wl=(x1-x0)*ixl; wr=(x1-x0)*ixr; ih=(y1-y0)*iy
     box=(int((x0+wl)*W), int((y0+ih)*H), int((x1-wr)*W), int((y1-ih)*H))
     return autocrop(remove_bg(im.crop(box)))
+
+def feather_right(im, frac=0.26):
+    """오른쪽 끝 일정 구간의 알파를 점점 0으로(발사체 궤적이 직선으로 잘리지 않고 부드럽게 사라지게)."""
+    im=im.convert("RGBA"); W,H=im.size
+    a=im.getchannel("A"); pa=a.load()
+    start=int(W*(1-frac)); span=max(1, W-start)
+    for x in range(start,W):
+        f=(W-x)/span
+        if f<0: f=0.0
+        for y in range(H):
+            v=pa[x,y]
+            if v: pa[x,y]=int(v*f)
+    im.putalpha(a)
+    return im
 
 def center_h(im):
     """알파(불투명) 무게중심을 기준으로 좌우 패딩해 캐릭터를 가로 중앙에 둔다(프레임 전환 시 흔들림 방지)."""
@@ -93,8 +107,9 @@ else:
             x0=g["left"]+ci*cw; y0=g["top"]+ri*rh
             x1=x0+cw
             if fr=="attack":
-                x1=x0+cw*g["attack_w"]                 # 공격: 발사체 꼬리 제외(왼쪽 일부만)
+                x1=x0+cw*g["attack_w"]                 # 공격: 발사체 꼬리 일부 포함
                 img=cell(motion, x0,y0, x1, y0+rh, ixl=0.06, ixr=0.0)  # 무기 쪽(오른쪽)은 안 자름
+                img=feather_right(img, 0.26)           # 오른쪽 궤적을 부드럽게 페이드(직선 컷 방지)
             else:
                 img=cell(motion, x0,y0, x1, y0+rh, ixl=0.08, ixr=0.135)  # 오른쪽을 더 잘라 옆칸 캐릭터 침범 방지
             img=center_h(img)   # 캐릭터를 가로 중앙 정렬(렌더가 중앙 기준이라 위치 흔들림 방지)
