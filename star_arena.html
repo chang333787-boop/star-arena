@@ -444,10 +444,12 @@ function drawCharacterSprite(charId, r, facing, opts){
   let img=getCharImage(ch.assetId, frameKeyFor(opts));
   if(!img) img=getCharImage(ch.assetId, "idle");   // 요청 프레임 없으면 idle로
   if(!img) return false;
-  const sz=r*2.4;
-  // 왼쪽을 바라보면 좌우 반전(공격 방향이 자연스럽게 보이도록). 원본 디자인은 그대로 사용.
+  // 키(높이) 기준으로 그려 비율을 유지 → 프레임마다 크기가 일정(이동 시 갑자기 작아지지 않음).
+  const iw=img.naturalWidth||img.width||1, ih=img.naturalHeight||img.height||1;
+  const dh=r*2.8, dw=dh*(iw/ih);   // 높이 고정, 가로는 원본 비율대로(옆 효과는 옆으로 뻗음)
+  // 왼쪽을 바라보면 좌우 반전(공격 방향이 자연스럽게). 원본 디자인은 그대로.
   const flip = (facing!=null) && (Math.cos(facing) < 0);
-  ctx.save(); if(flip) ctx.scale(-1,1); ctx.drawImage(img, -sz/2, -sz/2, sz, sz); ctx.restore();
+  ctx.save(); if(flip) ctx.scale(-1,1); ctx.drawImage(img, -dw/2, -dh*0.55, dw, dh); ctx.restore();
   return true;
 }
 // 렌더 위치 변화로 "이동 중" 추정(walk/idle 모션 선택용). ASSETS_ENABLED=false 면 호출되지 않음.

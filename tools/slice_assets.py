@@ -60,6 +60,22 @@ def cell(im, x0,y0,x1,y1, ixl=0.09, ixr=0.09, iy=0.05):
     box=(int((x0+wl)*W), int((y0+ih)*H), int((x1-wr)*W), int((y1-ih)*H))
     return autocrop(remove_bg(im.crop(box)))
 
+def center_h(im):
+    """알파(불투명) 무게중심을 기준으로 좌우 패딩해 캐릭터를 가로 중앙에 둔다(프레임 전환 시 흔들림 방지)."""
+    im=im.convert("RGBA"); W,H=im.size
+    a=im.split()[3].load()
+    sx=0.0; tot=0.0
+    for x in range(W):
+        col=0
+        for y in range(H): col+=a[x,y]
+        sx+=col*x; tot+=col
+    if tot<=0: return im
+    cx=sx/tot
+    newW=int(2*max(cx, W-cx))+2
+    out=Image.new("RGBA",(newW,H),(0,0,0,0))
+    out.paste(im, (int(round(newW/2-cx)),0))
+    return out
+
 def save(im, path):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     im.save(path); print("  +", os.path.relpath(path, ROOT))
@@ -81,6 +97,7 @@ else:
                 img=cell(motion, x0,y0, x1, y0+rh, ixl=0.06, ixr=0.0)  # 무기 쪽(오른쪽)은 안 자름
             else:
                 img=cell(motion, x0,y0, x1, y0+rh, ixl=0.08, ixr=0.135)  # 오른쪽을 더 잘라 옆칸 캐릭터 침범 방지
+            img=center_h(img)   # 캐릭터를 가로 중앙 정렬(렌더가 중앙 기준이라 위치 흔들림 방지)
             save(img, os.path.join(ROOT,"assets","characters",cid,fr+".png")); made+=1
 
 # 2) 무기 아이콘 (이미지 1 마지막 열)
