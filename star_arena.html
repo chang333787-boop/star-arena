@@ -590,54 +590,125 @@ function mergeProfile(saved){
   return p;
 }
 
+// 게스트(미로그인) 임시 프로필 로드 — 화면이 null로 깨지지 않게 하는 기본값. 실제 플레이는 로그인 후.
 function loadProfile(){
   let saved = null;
-  try {
-    const raw = window.localStorage.getItem(PROFILE_KEY);
-    if(raw) saved = JSON.parse(raw);
-  } catch(e){
-    saved = null; // 저장값이 깨졌으면 기본 프로필로 복구
-  }
+  try { const raw = window.localStorage.getItem(PROFILE_KEY); if(raw) saved = JSON.parse(raw); } catch(e){ saved = null; }
   profile = mergeProfile(saved);
 }
-
+// 저장: 로그인한 학생이면 그 계정에 저장, 아니면(게스트) 기존 localStorage 프로필에 저장
 function saveProfile(){
   profile.lastUpdated = Date.now();
-  try {
-    window.localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
-  } catch(e){ /* 저장 실패해도 게임은 계속 진행 */ }
-  OnlineManager.saveCloudProfile(profile); // Firebase가 있으면 시도(없으면 조용히 무시)
+  if(currentStudentId && accounts && accounts.students && accounts.students[currentStudentId]){
+    const a=accounts.students[currentStudentId];
+    a.gold=profile.gold; a.wins=profile.wins; a.losses=profile.losses; a.draws=profile.draws;
+    a.totalPlays=profile.totalPlays; a.totalKills=profile.totalKills; a.bossKills=profile.bossKills;
+    a.selectedCharacterId=profile.selectedCharacterId; a.selectedWeaponId=profile.selectedWeaponId;
+    a.selectedDifficultyId=profile.selectedDifficultyId; a.selectedMapId=profile.selectedMapId; a.selectedModeId=profile.selectedModeId;
+    a.unlockedCharacters=profile.unlockedCharacters; a.unlockedWeapons=profile.unlockedWeapons;
+    a.level=profile.level||a.level||1; a.exp=profile.exp||a.exp||0; a.lastUpdated=profile.lastUpdated;
+    saveAccounts();
+  } else {
+    try { window.localStorage.setItem(PROFILE_KEY, JSON.stringify(profile)); } catch(e){}
+  }
 }
 
-/* ── 수업용 간단 계정(학급 명단) ── 보안 기능이 아님. profile과 별도 저장이라 기존 데이터 안전.
-   운영자 PIN(1234)은 보안용이 아니라 수업 편의용. 개인정보 저장 안 함(별명만). ── */
-const CLASS_KEY = "starArena.class.v1";
-const ADMIN_PIN = "1234";
-let CLASS_ROSTER = null;   // [{name, charId, weaponId} x6]
-function defaultRoster(){
-  const r=[]; for(let i=0;i<6;i++){ const c=STUDENT_CHARACTERS[i], w=STUDENT_WEAPONS[i];
-    r.push({ name:"학생"+(i+1), charId:c?c.id:"student_01", weaponId:(c&&c.defaultWeaponId)||(w?w.id:"tool_01") }); }
-  return r;
+/* ============================================================
+   수업용 학생 계정 시스템 (교사가 ID/PIN 발급)
+   ⚠ 진짜 보안이 아니라 "수업용 간이 보호"입니다.
+   - PIN은 원문 대신 간단 해시로 저장하지만, 단일 HTML이라 코드/저장소를 보면 우회 가능.
+   - 실제 보안이 필요하면 Firebase Auth + 보안 규칙을 써야 합니다(README 참고).
+   - Firebase 설정이 없으면 같은 기기 localStorage에만 저장됩니다.
+   ============================================================ */
+const ACCOUNTS_KEY = "starArena.accounts.v1";
+const SESSION_KEY  = "starArena.session.v1";
+// ★ STUDENT_EDIT(교사): 교사용 로그인 PIN/학급 코드 — 수업용 간이값(보안 아님)
+const ADMIN_CONFIG = { adminPin:"1234", classCode:"star-class" };
+const ADMIN_PIN = ADMIN_CONFIG.adminPin;  // 하위호환
+
+let accounts = null;          // { classCode, students:{ [id]: account } }
+let currentStudentId = null;  // 로그인한 학생 id
+let session = null;           // { role, studentId, name, loginAt }
+
+// 간이 해시(cyrb53류) — 동기/결정적. 암호학적 보안 아님(수업용).
+function hashPin(id, pin){
+  const s = (id||"")+":"+(pin||"")+":"+ADMIN_CONFIG.classCode+":starArena";
+  let h1=0xdeadbeef, h2=0x41c6ce57;
+  for(let i=0;i<s.length;i++){ const c=s.charCodeAt(i); h1=Math.imul(h1^c,2654435761); h2=Math.imul(h2^c,1597334677); }
+  h1=Math.imul(h1^(h1>>>16),2246822507); h1^=Math.imul(h2^(h2>>>13),3266489909);
+  h2=Math.imul(h2^(h2>>>16),2246822507); h2^=Math.imul(h1^(h1>>>13),3266489909);
+  return (h2>>>0).toString(16).padStart(8,"0")+(h1>>>0).toString(16).padStart(8,"0");
 }
-function loadClassRoster(){
-  let saved=null; try{ const raw=window.localStorage.getItem(CLASS_KEY); if(raw) saved=JSON.parse(raw); }catch(e){ saved=null; }
-  const def=defaultRoster();
-  if(Array.isArray(saved)){ for(let i=0;i<6;i++){ if(saved[i]&&typeof saved[i]==="object"){
-    def[i].name=(""+(saved[i].name||def[i].name)).slice(0,10);
-    if(getCharacter(saved[i].charId).id===saved[i].charId) def[i].charId=saved[i].charId;
-    if(getWeapon(saved[i].weaponId).id===saved[i].weaponId) def[i].weaponId=saved[i].weaponId;
-  } } }
-  CLASS_ROSTER=def;
+function nowTs(){ return Date.now(); }
+function loadAccounts(){
+  let saved=null; try{ const raw=window.localStorage.getItem(ACCOUNTS_KEY); if(raw) saved=JSON.parse(raw); }catch(e){ saved=null; }
+  if(saved && typeof saved==="object" && saved.students) accounts=saved;
+  else accounts={ classCode:ADMIN_CONFIG.classCode, students:{} };
+  if(!accounts.students) accounts.students={};
 }
-function saveClassRoster(){ try{ window.localStorage.setItem(CLASS_KEY, JSON.stringify(CLASS_ROSTER)); }catch(e){} }
-// 학생 계정 선택 → 현재 프로필에 별명/선택 캐릭터·도구 적용(해금돼 있으면 선택까지)
-function applyAccount(i){
-  const a=CLASS_ROSTER[i]; if(!a) return;
-  profile.nickname=a.name;
-  if(profile.unlockedCharacters.indexOf(a.charId)>=0){ profile.selectedCharacterId=a.charId; selectedCharacterId=a.charId; }
-  if(profile.unlockedWeapons.indexOf(a.weaponId)>=0){ profile.selectedWeaponId=a.weaponId; selectedWeaponId=a.weaponId; }
-  saveProfile();
+function saveAccounts(){ try{ window.localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts)); }catch(e){} }
+function loadSession(){ try{ const raw=window.localStorage.getItem(SESSION_KEY); session=raw?JSON.parse(raw):null; }catch(e){ session=null; } }
+function saveSession(){ try{ if(session) window.localStorage.setItem(SESSION_KEY, JSON.stringify(session)); else window.localStorage.removeItem(SESSION_KEY); }catch(e){} }
+// 신규 학생 계정(Lv.1, 골드0, 게임 기본 해금 로스터)
+function newAccount(id, name, pin){
+  return { id:id, name:name, pinHash:hashPin(id,pin), level:1, exp:0, gold:0,
+    wins:0, losses:0, draws:0, totalPlays:0, totalKills:0, bossKills:0,
+    selectedCharacterId:DEFAULT_UNLOCKED_CHARACTERS[0]||"student_01", selectedWeaponId:DEFAULT_UNLOCKED_WEAPONS[0]||"tool_01",
+    selectedDifficultyId:"normal", selectedMapId:"training", selectedModeId:"solo",
+    unlockedCharacters:DEFAULT_UNLOCKED_CHARACTERS.slice(), unlockedWeapons:DEFAULT_UNLOCKED_WEAPONS.slice(),
+    createdAt:nowTs(), lastLoginAt:0, isActive:true };
 }
+// 계정 → 게임 프로필(같은 모양 + 표시 이름/레벨)
+function accountToProfile(a){
+  const p=mergeProfile(a);   // gold/unlocked/selected 등 채움
+  p.nickname=a.name; p.id=a.id; p.level=a.level||1; p.exp=a.exp||0;
+  return p;
+}
+function bindStudent(id){
+  const a=accounts.students[id]; if(!a) return false;
+  currentStudentId=id; profile=accountToProfile(a);
+  a.lastLoginAt=nowTs(); saveAccounts();
+  applyProfileSelections();
+  return true;
+}
+// ── 학생/관리자 인증 ──
+function studentLogin(id, pin){
+  if(!accounts) loadAccounts();
+  id=(""+id).trim(); const a=accounts.students[id];
+  if(!a || a.isActive===false) return { ok:false, msg:"계정이 없어요" };
+  if(a.pinHash!==hashPin(id,pin)) return { ok:false, msg:"비밀번호(PIN)가 올라요" };
+  bindStudent(id);
+  session={ role:"student", studentId:id, name:a.name, loginAt:nowTs() }; saveSession();
+  return { ok:true };
+}
+function adminLogin(pin){
+  if((""+pin)===ADMIN_CONFIG.adminPin){ session={ role:"admin", loginAt:nowTs() }; saveSession(); return true; }
+  return false;
+}
+function logout(){
+  currentStudentId=null; session=null; saveSession();
+  loadProfile();                    // 게스트 기본값(화면 안 깨지게)
+  applyProfileSelections();
+}
+// ── 관리자: 계정 생성/관리 ──
+function createStudent(id, name, pin){
+  if(!accounts) loadAccounts();
+  id=(""+id).trim(); name=(""+name).trim(); pin=(""+pin).trim();
+  if(id.length<2||id.length>12) return { ok:false, msg:"ID는 2~12자" };
+  if(accounts.students[id]) return { ok:false, msg:"이미 있는 ID" };
+  if(name.length<2||name.length>10) return { ok:false, msg:"이름은 2~10자" };
+  if(pin.length<4||pin.length>8) return { ok:false, msg:"PIN은 4~8자리" };
+  accounts.students[id]=newAccount(id,name,pin); saveAccounts();
+  return { ok:true };
+}
+function setStudentPin(id, pin){ const a=accounts.students[id]; if(!a) return false; a.pinHash=hashPin(id,pin); saveAccounts(); return true; }
+function resetStudent(id){ const a=accounts.students[id]; if(!a) return false;
+  a.gold=0; a.wins=0; a.losses=0; a.draws=0; a.totalPlays=0; a.totalKills=0; a.bossKills=0;
+  a.unlockedCharacters=DEFAULT_UNLOCKED_CHARACTERS.slice(); a.unlockedWeapons=DEFAULT_UNLOCKED_WEAPONS.slice();
+  a.selectedCharacterId=DEFAULT_UNLOCKED_CHARACTERS[0]; a.selectedWeaponId=DEFAULT_UNLOCKED_WEAPONS[0]; a.level=1; a.exp=0;
+  saveAccounts(); return true; }
+function deleteStudent(id){ if(accounts.students[id]){ delete accounts.students[id]; saveAccounts(); return true; } return false; }
+function studentList(){ return accounts&&accounts.students?Object.keys(accounts.students).map(k=>accounts.students[k]):[]; }
 
 function addGold(amount){ profile.gold = Math.max(0, profile.gold + amount); }
 function unlockCharacter(id){ if(profile.unlockedCharacters.indexOf(id) < 0) profile.unlockedCharacters.push(id); }
@@ -760,7 +831,7 @@ const OnlineManager = {
             meta:{ status:"waiting", hostUid:self.uid, guestUid:null, createdAt:ts, updatedAt:ts,
               mapId:selectedMapId||"training", characterHost:selectedCharacterId, characterGuest:null,
               weaponHost:selectedWeaponId, weaponGuest:null, winner:null },
-            players:{ host:{ uid:self.uid, nickname:profile.nickname, characterId:selectedCharacterId,
+            players:{ host:{ uid:self.uid, studentId:currentStudentId||null, nickname:profile.nickname, characterId:selectedCharacterId,
               weaponId:selectedWeaponId, connected:true, lastSeen:ts, input:emptyInput() } }
           };
           ref.set(room).then(function(){
@@ -792,7 +863,7 @@ const OnlineManager = {
         updates["meta/weaponGuest"]=selectedWeaponId;
         updates["meta/status"]="ready";
         updates["meta/updatedAt"]=ts;
-        updates["players/guest"]={ uid:self.uid, nickname:profile.nickname, characterId:selectedCharacterId,
+        updates["players/guest"]={ uid:self.uid, studentId:currentStudentId||null, nickname:profile.nickname, characterId:selectedCharacterId,
           weaponId:selectedWeaponId, connected:true, lastSeen:ts, input:emptyInput() };
         ref.update(updates).then(function(){
           self.roomCode=code; self.role="guest"; self.roomRef=ref; self.mode="online1v1"; self.mySlot=null; self.maxPlayers=2;
@@ -902,7 +973,7 @@ const OnlineManager = {
           const mapId = mode.modeType==="pve" ? (PVE_STAGES[0].mapId) : (selectedMapId||"training");
           const room={ meta:{ mode:modeId, status:"waiting", hostUid:self.uid, createdAt:ts, updatedAt:ts,
               mapId:mapId, maxPlayers:mode.maxPlayers, winner:null, resultText:"", stageIndex:0, waveIndex:0 },
-            players:{ p1:{ uid:self.uid, nickname:profile.nickname, slot:"p1", team:team, characterId:selectedCharacterId,
+            players:{ p1:{ uid:self.uid, studentId:currentStudentId||null, nickname:profile.nickname, slot:"p1", team:team, characterId:selectedCharacterId,
               weaponId:selectedWeaponId, connected:true, ready:false, isBot:false, lastSeen:ts, input:emptyInput() } } };
           ref.set(room).then(function(){
             self.roomCode=code; self.role="host"; self.roomRef=ref; self.mode=modeId; self.mySlot="p1"; self.maxPlayers=mode.maxPlayers;
@@ -953,7 +1024,7 @@ const OnlineManager = {
         }
         claimedSlot=slot;
         if(!room.players) room.players={};
-        room.players[slot]={ uid:self.uid, nickname:profile.nickname, slot:slot, team:team, characterId:selectedCharacterId,
+        room.players[slot]={ uid:self.uid, studentId:currentStudentId||null, nickname:profile.nickname, slot:slot, team:team, characterId:selectedCharacterId,
           weaponId:selectedWeaponId, connected:true, ready:false, isBot:false, lastSeen:firebase.database.ServerValue.TIMESTAMP, input:emptyInput() };
         room.meta.status="ready"; room.meta.updatedAt=firebase.database.ServerValue.TIMESTAMP;
         return room; // commit
@@ -978,8 +1049,12 @@ const OnlineManager = {
 const STATE = { START:"start", SHOP:"shop",
   ONLINE_MENU:"online_menu", ONLINE_LOBBY:"online_lobby", ONLINE_PLAYING:"online_playing", ONLINE_OVER:"online_over",
   PLAYING:"playing", PAUSED:"paused", OVER:"over", ASSET_CHECK:"asset_check",
-  PROFILE:"profile", COLLECTION:"collection", LOGIN:"login", ADMIN:"admin" };
-let gameState = STATE.START;
+  PROFILE:"profile", COLLECTION:"collection", LOGIN:"login", ADMIN:"admin",
+  SPLASH:"splash", ADMIN_LOGIN:"admin_login" };
+let gameState = STATE.SPLASH;
+let splashTimer = 0;
+let loginMsg = "";          // 로그인 안내/오류
+let adminSelId = null;      // 관리자 패널 선택 학생 id
 let confirmLeave = false;   // Esc 나가기 확인 오버레이 표시 여부(온라인/플레이 중)
 let _viewer = null;         // 풀숲 가시성 계산용 내 시점 {x,y,team} (온라인 렌더 직전 설정)
 let _pveBossSeen = false;    // PVE 보스 등장 연출 1회용
@@ -1084,7 +1159,9 @@ function handleKeyPress(code){
     else if(code==="KeyT"){ collectionTab=(collectionTab==="char")?"tool":"char"; collectionIndex=0; }
     return;
   }
+  if(gameState === STATE.SPLASH){ if(code==="Enter"||code==="NumpadEnter"||code==="Space"||code==="Escape"){ goToLogin(); } return; }
   if(gameState === STATE.LOGIN){ handleLoginKey(code); return; }
+  if(gameState === STATE.ADMIN_LOGIN){ handleAdminLoginKey(code); return; }
   if(gameState === STATE.ADMIN){ handleAdminKey(code); return; }
   if(gameState === STATE.START){ handleStartKey(code); return; }
   if(gameState === STATE.SHOP){ handleShopKey(code); return; }
@@ -1142,38 +1219,92 @@ function handleStartKey(code){
   if(code==="KeyO"){ openOnlineMenu(); return; }
   if(code==="KeyU"){ gameState=STATE.PROFILE; return; }       // 개인창(내 정보)
   if(code==="KeyI"){ collectionIndex=0; gameState=STATE.COLLECTION; return; } // 수집창
-  if(code==="KeyL"){ loginIndex=0; gameState=STATE.LOGIN; return; }           // 로그인/계정
+  if(code==="KeyQ"){ doLogout(); return; }                    // 로그아웃
 }
+function goToLogin(){ loginIndex=0; loginMsg=""; gameState=STATE.LOGIN; }
+// ── 학생 로그인 화면 ──
 function handleLoginKey(code){
-  if(!CLASS_ROSTER) loadClassRoster();
-  const N=4;
-  if(code==="Escape"){ gameState=STATE.START; return; }
+  const hasSession = !!(session && session.role==="student" && accounts && accounts.students[session.studentId]);
+  const N = hasSession ? 3 : 2;   // 0:로그인 1:(저장계정) 2:교사용  /  세션없으면 0:로그인 1:교사용
+  if(code==="Escape"){ gameState=STATE.SPLASH; splashTimer=0; return; }
   if(code==="ArrowUp"){ loginIndex=(loginIndex+N-1)%N; return; }
   if(code==="ArrowDown"){ loginIndex=(loginIndex+1)%N; return; }
-  if(code==="ArrowLeft"){ loginPick=(loginPick+5)%6; return; }   // 계정 슬롯 이동
-  if(code==="ArrowRight"){ loginPick=(loginPick+1)%6; return; }
   if(code==="Enter"||code==="NumpadEnter"){
-    if(loginIndex===0){ applyAccount(loginPick); showToast(CLASS_ROSTER[loginPick].name+" 계정으로 시작!"); gameState=STATE.START; }
-    else if(loginIndex===1){ changeNickname(); gameState=STATE.START; }
-    else if(loginIndex===2){ let pin=null; try{ pin=window.prompt("운영자 PIN (수업용)"); }catch(e){ pin=null; }
-      if(pin===ADMIN_PIN){ adminIndex=0; gameState=STATE.ADMIN; } else if(pin!==null) showToast("PIN이 올라요"); }
-    else { gameState=STATE.START; }
+    const teacherRow = hasSession?2:1;
+    if(loginIndex===0){ promptStudentLogin(); }
+    else if(hasSession && loginIndex===1){
+      // 저장된 세션으로 이어서(이미 인증된 세션이므로 PIN 재입력 없이 재바인딩)
+      if(bindStudent(session.studentId)){ loginMsg=""; goToStartScreen(); showToast((profile.nickname||"")+"님 환영합니다!"); }
+      else { session=null; saveSession(); loginMsg="저장된 계정을 찾을 수 없어요"; }
+    }
+    else if(loginIndex===teacherRow){ gameState=STATE.ADMIN_LOGIN; }
   }
 }
-function handleAdminKey(code){
-  if(!CLASS_ROSTER) loadClassRoster();
+function promptStudentLogin(presetId){
+  let id=presetId||null;
+  try{ if(!id) id=window.prompt("학생 ID (예: s01)"); }catch(e){ id=null; }
+  if(id===null) return;
+  let pin=null; try{ pin=window.prompt("비밀번호(PIN)"); }catch(e){ pin=null; }
+  if(pin===null) return;
+  const r=studentLogin(id, pin);
+  if(r.ok){ loginMsg=""; goToStartScreen(); showToast((profile.nickname||"")+"님 환영합니다!"); }
+  else { loginMsg=r.msg||"로그인 실패"; showToast(loginMsg); }
+}
+// ── 교사용 로그인 화면 ──
+function handleAdminLoginKey(code){
   if(code==="Escape"){ gameState=STATE.LOGIN; return; }
-  if(code==="ArrowUp"){ adminIndex=(adminIndex+5)%6; return; }
-  if(code==="ArrowDown"){ adminIndex=(adminIndex+1)%6; return; }
-  const a=CLASS_ROSTER[adminIndex]; if(!a) return;
-  const sc=STUDENT_CHARACTERS.map(c=>c.id), sw=STUDENT_WEAPONS.map(w=>w.id);
-  if(code==="ArrowLeft"||code==="KeyC"){ a.charId=cycleInList(sc, a.charId, code==="ArrowLeft"?-1:1); saveClassRoster(); return; }
-  if(code==="ArrowRight"){ a.charId=cycleInList(sc, a.charId, 1); saveClassRoster(); return; }
-  if(code==="KeyW"){ a.weaponId=cycleInList(sw, a.weaponId, 1); saveClassRoster(); return; }
-  if(code==="Enter"||code==="NumpadEnter"||code==="KeyN"){
-    let nm=null; try{ nm=window.prompt("표시 이름(별명) 2~10자", a.name); }catch(e){ nm=null; }
-    if(nm!==null){ nm=(""+nm).trim().slice(0,10)||a.name; a.name=nm; saveClassRoster(); }
+  if(code==="Enter"||code==="NumpadEnter"){
+    let pin=null; try{ pin=window.prompt("교사용 PIN (수업용 · 보안 아님)"); }catch(e){ pin=null; }
+    if(pin===null) return;
+    if(adminLogin(pin)){ if(!accounts) loadAccounts(); adminIndex=0; adminSelId=studentList()[0]?studentList()[0].id:null; gameState=STATE.ADMIN; }
+    else showToast("교사용 PIN이 올라요");
   }
+}
+// ── 교사용 패널: 학생 계정 관리(prompt 기반 MVP) ──
+function handleAdminKey(code){
+  if(!accounts) loadAccounts();
+  const list=studentList();
+  if(code==="Escape"){ session=null; saveSession(); gameState=STATE.LOGIN; return; }   // 로그아웃→로그인
+  if(code==="ArrowUp"||code==="ArrowDown"){
+    if(!list.length) return;
+    let i=list.findIndex(s=>s.id===adminSelId); if(i<0)i=0;
+    i=(i+(code==="ArrowDown"?1:list.length-1))%list.length; adminSelId=list[i].id; return;
+  }
+  if(code==="KeyA"){ adminCreateStudent(); return; }            // 계정 만들기
+  if(code==="KeyP"){ adminResetPin(); return; }                 // PIN 재설정
+  if(code==="KeyR"){ adminResetStudent(); return; }             // 계정 초기화
+  if(code==="KeyX"||code==="Delete"){ adminDeleteStudent(); return; } // 계정 삭제
+}
+function adminCreateStudent(){
+  let id=null,name=null,pin=null;
+  try{ id=window.prompt("새 학생 ID (예: s01, 2~12자)"); }catch(e){}
+  if(!id) return;
+  try{ name=window.prompt("학생 이름 (2~10자)"); }catch(e){}
+  if(!name) return;
+  try{ pin=window.prompt("초기 PIN (4~8자리)"); }catch(e){}
+  if(!pin) return;
+  const r=createStudent(id,name,pin);
+  if(r.ok){ adminSelId=(""+id).trim(); showToast("계정 생성: ID "+id+" / PIN "+pin+" — 학생에게 전달하세요"); }
+  else showToast("생성 실패: "+r.msg);
+}
+function adminResetPin(){
+  if(!adminSelId){ showToast("학생을 먼저 선택하세요"); return; }
+  let pin=null; try{ pin=window.prompt("새 PIN (4~8자리) — "+adminSelId); }catch(e){}
+  if(!pin) return; pin=(""+pin).trim();
+  if(pin.length<4||pin.length>8){ showToast("PIN은 4~8자리"); return; }
+  setStudentPin(adminSelId,pin); showToast(adminSelId+" PIN 변경: "+pin);
+}
+function adminResetStudent(){
+  if(!adminSelId){ showToast("학생을 먼저 선택하세요"); return; }
+  let c=null; try{ c=window.prompt("초기화하려면 학생 ID를 정확히 입력 ("+adminSelId+")"); }catch(e){}
+  if(c===adminSelId){ resetStudent(adminSelId); showToast(adminSelId+" 골드/전적/수집 초기화 완료"); }
+  else if(c!==null) showToast("ID가 일치하지 않아 취소");
+}
+function adminDeleteStudent(){
+  if(!adminSelId){ showToast("학생을 먼저 선택하세요"); return; }
+  let c=null; try{ c=window.prompt("삭제하려면 학생 ID를 정확히 입력 ("+adminSelId+") — 되돌릴 수 없음"); }catch(e){}
+  if(c===adminSelId){ deleteStudent(adminSelId); const l=studentList(); adminSelId=l[0]?l[0].id:null; showToast("삭제 완료"); }
+  else if(c!==null) showToast("ID가 일치하지 않아 취소");
 }
 function changeMenuValue(row, dir){
   if(row===2) cycleCharacter(dir);
@@ -1186,16 +1317,11 @@ function activateMenuRow(row){
   if(row===0) startGame();                 // 바로 시작(오프라인)
   else if(row===1) openOnlineMenu();        // 온라인 센터
   else if(row===7) openShop();              // 상점/수집
-  else if(row===8){ loginIndex=0; gameState=STATE.LOGIN; }  // 내 정보/로그인
-  else if(row===9) enterTeacherMode();      // 교사용(PIN)
+  else if(row===8) doLogout();              // 로그아웃 → 로그인 화면
+  else if(row===9) gameState=STATE.ADMIN_LOGIN;  // 교사용(별도 로그인)
   else if(VALUE_ROWS[row]) changeMenuValue(row, +1);        // 값 행 Enter → 다음 값
 }
-// 교사용 모드: 학생 흐름과 분리, PIN으로만 진입(보안 아님·수업 편의용)
-function enterTeacherMode(){
-  let pin=null; try{ pin=window.prompt("교사용 PIN (수업용 · 보안 아님)"); }catch(e){ pin=null; }
-  if(pin===ADMIN_PIN){ if(!CLASS_ROSTER) loadClassRoster(); adminIndex=0; gameState=STATE.ADMIN; }
-  else if(pin!==null) showToast("PIN이 올라요");
-}
+function doLogout(){ logout(); gameState=STATE.LOGIN; loginIndex=0; loginMsg=""; showToast("로그아웃 되었습니다"); }
 
 /* =======================================================================
    메뉴 동작
@@ -1837,6 +1963,7 @@ function updateEffects(dt){
 function update(dt){
   uiTime+=dt;
   if(toastTimer>0) toastTimer-=dt;
+  if(gameState===STATE.SPLASH){ splashTimer+=dt; if(splashTimer>1.4) goToLogin(); return; }  // 타이틀 1.4초 후 로그인
   if(confirmLeave) return;   // 나가기 확인 중에는 게임 진행 멈춤(입력이 밑에서 계속 먹지 않도록)
   if(gameState===STATE.ONLINE_PLAYING){ updateOnline(dt); return; }
   if(gameState!==STATE.PLAYING) return;
@@ -1956,11 +2083,13 @@ function render(){
 
   if(gameState===STATE.ONLINE_PLAYING) renderOnlineMatch();
 
-  if(gameState===STATE.START) drawStartScreen();
+  if(gameState===STATE.SPLASH) drawSplashScreen();
+  else if(gameState===STATE.START) drawStartScreen();
   else if(gameState===STATE.ASSET_CHECK) drawAssetCheckScreen();
   else if(gameState===STATE.PROFILE) drawProfileScreen();
   else if(gameState===STATE.COLLECTION) drawCollectionScreen();
   else if(gameState===STATE.LOGIN) drawLoginScreen();
+  else if(gameState===STATE.ADMIN_LOGIN) drawAdminLoginScreen();
   else if(gameState===STATE.ADMIN) drawAdminScreen();
   else if(gameState===STATE.SHOP) drawShopScreen();
   else if(gameState===STATE.ONLINE_MENU) drawOnlineMenu();
@@ -2120,47 +2249,105 @@ function drawCollectionScreen(){
   ctx.fillText("학생 기본 6캐릭터/6도구는 기본 해금 · 나머지는 상점에서 골드로 해금 · Esc: 돌아가기", LOGW/2, LOGH-22);
   ctx.restore();
 }
-// 로그인/계정 화면(수업용 간단 — 보안 아님)
+// 처음 접속: 타이틀(스플래시)
+function drawSplashScreen(){
+  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
+  drawTitle(LOGH/2-30);
+  const p=0.5+0.5*Math.sin(uiTime*3);
+  ctx.fillStyle="rgba(207,224,255,"+(0.5+p*0.5)+")"; ctx.font="bold 20px 'Malgun Gothic',sans-serif";
+  ctx.fillText("학급 전투 로비에 오신 것을 환영합니다", LOGW/2, LOGH/2+40);
+  ctx.fillStyle="#8893bb"; ctx.font="15px 'Malgun Gothic',sans-serif";
+  ctx.fillText("Enter 를 누르거나 잠시 기다리면 로그인 화면으로", LOGW/2, LOGH/2+90);
+  ctx.restore();
+}
+// 학생 로그인 화면
 function drawLoginScreen(){
-  if(!CLASS_ROSTER) loadClassRoster();
   dimScreen(0.82);
   ctx.save(); ctx.textAlign="center"; ctx.textBaseline="alphabetic";
-  ctx.fillStyle="#9fe0ff"; ctx.font="bold 40px 'Malgun Gothic',sans-serif"; ctx.fillText("로그인 / 계정", LOGW/2, 90);
-  // 계정 슬롯 선택
-  const a=(CLASS_ROSTER&&CLASS_ROSTER[loginPick])||{name:"학생"};
-  ctx.fillStyle="#ffe066"; ctx.font="bold 22px 'Malgun Gothic',sans-serif";
-  ctx.fillText("◀ 계정: "+a.name+" ("+(loginPick+1)+"/6) ▶", LOGW/2, 150);
-  const labels=["이 계정으로 시작","별명 직접 입력","운영자(admin) 들어가기","뒤로"];
-  for(let i=0;i<labels.length;i++){ const y=210+i*54; drawButton(labels[i], LOGW/2, y, 380, 44, i===loginIndex); }
-  ctx.textAlign="center"; ctx.fillStyle="#aab4e0"; ctx.font="14px 'Malgun Gothic',sans-serif";
-  ctx.fillText("↑↓ 선택 · ←→ 계정 · Enter 실행 · Esc 뒤로", LOGW/2, 210+labels.length*54+8);
-  ctx.fillStyle="#6f7aa0"; ctx.font="13px 'Malgun Gothic',sans-serif";
-  ctx.fillText("※ 운영자 PIN(1234)은 보안 기능이 아니라 수업 편의용입니다. 개인정보는 저장하지 않아요.", LOGW/2, LOGH-26);
-  ctx.restore();
-}
-// 운영자 화면: 학생 6슬롯 이름/기본 캐릭터·도구 관리
-function drawAdminScreen(){
-  if(!CLASS_ROSTER) loadClassRoster();
-  dimScreen(0.85);
-  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="alphabetic";
-  ctx.fillStyle="#ffd23f"; ctx.font="bold 36px 'Malgun Gothic',sans-serif"; ctx.fillText("운영자 — 학급 명단", LOGW/2, 70);
-  ctx.fillStyle="#aab4e0"; ctx.font="14px 'Malgun Gothic',sans-serif";
-  ctx.fillText("↑↓ 슬롯 · Enter/N 이름변경 · ←→/C 캐릭터 · W 도구 · Esc 뒤로", LOGW/2, 98);
-  const x=240, w=800, y0=130, rh=66;
-  for(let i=0;i<6;i++){ const a=CLASS_ROSTER[i], sel=(i===adminIndex), y=y0+i*rh;
-    ctx.fillStyle=sel?"rgba(95,160,255,0.25)":"rgba(16,22,52,0.85)"; roundRect(x,y,w,rh-10,10); ctx.fill();
-    ctx.strokeStyle=sel?"#9fe0ff":"#44506e"; ctx.lineWidth=sel?3:2; roundRect(x,y,w,rh-10,10); ctx.stroke();
-    const ch=getCharacter(a.charId);
-    ctx.save(); ctx.translate(x+34,y+(rh-10)/2);
-    if(!drawCharacterSprite(a.charId,18,Math.PI/2,{moving:false})) drawPlayerCharacter({r:18,color:ch.color,subColor:ch.subColor,facing:Math.PI/2});
-    ctx.restore();
-    ctx.textAlign="left"; ctx.textBaseline="middle";
-    ctx.fillStyle="#fff"; ctx.font="bold 18px 'Malgun Gothic',sans-serif"; ctx.fillText((i+1)+". "+a.name, x+64, y+(rh-10)/2-8);
-    ctx.fillStyle="#aab4e0"; ctx.font="13px 'Malgun Gothic',sans-serif";
-    ctx.fillText("캐릭터: "+ch.name+"   ·   도구: "+getWeapon(a.weaponId).name, x+64, y+(rh-10)/2+14);
+  ctx.fillStyle="#9fe0ff"; ctx.font="bold 22px 'Malgun Gothic',sans-serif"; ctx.fillText("별빛 아레나", LOGW/2, 84);
+  ctx.fillStyle="#ffffff"; ctx.font="bold 38px 'Malgun Gothic',sans-serif"; ctx.fillText("학생 로그인", LOGW/2, 140);
+  // 로그인 카드
+  const cardW=440, cardX=LOGW/2-cardW/2, cardY=180;
+  ctx.fillStyle="rgba(16,22,52,0.92)"; roundRect(cardX,cardY,cardW,250,16); ctx.fill();
+  ctx.strokeStyle="#5fa0ff"; ctx.lineWidth=2; roundRect(cardX,cardY,cardW,250,16); ctx.stroke();
+  const hasSession=!!(session&&session.role==="student"&&accounts&&accounts.students[session.studentId]);
+  const labels=["🔑 로그인 (ID/PIN 입력)"];
+  if(hasSession) labels.push("이어서: "+(session.name||session.studentId));
+  labels.push("교사용 / 관리자 로그인");
+  for(let i=0;i<labels.length;i++){ const teacher=(i===labels.length-1);
+    const y=cardY+50+i*60;
+    drawButton(labels[i], LOGW/2, y, 360, 44, i===loginIndex);
+    if(teacher && i!==loginIndex){ /* 교사용은 약하게 보이도록은 drawButton 기본으로 둠 */ }
   }
+  ctx.textAlign="center"; ctx.fillStyle=loginMsg?"#ff9a9a":"#aab4e0"; ctx.font="15px 'Malgun Gothic',sans-serif";
+  ctx.fillText(loginMsg||"↑↓ 선택 · Enter 실행 · Esc 뒤로", LOGW/2, cardY+250+34);
+  ctx.fillStyle="#6f7aa0"; ctx.font="13px 'Malgun Gothic',sans-serif";
+  ctx.fillText("학생 ID/PIN은 선생님이 발급합니다. (계정이 없으면 선생님께 요청)", LOGW/2, LOGH-30);
   ctx.restore();
 }
+// 교사용 로그인(학생과 다른 톤: 보라/회색)
+function drawAdminLoginScreen(){
+  ctx.save(); ctx.fillStyle="rgba(20,16,34,0.9)"; ctx.fillRect(0,0,LOGW,LOGH);
+  ctx.textAlign="center"; ctx.textBaseline="alphabetic";
+  ctx.fillStyle="#c79bff"; ctx.font="bold 38px 'Malgun Gothic',sans-serif"; ctx.fillText("교사용 로그인", LOGW/2, 150);
+  ctx.fillStyle="#b0a0d0"; ctx.font="16px 'Malgun Gothic',sans-serif"; ctx.fillText("학생용 화면이 아닙니다. 관리자만 들어오세요.", LOGW/2, 188);
+  const cardW=420, cardX=LOGW/2-cardW/2, cardY=230;
+  ctx.fillStyle="rgba(40,32,64,0.95)"; roundRect(cardX,cardY,cardW,140,16); ctx.fill();
+  ctx.strokeStyle="#8a6fc0"; ctx.lineWidth=2; roundRect(cardX,cardY,cardW,140,16); ctx.stroke();
+  drawButton("🔒 교사용 PIN 입력", LOGW/2, cardY+50, 320, 44, true);
+  ctx.textAlign="center"; ctx.fillStyle="#b0a0d0"; ctx.font="14px 'Malgun Gothic',sans-serif";
+  ctx.fillText("Enter: PIN 입력 · Esc: 학생 로그인으로", LOGW/2, cardY+108);
+  ctx.fillStyle="#6f6a80"; ctx.font="12px 'Malgun Gothic',sans-serif";
+  ctx.fillText("※ 수업용 간이 보호입니다(진짜 보안 아님). 실제 보안은 Firebase Auth 필요.", LOGW/2, LOGH-30);
+  ctx.restore();
+}
+// 교사용 패널: 학생 계정 목록 + 관리
+function drawAdminScreen(){
+  if(!accounts) loadAccounts();
+  ctx.save(); ctx.fillStyle="rgba(20,16,34,0.92)"; ctx.fillRect(0,0,LOGW,LOGH);
+  ctx.textAlign="left"; ctx.textBaseline="alphabetic";
+  ctx.fillStyle="#c79bff"; ctx.font="bold 30px 'Malgun Gothic',sans-serif"; ctx.fillText("교사용 패널 — 학급 계정", 40, 54);
+  ctx.fillStyle="#b0a0d0"; ctx.font="14px 'Malgun Gothic',sans-serif";
+  ctx.fillText("학급코드: "+(accounts.classCode||"-")+"   ·   학생 "+studentList().length+"명", 44, 80);
+  // 좌: 학생 목록
+  const lx=40, ly=104, lw=470, rowH=40; const list=studentList();
+  ctx.fillStyle="rgba(40,32,64,0.9)"; roundRect(lx,ly,lw,560,12); ctx.fill();
+  ctx.strokeStyle="#5a4f7a"; ctx.lineWidth=2; roundRect(lx,ly,lw,560,12); ctx.stroke();
+  if(!list.length){ ctx.fillStyle="#9a90b8"; ctx.font="15px 'Malgun Gothic',sans-serif"; ctx.fillText("학생 계정이 없습니다. A 로 만들기.", lx+18, ly+40); }
+  for(let i=0;i<list.length && i<13;i++){ const s=list[i], sel=(s.id===adminSelId), y=ly+10+i*rowH;
+    if(sel){ ctx.fillStyle="rgba(140,111,192,0.35)"; roundRect(lx+8,y,lw-16,rowH-6,8); ctx.fill(); ctx.strokeStyle="#c79bff"; ctx.lineWidth=2; roundRect(lx+8,y,lw-16,rowH-6,8); ctx.stroke(); }
+    ctx.fillStyle=sel?"#ffffff":"#d6cdee"; ctx.font="bold 15px 'Malgun Gothic',sans-serif"; ctx.textBaseline="middle";
+    ctx.fillText(s.id+"  ·  "+s.name, lx+20, y+(rowH-6)/2);
+    ctx.textAlign="right"; ctx.fillStyle="#b0a0d0"; ctx.font="13px 'Malgun Gothic',sans-serif";
+    ctx.fillText("Lv."+(s.level||1)+" · "+s.gold+"G", lx+lw-18, y+(rowH-6)/2); ctx.textAlign="left"; ctx.textBaseline="alphabetic";
+  }
+  // 우: 선택 학생 상세
+  const rx=540, ry2=104, rw=720;
+  ctx.fillStyle="rgba(40,32,64,0.9)"; roundRect(rx,ry2,rw,400,12); ctx.fill();
+  ctx.strokeStyle="#5a4f7a"; ctx.lineWidth=2; roundRect(rx,ry2,rw,400,12); ctx.stroke();
+  const a=adminSelId?accounts.students[adminSelId]:null;
+  if(a){
+    ctx.fillStyle="#ffffff"; ctx.font="bold 22px 'Malgun Gothic',sans-serif"; ctx.fillText(a.name+"  ("+a.id+")", rx+24, ry2+44);
+    const det=[
+      ["레벨", "Lv."+(a.level||1)],["골드", a.gold+" G"],
+      ["전적", "승 "+a.wins+" · 패 "+a.losses+" · 무 "+a.draws],
+      ["플레이/처치", a.totalPlays+"판 · "+a.totalKills+"킬 (보스 "+a.bossKills+")"],
+      ["수집", "캐 "+a.unlockedCharacters.length+" · 도구 "+a.unlockedWeapons.length],
+      ["선택", getCharacter(a.selectedCharacterId).name+" · "+getWeapon(a.selectedWeaponId).name],
+      ["생성/최근", fmtTs(a.createdAt)+" / "+(a.lastLoginAt?fmtTs(a.lastLoginAt):"-")]
+    ];
+    for(let i=0;i<det.length;i++){ const y=ry2+82+i*36;
+      ctx.fillStyle="#9a90b8"; ctx.font="14px 'Malgun Gothic',sans-serif"; ctx.fillText(det[i][0], rx+24, y);
+      ctx.fillStyle="#ffffff"; ctx.font="15px 'Malgun Gothic',sans-serif"; ctx.fillText(det[i][1], rx+170, y); }
+  } else { ctx.fillStyle="#9a90b8"; ctx.font="16px 'Malgun Gothic',sans-serif"; ctx.fillText("왼쪽에서 학생을 선택하세요 (없으면 A 로 생성)", rx+24, ry2+50); }
+  // 하단 액션 안내
+  ctx.fillStyle="#d6cdee"; ctx.font="bold 15px 'Malgun Gothic',sans-serif";
+  ctx.fillText("A 계정 만들기   ·   P PIN 재설정   ·   R 초기화   ·   X 삭제   ·   ↑↓ 선택   ·   Esc 로그아웃", rx+24, ry2+440);
+  ctx.fillStyle="#6f6a80"; ctx.font="12px 'Malgun Gothic',sans-serif";
+  ctx.fillText("계정 생성 시 ID/PIN을 학생에게 전달하세요. PIN은 해시로 저장(원문 복구 불가, 재설정만).", rx+24, ry2+470);
+  ctx.restore();
+}
+function fmtTs(t){ if(!t) return "-"; try{ const d=new Date(t); return (d.getMonth()+1)+"/"+d.getDate(); }catch(e){ return "-"; } }
 function drawBackground(){
   const g=ctx.createLinearGradient(0,0,0,LOGH);
   g.addColorStop(0,"#1b2150"); g.addColorStop(1,"#0d1030");
@@ -2484,7 +2671,9 @@ function drawStartScreen(){
   const online = OnlineManager.available ? "온라인 준비됨" : (FIREBASE_CONFIG ? "온라인 연결 중…" : "오프라인(로컬)");
   ctx.save(); ctx.textAlign="center"; ctx.textBaseline="alphabetic";
   ctx.fillStyle="#cfe0ff"; ctx.font="bold 16px 'Malgun Gothic',sans-serif";
-  ctx.fillText("👤 "+profile.nickname+"   ·   Lv.1   ·   "+profile.gold+"G   ·   "+online, LOGW/2, 96);
+  const idTxt = profile.id ? ("ID "+profile.id+" · ") : "";
+  ctx.fillText("👤 "+profile.nickname+"   ·   "+idTxt+"Lv."+(profile.level||1)+"   ·   "+profile.gold+"G   ·   "+online, LOGW/2, 96);
+  ctx.fillStyle="#7f8bb5"; ctx.font="12px 'Malgun Gothic',sans-serif"; ctx.fillText("Q 로그아웃", LOGW-60, 96);
   ctx.restore();
 
   const ch=getCharacter(selectedCharacterId), w=getWeapon(selectedWeaponId);
@@ -2507,19 +2696,19 @@ function drawLobbyInfoCard(x,y,w,h){
   ctx.textAlign="left"; ctx.textBaseline="alphabetic";
   ctx.fillStyle="#9fe0ff"; ctx.font="bold 17px 'Malgun Gothic',sans-serif"; ctx.fillText("내 정보", x+18, y+32);
   const rows=[
-    ["닉네임", profile.nickname],
-    ["레벨", "Lv.1 (준비중)"],
+    ["이름", profile.nickname],
+    ["ID", profile.id||"(게스트)"],
+    ["레벨", "Lv."+(profile.level||1)+" (준비중)"],
     ["골드", profile.gold+" G"],
-    ["플레이", profile.totalPlays+" 판"],
-    ["승리", profile.wins+" 승"],
-    ["처치", profile.totalKills+" 회"],
+    ["전적", profile.wins+"승 "+profile.losses+"패"],
+    ["플레이/처치", profile.totalPlays+"판 · "+profile.totalKills+"킬"],
     ["수집", "캐 "+profile.unlockedCharacters.length+" · 도구 "+profile.unlockedWeapons.length]
   ];
   for(let i=0;i<rows.length;i++){ const ry=y+66+i*38;
     ctx.fillStyle="#9aa9d6"; ctx.font="13px 'Malgun Gothic',sans-serif"; ctx.fillText(rows[i][0], x+18, ry);
-    ctx.fillStyle="#ffffff"; ctx.font="bold 15px 'Malgun Gothic',sans-serif"; ctx.fillText(rows[i][1], x+88, ry);
+    ctx.fillStyle="#ffffff"; ctx.font="bold 14px 'Malgun Gothic',sans-serif"; ctx.fillText(rows[i][1], x+104, ry);
   }
-  ctx.fillStyle="#8893bb"; ctx.font="12px 'Malgun Gothic',sans-serif"; ctx.fillText("N 닉네임 · L 로그인/계정", x+18, y+h-16);
+  ctx.fillStyle="#8893bb"; ctx.font="12px 'Malgun Gothic',sans-serif"; ctx.fillText("Q 로그아웃 · I 수집", x+18, y+h-16);
   ctx.restore();
 }
 function drawLobbyMenu(ch, w){
@@ -2537,7 +2726,7 @@ function drawLobbyMenu(ch, w){
     {type:"i", i:6, label:"모드(AI 대전)", val:getMode(selectedModeId).name},
     {type:"h", t:"더보기"},
     {type:"i", i:7, label:"상점 / 수집"},
-    {type:"i", i:8, label:"로그인 / 계정 (학생)"},
+    {type:"i", i:8, label:"로그아웃"},
     {type:"i", i:9, label:"교사용 모드 ⚙", teacher:true}
   ];
   let y=124;
@@ -4039,14 +4228,21 @@ function gameLoop(ts){
 function startLoopOnce(){
   if(loopStarted) return;
   loopStarted=true;
-  loadProfile();
-  loadClassRoster();           // 수업용 학급 명단(별도 저장)
+  loadProfile();               // 게스트 기본값(미로그인 시 화면 안 깨지게)
+  loadAccounts();              // 학급 계정(별도 저장)
+  loadSession();               // 로그인 세션
   loadGameAssets();            // ASSETS_ENABLED=false 면 아무것도 안 함(오늘)
   OnlineManager.initFirebaseIfAvailable();
   applyProfileSelections();
-  OBSTACLES=getMap(selectedMapId).obstacles;   // 시작 화면 배경용
+  OBSTACLES=getMap(selectedMapId).obstacles;   // 배경용
   BUSHES=getMap(selectedMapId).bushes;
-  gameState=STATE.START;
+  // 흐름: 유효한 학생 세션이 있으면 바로 로비, 없으면 스플래시 → 로그인
+  if(session && session.role==="student" && accounts.students[session.studentId] && accounts.students[session.studentId].isActive!==false){
+    bindStudent(session.studentId); gameState=STATE.START;
+  } else {
+    if(session && session.role==="admin"){ session=null; saveSession(); }  // 교사 세션은 자동 진입 안 함
+    splashTimer=0; gameState=STATE.SPLASH;
+  }
   requestAnimationFrame(gameLoop);
 }
 startLoopOnce();
