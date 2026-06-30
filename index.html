@@ -656,7 +656,7 @@ function loadScriptsSequential(urls, done){
   }
   next();
 }
-function emptyInput(){ return { up:false, down:false, left:false, right:false, attack:false, super:false }; }
+function emptyInput(){ return { up:false, down:false, left:false, right:false, attack:false, super:false, reload:false }; }
 
 const OnlineManager = {
   available:false, status:"오프라인",
@@ -1285,7 +1285,7 @@ function resetMatch(){
   bossActive=false; bossDefeated=false;
   matchRewardGiven=false; matchGoldEarned=0; matchDropName="";
   resultButtonIndex=0;
-  POWERUPS=[]; powerupAcc=0;
+  POWERUPS=[]; powerupAcc=0; powerupId=0;
   keysDown.clear();
 }
 
@@ -1698,7 +1698,7 @@ function updateAI(f, dt){
   }
   if(ai.avoidTimer>0){ ai.avoidTimer-=dt; const a=Math.atan2(mvy,mvx)+ai.avoidDir*1.2; mvx=Math.cos(a); mvy=Math.sin(a); }
   const mlen=Math.hypot(mvx,mvy);
-  if(mlen>0){ mvx/=mlen; mvy/=mlen; moveEntity(f, mvx*f.moveSpeed*dt, mvy*f.moveSpeed*dt); }
+  if(mlen>0){ mvx/=mlen; mvy/=mlen; moveEntity(f, mvx*effSpeed(f)*dt, mvy*effSpeed(f)*dt); }
 
   ai.fireTimer-=dt; ai.reactionTimer-=dt;
   const range=isEnemy?MATCH.enemyRange:GAME_CONFIG.playerRange;
@@ -2462,7 +2462,8 @@ function lerpAngle(a,b,t){ let d=b-a; while(d>Math.PI)d-=Math.PI*2; while(d<-Mat
 
 function openOnlineMenu(){
   onlineMenuIndex=0;
-  OBSTACLES=getMap(onlineMapId()).obstacles; BUSHES=getMap(onlineMapId()).bushes;
+  // 메뉴/로비 배경은 host가 고른 맵으로(방 생성 전이라 meta 없음 → selectedMapId 사용)
+  OBSTACLES=getMap(selectedMapId).obstacles; BUSHES=getMap(selectedMapId).bushes;
   gameState=STATE.ONLINE_MENU;
 }
 
@@ -2593,7 +2594,7 @@ function resetOnlineMatchFromRoom(){
   onlineFighters.guest = makeOnlineFighter("guest", { x:map.enemySpawn.x, y:map.enemySpawn.y, facing:Math.PI,
                           characterId:meta.characterGuest||"lumi", weaponId:meta.weaponGuest||"star_blaster" });
   onlineBullets=[]; onlineTimeLeft=GAME_CONFIG.gameTime; onlineWinner=null;
-  POWERUPS=[]; powerupAcc=0;
+  POWERUPS=[]; powerupAcc=0; powerupId=0;
   onlineWriteAcc=0; onlineInputAcc=0; onlineLastInputStr="";
   onlineRender={ host:null, guest:null }; onlineBulletsView=[]; onlineLastStateRef=null; onlinePredict=null;
   onlinePredictBullets=[]; onlinePredictCd=0;
@@ -2614,7 +2615,8 @@ function readLocalInput(){
   if(confirmLeave) return emptyInput();   // 나가기 확인 중에는 이동/공격/궁극기 입력 무시
   return { up:keysDown.has("ArrowUp"), down:keysDown.has("ArrowDown"),
            left:keysDown.has("ArrowLeft"), right:keysDown.has("ArrowRight"),
-           attack:keysDown.has("KeyZ"), super:keysDown.has("KeyX")||keysDown.has("Space") };
+           attack:keysDown.has("KeyZ"), super:keysDown.has("KeyX")||keysDown.has("Space"),
+           reload:keysDown.has("KeyR") };   // 온라인 장전: host가 input.reload로 처리
 }
 function sendMyInput(dt){
   const inp=readLocalInput(), str=JSON.stringify(inp);
@@ -3158,7 +3160,7 @@ function resetTeamMatchFromRoom(){
   tBullets=[]; tWriteAcc=0; tInputAcc=0; tLastInputStr=""; tWinner=null; tResultText="";
   tRenderFighters={}; tPredict=null; tBulletsView=[]; tLastStateRef=null;
   tEnemies={}; tEnemyId=0; tEnemiesView={};
-  POWERUPS=[]; powerupAcc=0;
+  POWERUPS=[]; powerupAcc=0; powerupId=0;
   if(mode.modeType==="pve"){
     const stage=PVE_STAGES[0]; tMapId=stage.mapId;
     tPve={ stageIndex:0, waveIndex:0, teamLives:stage.teamLives, status:"playing", phase:"wave", phaseTimer:0, enemiesRemaining:0 };
@@ -3263,6 +3265,7 @@ function tDoSuper(f){
 function tBotUpdate(f, dt){
   if(f.dead){ f.respawnTimer-=dt; if(f.respawnTimer<=0) tRespawn(f); return; }
   if(f.hitFlash>0) f.hitFlash-=dt; if(f.invincibleTimer>0) f.invincibleTimer-=dt;
+  tickStatus(f, dt); applyTrapTo(f);   // 봇도 함정 둔화 적용(일관성)
   const t=tNearestEnemyFighter(f);
   if(t){
     const dx=t.x-f.x, dy=t.y-f.y, d=Math.hypot(dx,dy)||1;
@@ -3272,7 +3275,7 @@ function tBotUpdate(f, dt){
     else { f.ai.strafeTimer-=dt; if(f.ai.strafeTimer<=0){ f.ai.strafeDir=Math.random()<0.5?1:-1; f.ai.strafeTimer=rand(0.5,1.2); } mvx=-dy/d*f.ai.strafeDir; mvy=dx/d*f.ai.strafeDir; }
     if(f.ai.stuckTimer>0){ f.ai.stuckTimer-=dt; mvx=-dy/d*f.ai.stuckDir; mvy=dx/d*f.ai.stuckDir; } // 벽끼임 탈출: 옆으로 우회
     const ml=Math.hypot(mvx,mvy);
-    if(ml>0){ mvx/=ml; mvy/=ml; const step=f.moveSpeed*0.9*dt, ox=f.x, oy=f.y;
+    if(ml>0){ mvx/=ml; mvy/=ml; const step=effSpeed(f)*0.9*dt, ox=f.x, oy=f.y;
       moveEntity(f, mvx*step, mvy*step);
       if(f.ai.stuckTimer<=0 && Math.hypot(f.x-ox,f.y-oy) < step*0.3){ f.ai.stuckDir=Math.random()<0.5?1:-1; f.ai.stuckTimer=rand(0.4,0.8); } }
     f.facing=Math.atan2(dy,dx);
