@@ -1,22 +1,21 @@
 #!/usr/bin/env python3
-# 별빛 아레나 — 학생 에셋 자동 슬라이서
-# reference/ 의 3장 시트를 잘라서 assets/ 아래 캐릭터 5프레임 + 무기 아이콘 PNG로 저장하고,
-# index.html / star_arena.html 의 ASSETS_ENABLED 를 true 로 켭니다.
+# 별빛 아레나 - 학생 에셋 슬라이서 (v2: 배경 깔끔 제거 + 프레임 정렬)
+#  - reference/02_basic_motion_master.png 에서 캐릭터 6명 x 5프레임(idle/move/attack/hit/return)
+#  - reference/01_fixed_character_weapon_master.png 에서 무기 아이콘 6개
+#  - 배경 제거: 밝기/회색 경계 플러드(셀 중앙 흰배경/발밑 그림자까지) + 최대 연결요소만 보존
+#    (흩어진 효과 조각/옆칸 침범/그림자 섬 제거. 든 무기는 캐릭터와 연결돼 유지. 던지는 발사체는 제외=깔끔)
+#  - 캐릭터별 5프레임을 같은 캔버스 크기 + 가로중앙 + 발(하단) 기준으로 정렬 -> 프레임 전환 시 안 튐
+#  - 마지막에 ASSETS_ENABLED=true 로 켬(이미지 생성됐을 때만)
 #
-# 사용법:
-#   pip install pillow
-#   python tools/slice_assets.py
-#
-# 주의: 그리드 좌표는 시트 레이아웃 기준 "추정값"입니다. 결과가 어긋나면 아래 상수(TOP/LEFT 등)를
-#       조금 조정해서 다시 실행하세요. 발사체(projectile)/적중효과(effect_hit)는 시트 구조가 복잡해
-#       이 스크립트는 만들지 않습니다(없으면 게임이 색 원형 발사체로 fallback). 필요하면 직접 잘라 넣으세요.
+# 사용:  pip install pillow ;  python tools/slice_assets.py
+# 그리드가 어긋나면 아래 MOTION/MASTER 비율을 조정 후 재실행.
 
 import os, sys
+from collections import deque
 try:
-    from PIL import Image, ImageDraw
+    from PIL import Image
 except ImportError:
-    print("Pillow가 필요합니다.  pip install pillow  후 다시 실행하세요.")
-    sys.exit(1)
+    print("Pillow가 필요합니다.  pip install pillow"); sys.exit(1)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REF  = os.path.join(ROOT, "reference")
@@ -24,12 +23,10 @@ CHARS = ["student_01","student_02","student_03","student_04","student_05","stude
 TOOLS = ["tool_01","tool_02","tool_03","tool_04","tool_05","tool_06"]
 FRAMES = ["idle","move","attack","hit","return"]
 
-# ── 그리드 비율(0~1). 어긋나면 여기를 조정 후 재실행 ──
-# 02_basic_motion_master.png(1672x941): 6행(캐릭터) x 5열(대기/이동/공격/피격/리턴)
-MOTION = dict(top=0.142, left=0.145, right=0.999, bottom=0.996, rows=6, cols=5,
-              attack_w=0.72)   # 공격 칸: 무기까지만(긴 궤적 제외) + 바깥은 feather 페이드
-# 01_fixed_character_weapon_master.png(1491x1055): 마지막 열이 무기 아이콘(아래 이름 글자는 제외)
-MASTER = dict(top=0.07, bottom=0.999, rows=6, icon_x0=0.80, icon_x1=1.0, icon_h=0.64)
+# 02 motion sheet(1672x941): 6행 x 5열
+MOTION = dict(top=0.142, left=0.145, right=0.999, bottom=0.996, rows=6, cols=5, inset=0.05)
+# 01 master(1491x1055): 마지막 열 = 무기 아이콘(아래 이름글자 제외)
+MASTER = dict(top=0.07, bottom=0.999, rows=6, icon_x0=0.80, icon_x1=1.0, icon_h=0.62)
 
 def load(name):
     for ext in (".png",".jpg",".jpeg",".PNG",".JPG"):
@@ -37,107 +34,163 @@ def load(name):
         if os.path.exists(p): return Image.open(p).convert("RGBA")
     return None
 
+def is_bg(r,g,b):
+    mn=min(r,g,b); mx=max(r,g,b)
+    if mn>=205: return True                 # 흰색/파스텔 배경 + 옅은 그림자
+    if mx-mn<=20 and mn>=165: return True    # 회색 그림자류
+    return False
+
 def remove_bg(im):
-    """네 모서리에서 flood-fill로 배경(연한 단색)을 투명 처리."""
-    im=im.convert("RGBA")
-    w,h=im.size
-    for cx,cy in [(0,0),(w-1,0),(0,h-1),(w-1,h-1)]:
-        try: ImageDraw.floodfill(im,(cx,cy),(0,0,0,0),thresh=42)
-        except Exception: pass
-    return im
-
-def autocrop(im, pad=8):
-    bbox=im.getbbox()
-    if not bbox: return im
-    l,t,r,b=bbox
-    l=max(0,l-pad); t=max(0,t-pad); r=min(im.size[0],r+pad); b=min(im.size[1],b+pad)
-    return im.crop((l,t,r,b))
-
-def cell(im, x0,y0,x1,y1, ixl=0.09, ixr=0.09, iy=0.05):
-    """비율 좌표로 셀을 잘라 배경 제거 + 여백 정리. ixl/ixr=좌/우 안쪽여백(옆칸 침범 방지), iy=세로."""
-    W,H=im.size
-    wl=(x1-x0)*ixl; wr=(x1-x0)*ixr; ih=(y1-y0)*iy
-    box=(int((x0+wl)*W), int((y0+ih)*H), int((x1-wr)*W), int((y1-ih)*H))
-    return autocrop(remove_bg(im.crop(box)))
-
-def feather_right(im, frac=0.26):
-    """오른쪽 끝 일정 구간의 알파를 점점 0으로(발사체 궤적이 직선으로 잘리지 않고 부드럽게 사라지게)."""
-    im=im.convert("RGBA"); W,H=im.size
-    a=im.getchannel("A"); pa=a.load()
-    start=int(W*(1-frac)); span=max(1, W-start)
-    for x in range(start,W):
-        f=(W-x)/span
-        if f<0: f=0.0
-        for y in range(H):
-            v=pa[x,y]
-            if v: pa[x,y]=int(v*f)
-    im.putalpha(a)
-    return im
-
-def center_h(im):
-    """알파(불투명) 무게중심을 기준으로 좌우 패딩해 캐릭터를 가로 중앙에 둔다(프레임 전환 시 흔들림 방지)."""
-    im=im.convert("RGBA"); W,H=im.size
-    a=im.split()[3].load()
-    sx=0.0; tot=0.0
+    """가장자리에서 시작해 '배경(밝음/회색)'으로 연결된 픽셀만 투명화. 외곽선 안쪽(하이라이트)은 보존."""
+    im=im.convert("RGBA"); W,H=im.size; px=im.load()
+    seen=bytearray(W*H); dq=deque()
+    def bg(x,y):
+        r,g,b,a=px[x,y]; return is_bg(r,g,b)
     for x in range(W):
-        col=0
-        for y in range(H): col+=a[x,y]
-        sx+=col*x; tot+=col
-    if tot<=0: return im
-    cx=sx/tot
-    newW=int(2*max(cx, W-cx))+2
-    out=Image.new("RGBA",(newW,H),(0,0,0,0))
-    out.paste(im, (int(round(newW/2-cx)),0))
-    return out
+        for y in (0,H-1):
+            i=y*W+x
+            if not seen[i] and bg(x,y): seen[i]=1; dq.append((x,y))
+    for y in range(H):
+        for x in (0,W-1):
+            i=y*W+x
+            if not seen[i] and bg(x,y): seen[i]=1; dq.append((x,y))
+    while dq:
+        x,y=dq.popleft(); px[x,y]=(255,255,255,0)
+        for dx,dy in ((1,0),(-1,0),(0,1),(0,-1)):
+            nx,ny=x+dx,y+dy
+            if 0<=nx<W and 0<=ny<H:
+                i=ny*W+nx
+                if not seen[i] and bg(nx,ny): seen[i]=1; dq.append((nx,ny))
+    # 가장자리 옅은 잔털(halo) 정리: 투명에 접한 밝은 픽셀 한 겹 제거
+    px2=im.load()
+    rm=[]
+    for y in range(H):
+        for x in range(W):
+            r,g,b,a=px2[x,y]
+            if a>0 and min(r,g,b)>=200:
+                for dx,dy in ((1,0),(-1,0),(0,1),(0,-1)):
+                    nx,ny=x+dx,y+dy
+                    if 0<=nx<W and 0<=ny<H and px2[nx,ny][3]==0: rm.append((x,y)); break
+    for x,y in rm: r,g,b,a=px2[x,y]; px2[x,y]=(r,g,b,0)
+    return im
+
+def keep_main(im, athr=70):
+    """최대 연결요소(캐릭터)만 보존. 흩어진 효과/옆칸/그림자 섬 제거. 든 무기는 연결돼 유지."""
+    im=im.convert("RGBA"); W,H=im.size; px=im.load()
+    lab=[-1]*(W*H); comps=[]
+    for sy in range(H):
+        for sx in range(W):
+            i=sy*W+sx
+            if lab[i]!=-1: continue
+            if px[sx,sy][3]<=athr: lab[i]=-2; continue
+            dq=deque([(sx,sy)]); lab[i]=len(comps); pix=[i]
+            while dq:
+                x,y=dq.popleft()
+                for dx in (-1,0,1):
+                    for dy in (-1,0,1):
+                        nx,ny=x+dx,y+dy
+                        if 0<=nx<W and 0<=ny<H:
+                            j=ny*W+nx
+                            if lab[j]==-1 and px[nx,ny][3]>athr:
+                                lab[j]=lab[i]; dq.append((nx,ny)); pix.append(j)
+            comps.append(pix)
+    if not comps: return im
+    comps.sort(key=len, reverse=True)
+    keep=set(comps[0])
+    big=comps[0]; xs=[(p%W) for p in big]; ys=[(p//W) for p in big]
+    lx0,lx1,ly0,ly1=min(xs),max(xs),min(ys),max(ys)
+    for comp in comps[1:]:
+        if len(comp) < max(60, len(big)*0.08): continue
+        cx=[(p%W) for p in comp]; cy=[(p//W) for p in comp]
+        # 캐릭터 몸통과 맞닿거나 겹치는 큰 덩어리(든 무기 등)는 함께 보존
+        if min(cx)<=lx1+6 and max(cx)>=lx0-6 and min(cy)<=ly1+6 and max(cy)>=ly0-6:
+            keep.update(comp)
+    for i in range(W*H):
+        if i not in keep:
+            x=i%W; y=i//W; r,g,b,a=px[x,y]
+            if a: px[x,y]=(r,g,b,0)
+    return im
+
+def content_bbox(im, athr=40):
+    a=im.split()[3]; px=a.load(); W,H=im.size
+    x0,y0,x1,y1=W,H,-1,-1
+    for y in range(H):
+        for x in range(W):
+            if px[x,y]>athr:
+                if x<x0:x0=x
+                if x>x1:x1=x
+                if y<y0:y0=y
+                if y>y1:y1=y
+    if x1<0: return None
+    return (x0,y0,x1+1,y1+1)
+
+def strong_cx(im, athr=160, frac=0.42):
+    # 하반신(발/다리) 중심으로 가로 기준을 잡는다 → 무기를 들거나 휘둘러도 서 있는 위치가 안 튐.
+    a=im.split()[3]; px=a.load(); W,H=im.size
+    y0=int(H*(1-frac)); sx=0; n=0
+    for y in range(y0,H):
+        for x in range(W):
+            if px[x,y]>=athr: sx+=x; n+=1
+    if n>=6: return sx/n
+    sx=0; n=0
+    for y in range(H):
+        for x in range(W):
+            if px[x,y]>=athr: sx+=x; n+=1
+    return (sx/n) if n else W/2
+
+def crop_ratio(im, x0,y0,x1,y1):
+    W,H=im.size
+    return im.crop((int(x0*W),int(y0*H),int(x1*W),int(y1*H)))
 
 def save(im, path):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     im.save(path); print("  +", os.path.relpath(path, ROOT))
 
 made=0
-# 1) 캐릭터 5프레임 (이미지 2)
 motion=load("02_basic_motion_master")
 if motion is None:
-    print("! reference/02_basic_motion_master.png 가 없습니다. (캐릭터 모션 생략)")
+    print("! reference/02_basic_motion_master.png 없음 (캐릭터 생략)")
 else:
-    g=MOTION; W=g["right"]-g["left"]; H=g["bottom"]-g["top"]
-    cw=W/g["cols"]; rh=H/g["rows"]
+    g=MOTION; gW=g["right"]-g["left"]; gH=g["bottom"]-g["top"]; cw=gW/g["cols"]; rh=gH/g["rows"]; ins=g["inset"]
     for ri,cid in enumerate(CHARS):
+        cleaned=[]  # (content_image, cx_in_content, w, h)
         for ci,fr in enumerate(FRAMES):
             x0=g["left"]+ci*cw; y0=g["top"]+ri*rh
-            x1=x0+cw
-            if fr=="attack":
-                x1=x0+cw*g["attack_w"]                 # 공격: 발사체 꼬리 일부 포함
-                img=cell(motion, x0,y0, x1, y0+rh, ixl=0.06, ixr=0.0)  # 무기 쪽(오른쪽)은 안 자름
-                img=feather_right(img, 0.30)           # 오른쪽 궤적을 부드럽게 페이드(직선 컷 방지)
-            else:
-                img=cell(motion, x0,y0, x1, y0+rh, ixl=0.08, ixr=0.135)  # 오른쪽을 더 잘라 옆칸 캐릭터 침범 방지
-            img=center_h(img)   # 캐릭터를 가로 중앙 정렬(렌더가 중앙 기준이라 위치 흔들림 방지)
-            save(img, os.path.join(ROOT,"assets","characters",cid,fr+".png")); made+=1
+            cell=crop_ratio(motion, x0+cw*ins, y0+rh*ins, x0+cw*(1-ins), y0+rh*(1-ins))
+            cell=remove_bg(cell); cell=keep_main(cell)
+            bb=content_bbox(cell)
+            if not bb: cleaned.append((Image.new("RGBA",(10,10),(0,0,0,0)),5,10,10)); continue
+            c=cell.crop(bb); cx=strong_cx(c)
+            cleaned.append((c,cx,c.size[0],c.size[1]))
+        # 공통 캔버스(좌우 대칭: cx가 항상 중앙, 발=하단 정렬)
+        halfL=max(cx for (_,cx,_,_) in cleaned)
+        halfR=max((w-cx) for (_,cx,w,_) in cleaned)
+        half=max(halfL,halfR)
+        padX=12; padTop=12; padBot=8
+        canW=int(2*(half+padX)); canH=int(max(h for (_,_,_,h) in cleaned)+padTop+padBot)
+        for (img,cx,w,h),fr in zip(cleaned,FRAMES):
+            canvas=Image.new("RGBA",(canW,canH),(0,0,0,0))
+            ox=int(round(canW/2-cx)); oy=int(canH-padBot-h)
+            canvas.alpha_composite(img,(ox,oy))
+            save(canvas, os.path.join(ROOT,"assets","characters",cid,fr+".png")); made+=1
 
-# 2) 무기 아이콘 (이미지 1 마지막 열)
 master=load("01_fixed_character_weapon_master")
 if master is None:
-    print("! reference/01_fixed_character_weapon_master.png 가 없습니다. (무기 아이콘 생략)")
+    print("! reference/01_fixed_character_weapon_master.png 없음 (무기 아이콘 생략)")
 else:
     g=MASTER; H=g["bottom"]-g["top"]; rh=H/g["rows"]
     for ri,tid in enumerate(TOOLS):
         y0=g["top"]+ri*rh
-        img=cell(master, g["icon_x0"], y0, g["icon_x1"], y0+rh*g["icon_h"], ixl=0.04, ixr=0.04, iy=0.04)  # 아래 이름글자 제외
-        save(img, os.path.join(ROOT,"assets","weapons",tid,"icon.png")); made+=1
+        cell=crop_ratio(master, g["icon_x0"], y0+rh*0.04, g["icon_x1"], y0+rh*g["icon_h"])
+        cell=remove_bg(cell); cell=keep_main(cell)
+        bb=content_bbox(cell)
+        if bb: cell=cell.crop(bb)
+        save(cell, os.path.join(ROOT,"assets","weapons",tid,"icon.png")); made+=1
 
-# 3) 이미지를 실제로 만들었을 때만 ASSETS_ENABLED 켜기(빈 상태로 켜서 404 나는 것 방지)
 def enable(path):
     if not os.path.exists(path): return
-    s=open(path,encoding="utf-8").read()
-    n=s.replace("let ASSETS_ENABLED = false;","let ASSETS_ENABLED = true;")
-    if n!=s: open(path,"w",encoding="utf-8").write(n); print("  ASSETS_ENABLED=true →", os.path.basename(path))
+    s=open(path,encoding="utf-8").read(); n=s.replace("let ASSETS_ENABLED = false;","let ASSETS_ENABLED = true;")
+    if n!=s: open(path,"w",encoding="utf-8").write(n); print("  ASSETS_ENABLED=true ->", os.path.basename(path))
 if made>0:
-    for f in ("index.html","star_arena.html"):
-        enable(os.path.join(ROOT,f))
-else:
-    print("\n생성된 이미지가 없어 ASSETS_ENABLED는 그대로 둡니다. reference/ 에 시트를 먼저 저장하세요.")
-
-print("\n완료: %d개 이미지 생성." % made)
-print("게임을 열어 F2(에셋 확인)로 상태를 보고, 어긋나면 이 파일 상단 MOTION/MASTER 좌표를 조정해 다시 실행하세요.")
-print("발사체/적중효과(projectile/effect_hit)는 없으면 색 원형으로 자동 fallback 됩니다.")
+    for f in ("index.html","star_arena.html"): enable(os.path.join(ROOT,f))
+print("\n완료: %d개 이미지." % made)
