@@ -947,7 +947,8 @@ const OnlineManager = {
    ======================================================================= */
 const STATE = { START:"start", SHOP:"shop",
   ONLINE_MENU:"online_menu", ONLINE_LOBBY:"online_lobby", ONLINE_PLAYING:"online_playing", ONLINE_OVER:"online_over",
-  PLAYING:"playing", PAUSED:"paused", OVER:"over", ASSET_CHECK:"asset_check" };
+  PLAYING:"playing", PAUSED:"paused", OVER:"over", ASSET_CHECK:"asset_check",
+  PROFILE:"profile", COLLECTION:"collection" };
 let gameState = STATE.START;
 let confirmLeave = false;   // Esc 나가기 확인 오버레이 표시 여부(온라인/플레이 중)
 let _viewer = null;         // 풀숲 가시성 계산용 내 시점 {x,y,team} (온라인 렌더 직전 설정)
@@ -993,6 +994,7 @@ const MENU_ROWS = 9; // 0캐릭터 1무기 2난이도 3맵 4모드 5닉네임 6�
 let shopIndex = 0;
 let shopItems = [];
 let resultButtonIndex = 0;
+let collectionIndex = 0, collectionTab = "char";   // 수집창 상태
 let toastText = "";
 let toastTimer = 0;
 
@@ -1036,6 +1038,19 @@ function handleKeyPress(code){
     return;
   }
   if(gameState === STATE.ASSET_CHECK){ if(code==="Escape"||code==="Enter"||code==="NumpadEnter") gameState=STATE.START; return; }
+  if(gameState === STATE.PROFILE){
+    if(code==="Escape"||code==="Enter"||code==="NumpadEnter") gameState=STATE.START;
+    else if(code==="KeyN") changeNickname();
+    else if(code==="KeyI"){ collectionIndex=0; gameState=STATE.COLLECTION; }
+    return;
+  }
+  if(gameState === STATE.COLLECTION){
+    if(code==="Escape"||code==="Enter"||code==="NumpadEnter") gameState=STATE.START;
+    else if(code==="ArrowLeft"){ collectionIndex=Math.max(0,collectionIndex-1); }
+    else if(code==="ArrowRight"){ collectionIndex=collectionIndex+1; }
+    else if(code==="KeyT"){ collectionTab=(collectionTab==="char")?"tool":"char"; collectionIndex=0; }
+    return;
+  }
   if(gameState === STATE.START){ handleStartKey(code); return; }
   if(gameState === STATE.SHOP){ handleShopKey(code); return; }
   if(gameState === STATE.ONLINE_MENU){ handleOnlineMenuKey(code); return; }
@@ -1090,6 +1105,8 @@ function handleStartKey(code){
   if(code==="KeyN"){ changeNickname(); return; }
   if(code==="KeyS"){ openShop(); return; }
   if(code==="KeyO"){ openOnlineMenu(); return; }
+  if(code==="KeyU"){ gameState=STATE.PROFILE; return; }       // 개인창(내 정보)
+  if(code==="KeyI"){ collectionIndex=0; gameState=STATE.COLLECTION; return; } // 수집창
 }
 function changeMenuValue(row, dir){
   if(row===0) cycleCharacter(dir);
@@ -1865,6 +1882,8 @@ function render(){
 
   if(gameState===STATE.START) drawStartScreen();
   else if(gameState===STATE.ASSET_CHECK) drawAssetCheckScreen();
+  else if(gameState===STATE.PROFILE) drawProfileScreen();
+  else if(gameState===STATE.COLLECTION) drawCollectionScreen();
   else if(gameState===STATE.SHOP) drawShopScreen();
   else if(gameState===STATE.ONLINE_MENU) drawOnlineMenu();
   else if(gameState===STATE.ONLINE_LOBBY) drawOnlineLobby();
@@ -1953,6 +1972,76 @@ function drawAssetCheckScreen(){
   ctx.restore();
 }
 
+// 개인창(내 정보): 닉네임/선택/골드/전적/수집 요약
+function drawProfileScreen(){
+  dimScreen(0.8);
+  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="alphabetic";
+  ctx.fillStyle="#9fe0ff"; ctx.font="bold 40px 'Malgun Gothic',sans-serif"; ctx.fillText("내 정보 (개인창)", LOGW/2, 80);
+  const ch=getCharacter(profile.selectedCharacterId), w=getWeapon(profile.selectedWeaponId);
+  // 좌: 선택 캐릭터 카드 재사용
+  drawCharacterCard(120, 120, 300, 410, ch, w);
+  // 우: 정보 패널
+  const x=470, y=130, ww=690;
+  ctx.fillStyle="rgba(16,22,52,0.9)"; roundRect(x,y,ww,400,14); ctx.fill();
+  ctx.strokeStyle="#5a7bb0"; ctx.lineWidth=2; roundRect(x,y,ww,400,14); ctx.stroke();
+  ctx.textAlign="left"; ctx.textBaseline="alphabetic";
+  const rows=[
+    ["별명", profile.nickname+"   (N: 변경)"],
+    ["보유 골드", profile.gold+" G"],
+    ["선택 캐릭터", ch.name+" ("+(ch.role||"")+")"],
+    ["선택 도구", w.name],
+    ["전적", "승 "+profile.wins+" · 패 "+profile.losses+" · 무 "+profile.draws],
+    ["플레이 수", String(profile.totalPlays)],
+    ["총 처치", String(profile.totalKills)],
+    ["보스 처치", String(profile.bossKills)],
+    ["수집 캐릭터", profile.unlockedCharacters.length+" / "+CHARACTERS.length],
+    ["수집 도구", profile.unlockedWeapons.length+" / "+WEAPONS.length]
+  ];
+  for(let i=0;i<rows.length;i++){ const ry=y+44+i*34;
+    ctx.fillStyle="#aab4e0"; ctx.font="bold 16px 'Malgun Gothic',sans-serif"; ctx.fillText(rows[i][0], x+26, ry);
+    ctx.fillStyle="#ffffff"; ctx.font="16px 'Malgun Gothic',sans-serif"; ctx.fillText(rows[i][1], x+220, ry);
+  }
+  ctx.textAlign="center"; ctx.fillStyle="#ffe066"; ctx.font="bold 16px 'Malgun Gothic',sans-serif";
+  ctx.fillText("I: 수집창 보기 · N: 별명 변경 · Esc: 시작 화면", LOGW/2, 590);
+  ctx.restore();
+}
+// 수집창: 캐릭터/도구 카드 목록 + 잠김/해금
+function drawCollectionScreen(){
+  dimScreen(0.82);
+  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="alphabetic";
+  ctx.fillStyle="#9fe0ff"; ctx.font="bold 38px 'Malgun Gothic',sans-serif"; ctx.fillText("수집창", LOGW/2, 64);
+  const isChar=(collectionTab==="char");
+  ctx.font="bold 18px 'Malgun Gothic',sans-serif";
+  ctx.fillStyle=isChar?"#ffe066":"#8893bb"; ctx.fillText("캐릭터", LOGW/2-90, 96);
+  ctx.fillStyle=!isChar?"#ffe066":"#8893bb"; ctx.fillText("도구", LOGW/2+70, 96);
+  ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif"; ctx.fillText("(T: 캐릭터/도구 전환)", LOGW/2, 116);
+  const list=isChar?CHARACTERS:WEAPONS;
+  const unlocked=isChar?profile.unlockedCharacters:profile.unlockedWeapons;
+  const cols=6, rowsN=Math.ceil(list.length/cols), cw=180, chh=92, gap=12;
+  const totalW=cols*cw+(cols-1)*gap, startX=(LOGW-totalW)/2, startY=140;
+  for(let i=0;i<list.length;i++){
+    const it=list[i], col=i%cols, row=Math.floor(i/cols);
+    const x=startX+col*(cw+gap), y=startY+row*(chh+gap);
+    const has=unlocked.indexOf(it.id)>=0, isStudent=(it.id.indexOf("student_")===0||it.id.indexOf("tool_")===0);
+    ctx.save(); ctx.globalAlpha=has?1:0.45;
+    ctx.fillStyle="rgba(16,22,52,0.92)"; roundRect(x,y,cw,chh,10); ctx.fill();
+    ctx.strokeStyle=has?(it.color||"#5a7bb0"):"#444c66"; ctx.lineWidth=has?3:2; roundRect(x,y,cw,chh,10); ctx.stroke();
+    // 미리보기
+    ctx.save(); ctx.translate(x+30,y+chh/2);
+    if(isChar){ if(!drawCharacterSprite(it.id,20,Math.PI/2,{moving:false})) drawPlayerCharacter({r:20,color:it.color,subColor:it.subColor||"#fff",facing:Math.PI/2}); }
+    else { ctx.fillStyle=it.color; roundRect(-12,-8,24,16,5); ctx.fill(); ctx.strokeStyle="#fff"; ctx.lineWidth=2; roundRect(-12,-8,24,16,5); ctx.stroke(); }
+    ctx.restore();
+    ctx.textAlign="left"; ctx.textBaseline="alphabetic";
+    ctx.fillStyle="#fff"; ctx.font="bold 14px 'Malgun Gothic',sans-serif"; ctx.fillText(it.name.slice(0,8), x+56, y+30);
+    ctx.fillStyle="#aab4e0"; ctx.font="11px 'Malgun Gothic',sans-serif"; ctx.fillText(isChar?(it.role||""):"", x+56, y+48);
+    ctx.fillStyle=has?"#7dffa8":"#ff9a9a"; ctx.font="bold 12px 'Malgun Gothic',sans-serif";
+    ctx.fillText(has?(isStudent?"기본 해금":"해금됨"):("잠김 "+it.unlockCost+"G"), x+56, y+70);
+    ctx.restore();
+  }
+  ctx.textAlign="center"; ctx.fillStyle="#aab4e0"; ctx.font="14px 'Malgun Gothic',sans-serif";
+  ctx.fillText("학생 기본 6캐릭터/6도구는 기본 해금 · 나머지는 상점에서 골드로 해금 · Esc: 돌아가기", LOGW/2, LOGH-22);
+  ctx.restore();
+}
 function drawBackground(){
   const g=ctx.createLinearGradient(0,0,0,LOGH);
   g.addColorStop(0,"#1b2150"); g.addColorStop(1,"#0d1030");
@@ -2306,7 +2395,7 @@ function drawStartScreen(){
   drawCharacterCard(800, 158, 286, 410, ch, w);
   ctx.save(); ctx.textAlign="center";
   ctx.fillStyle="#aab4e0"; ctx.font="15px 'Malgun Gothic',sans-serif";
-  ctx.fillText("↑↓ 항목 이동 · ←→ 값 변경 · Enter 실행 · (단축키 C/W/D/M/T/N/S/O)", LOGW/2, startY+rows.length*rowH+14);
+  ctx.fillText("↑↓ 항목 이동 · ←→ 값 변경 · Enter 실행 · (단축키 C/W/D/M/T/N/S/O · U 내정보 · I 수집창)", LOGW/2, startY+rows.length*rowH+14);
   ctx.fillStyle="#8893bb"; ctx.font="14px 'Malgun Gothic',sans-serif";
   ctx.fillText("게임 중 조작 — 방향키 이동 · Z 공격 · X 궁극기 · P 일시정지", LOGW/2, startY+rows.length*rowH+38);
   ctx.fillStyle="#6f7aa0"; ctx.font="13px 'Malgun Gothic',sans-serif";
