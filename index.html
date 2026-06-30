@@ -1762,6 +1762,7 @@ function updateEffects(dt){
 function update(dt){
   uiTime+=dt;
   if(toastTimer>0) toastTimer-=dt;
+  if(confirmLeave) return;   // 나가기 확인 중에는 게임 진행 멈춤(입력이 밑에서 계속 먹지 않도록)
   if(gameState===STATE.ONLINE_PLAYING){ updateOnline(dt); return; }
   if(gameState!==STATE.PLAYING) return;
   matchElapsed+=dt;
