@@ -73,7 +73,23 @@ const GAME_CONFIG = {
   bossThreshold: 5,            // 적을 이만큼 쓰러뜨리면 보스 등장
   bossMaxHp: 280,              // 보스 체력
   bossDamageMul: 1.4,          // 보스 공격력 배수
-  bossBulletRadius: 14         // 보스 탄환 크기
+  bossBulletRadius: 14,        // 보스 탄환 크기
+
+  // ── v1.11 학생 피드백 반영 추가 설정 ──
+  magazineSize: 7,             // 장전: 탄창 한 통의 발수
+  reloadTime: 1.3,            // 장전: 한 번 장전에 걸리는 시간(초)
+  bushRevealDistance: 170,     // 풀숲: 이 거리 안이면 풀숲 속 적도 보임
+  bushAttackRevealTime: 1.0,   // 풀숲: 공격하면 이 시간 동안 드러남
+  obstacleHitboxInset: 4,      // 장애물 충돌 박스를 안쪽으로 줄이는 px(모서리 답답함 완화)
+  trapDamage: 8,               // 함정(반짝 가시판) 피해
+  trapCooldown: 1.0,           // 함정 피해 쿨타임(초)
+  trapSlowMul: 0.55,           // 함정(끈끈이 젤리판) 이동속도 배수
+  trapSlowTime: 1.0,           // 함정 둔화 지속(초)
+  powerupSpawnInterval: 10,    // 아이템 생성 간격(초)
+  powerupMaxCount: 3,          // 동시에 존재하는 최대 아이템 수
+  healPowerupAmount: 25,       // 하트 젤리 회복량
+  speedBuffMul: 1.25,          // 번개 젤리 속도 배수
+  speedBuffTime: 5             // 번개 젤리 지속(초)
 };
 
 /* 2) 난이도 ------------------------------------------------------------ */
@@ -893,6 +909,7 @@ const STATE = { START:"start", SHOP:"shop",
   ONLINE_MENU:"online_menu", ONLINE_LOBBY:"online_lobby", ONLINE_PLAYING:"online_playing", ONLINE_OVER:"online_over",
   PLAYING:"playing", PAUSED:"paused", OVER:"over", ASSET_CHECK:"asset_check" };
 let gameState = STATE.START;
+let confirmLeave = false;   // Esc 나가기 확인 오버레이 표시 여부(온라인/플레이 중)
 
 let player = null;        // 내가 조종하는 캐릭터
 let allies = [];          // 아군 AI
@@ -970,6 +987,12 @@ window.addEventListener("beforeunload", ()=>{ try{ if(OnlineManager.role) Online
 function showToast(text){ toastText = text; toastTimer = 1.8; }
 
 function handleKeyPress(code){
+  // 나가기 확인 오버레이가 떠 있으면 Y/N만 처리(다른 입력 무시)
+  if(confirmLeave){
+    if(code==="KeyY"){ confirmLeave=false; doLeaveToStart(); return; }
+    if(code==="KeyN"||code==="Escape"){ confirmLeave=false; return; }
+    return;
+  }
   if(gameState === STATE.ASSET_CHECK){ if(code==="Escape"||code==="Enter"||code==="NumpadEnter") gameState=STATE.START; return; }
   if(gameState === STATE.START){ handleStartKey(code); return; }
   if(gameState === STATE.SHOP){ handleShopKey(code); return; }
@@ -977,13 +1000,20 @@ function handleKeyPress(code){
   if(gameState === STATE.ONLINE_LOBBY){ handleOnlineLobbyKey(code); return; }
   if(gameState === STATE.ONLINE_PLAYING){ handleOnlinePlayKey(code); return; }
   if(gameState === STATE.ONLINE_OVER){
-    if(code==="Enter"||code==="NumpadEnter"||code==="Escape"||code==="KeyR"){ OnlineManager.leaveRoom(); goToStartScreen(); }
+    // 방장은 R/Enter로 같은 방 재시작, 참가자는 방장 대기. Esc는 나가기 확인.
+    if(code==="KeyR"||code==="Enter"||code==="NumpadEnter"){
+      if(OnlineManager.role==="host") onlineRematch();
+      else showToast("방장이 다시 시작하면 함께 시작돼요");
+      return;
+    }
+    if(code==="Escape"){ confirmLeave=true; return; }
     return;
   }
   if(gameState === STATE.PLAYING){
     if(code==="KeyX" || code==="Space"){ useCharacterSuper(); return; }
     if(code==="KeyP"){ setPaused(true); return; }
-    if(code==="Escape"){ goToStartScreen(); return; }
+    if(code==="KeyR"){ reloadWeaponManual(); return; }   // 장전(결과화면 R 재시작과 분리: PLAYING에서만 장전)
+    if(code==="Escape"){ confirmLeave=true; return; }
     return;
   }
   if(gameState === STATE.PAUSED){
@@ -1673,7 +1703,22 @@ function render(){
   else if(gameState===STATE.PAUSED) drawPauseScreen();
   else if(gameState===STATE.OVER) drawResultScreen();
 
+  if(confirmLeave) drawLeaveConfirm();
   drawToast();
+}
+
+// Esc 나가기 확인 오버레이(Canvas 안). window.confirm 대신 사용.
+function drawLeaveConfirm(){
+  dimScreen(0.66);
+  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
+  const bw=560, bh=190, bx=LOGW/2-bw/2, by=LOGH/2-bh/2;
+  ctx.fillStyle="rgba(20,26,60,0.96)"; roundRect(bx,by,bw,bh,16); ctx.fill();
+  ctx.strokeStyle="#9fe0ff"; ctx.lineWidth=3; roundRect(bx,by,bw,bh,16); ctx.stroke();
+  ctx.fillStyle="#ffffff"; ctx.font="bold 30px 'Malgun Gothic',sans-serif";
+  ctx.fillText("정말 방에서 나갈까요?", LOGW/2, by+62);
+  ctx.fillStyle="#ffe066"; ctx.font="bold 22px 'Malgun Gothic',sans-serif";
+  ctx.fillText("Y: 나가기      N 또는 Esc: 취소", LOGW/2, by+128);
+  ctx.restore();
 }
 
 // F2 에셋 확인 화면 — 6슬롯의 이미지 연결 상태를 한눈에. 게임 로직에 영향 없음.
@@ -2130,7 +2175,7 @@ function doJoinAny(){
   });
 }
 function handleOnlineLobbyKey(code){
-  if(code==="Escape"){ OnlineManager.leaveRoom(); goToStartScreen(); return; }
+  if(code==="Escape"){ confirmLeave=true; return; }
   if(code==="Enter"||code==="NumpadEnter"){
     if(isTeamOnline()){ if(OnlineManager.role==="host") tStartMatch(); return; }
     if(OnlineManager.role==="host" && OnlineManager.players && OnlineManager.players.guest) hostStartOnlineMatch();
@@ -2138,9 +2183,18 @@ function handleOnlineLobbyKey(code){
   }
 }
 function handleOnlinePlayKey(code){
-  if(code==="Escape"){ OnlineManager.leaveRoom(); goToStartScreen(); return; }
-  if(code==="KeyX"||code==="Space"){ showToast("온라인 베타에서는 궁극기 비활성"); return; }
+  if(code==="Escape"){ confirmLeave=true; return; }
+  if(code==="KeyR"){ reloadWeaponManual(); return; }   // 온라인에서도 R 수동 장전
+  // 궁극기(X)는 온라인에서도 활성(아래 super 입력 경로로 처리). 여기선 토스트 제거.
 }
+
+// 나가기 확정 시 실제 퇴장 처리(온라인이면 방 정리 후 시작화면)
+function doLeaveToStart(){
+  if(isOnlineState()){ try{ OnlineManager.leaveRoom(); }catch(e){} }
+  goToStartScreen();
+}
+// 장전(수동) — 실제 구현은 아래 전투 섹션. 여기 선언이 없으면 R 키에서 참조 오류가 나므로 안전 래퍼.
+function reloadWeaponManual(){ if(typeof doReloadManual==="function") doReloadManual(); }
 
 function doCreateRoom(){
   onlineLobbyMsg="방 만드는 중…";
@@ -2167,6 +2221,14 @@ function hostStartOnlineMatch(){
   gameState=STATE.ONLINE_PLAYING;
 }
 
+// 같은 방에서 다시 시작(방장 전용). 방 코드/참가자/리스너 유지, 상태만 초기화 후 status=playing.
+function onlineRematch(){
+  if(OnlineManager.role!=="host") return;
+  if(isTeamOnline()) tStartMatch();          // 팀(3v3/PVE): 전체 리셋 + status=playing
+  else hostStartOnlineMatch();               // 1v1: 동일
+  showToast("다시 시작!");
+}
+
 // 방 상태가 바뀔 때(주로 guest 쪽에서 호출됨)
 function onRoomMetaChanged(){
   const meta=OnlineManager.meta;
@@ -2177,8 +2239,10 @@ function onRoomMetaChanged(){
     return;
   }
   if(meta.status==="playing"){
-    if(gameState===STATE.ONLINE_LOBBY){
+    // 로비에서 시작하거나, 결과화면(ONLINE_OVER)에서 방장이 같은 방 재시작한 경우 모두 처리
+    if(gameState===STATE.ONLINE_LOBBY || gameState===STATE.ONLINE_OVER){
       if(isTeamOnline()) resetTeamMatchFromRoom(); else resetOnlineMatchFromRoom();
+      confirmLeave=false;
       gameState=STATE.ONLINE_PLAYING;
     }
   } else if(meta.status==="ended"){
@@ -2215,9 +2279,10 @@ function makeOnlineFighter(slot, d){
 
 /* ---- 입력 송신(throttle + 변화 시 즉시) ---- */
 function readLocalInput(){
+  if(confirmLeave) return emptyInput();   // 나가기 확인 중에는 이동/공격/궁극기 입력 무시
   return { up:keysDown.has("ArrowUp"), down:keysDown.has("ArrowDown"),
            left:keysDown.has("ArrowLeft"), right:keysDown.has("ArrowRight"),
-           attack:keysDown.has("KeyZ"), super:false };
+           attack:keysDown.has("KeyZ"), super:keysDown.has("KeyX")||keysDown.has("Space") };
 }
 function sendMyInput(dt){
   const inp=readLocalInput(), str=JSON.stringify(inp);
@@ -2447,11 +2512,26 @@ function drawOnlineBullet(b){
   ctx.strokeStyle=color; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.stroke();
   ctx.restore();
 }
+// 내 캐릭터 식별 표시: 밝은 펄스 링 + 머리 위 화살표 + "나". (사람이 많아도 내 것이 보이게)
+function drawSelfMarker(x,y,r){
+  ctx.save();
+  const pulse=0.6+0.4*Math.sin(uiTime*6);
+  ctx.globalAlpha=pulse; ctx.strokeStyle="#bfffad"; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.arc(x,y,r+9,0,Math.PI*2); ctx.stroke();
+  ctx.globalAlpha=1;
+  const ay=y-r-30, bob=Math.sin(uiTime*6)*2;
+  ctx.fillStyle="#bfffad"; ctx.beginPath();
+  ctx.moveTo(x-9,ay-9+bob); ctx.lineTo(x+9,ay-9+bob); ctx.lineTo(x,ay+1+bob); ctx.closePath(); ctx.fill();
+  ctx.fillStyle="#173a17"; ctx.font="bold 11px 'Malgun Gothic',sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillText("나", x, ay-5+bob);
+  ctx.restore();
+}
 function drawOnlineFighter(d, isMe){
   if(!d || d.dead) return;
   const ch=getCharacter(d.charId||"lumi");
   let alpha=1;
   if(d.inv && Math.floor(uiTime*12)%2===0) alpha*=0.4;
+  if(isMe) drawSelfMarker(d.x,d.y,22);
   ctx.save(); ctx.globalAlpha=alpha; ctx.translate(d.x,d.y);
   if(!drawCharacterSprite(d.charId||"student_01", 22, d.facing||0, { moving:spriteMoving("O"+(isMe?"me":"op"),d.x,d.y) }))
     drawPlayerCharacter({ r:22, color:ch.color, subColor:ch.subColor, facing:d.facing||0 });
@@ -2903,6 +2983,7 @@ function tDrawFighter(d){
   if(d.dead) return;
   const ch=getCharacter(d.charId||"lumi");
   let alpha=1; if(d.inv && Math.floor(uiTime*12)%2===0) alpha*=0.4;
+  if(d.isMe) drawSelfMarker(d.x,d.y,22);
   ctx.save(); ctx.globalAlpha=alpha; ctx.translate(d.x,d.y);
   // 팀 색 링
   ctx.strokeStyle=TEAM_COLOR[d.team]||"#fff"; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(0,0,28,0,Math.PI*2); ctx.stroke();
