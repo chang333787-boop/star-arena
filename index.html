@@ -609,6 +609,36 @@ function saveProfile(){
   OnlineManager.saveCloudProfile(profile); // Firebase가 있으면 시도(없으면 조용히 무시)
 }
 
+/* ── 수업용 간단 계정(학급 명단) ── 보안 기능이 아님. profile과 별도 저장이라 기존 데이터 안전.
+   운영자 PIN(1234)은 보안용이 아니라 수업 편의용. 개인정보 저장 안 함(별명만). ── */
+const CLASS_KEY = "starArena.class.v1";
+const ADMIN_PIN = "1234";
+let CLASS_ROSTER = null;   // [{name, charId, weaponId} x6]
+function defaultRoster(){
+  const r=[]; for(let i=0;i<6;i++){ const c=STUDENT_CHARACTERS[i], w=STUDENT_WEAPONS[i];
+    r.push({ name:"학생"+(i+1), charId:c?c.id:"student_01", weaponId:(c&&c.defaultWeaponId)||(w?w.id:"tool_01") }); }
+  return r;
+}
+function loadClassRoster(){
+  let saved=null; try{ const raw=window.localStorage.getItem(CLASS_KEY); if(raw) saved=JSON.parse(raw); }catch(e){ saved=null; }
+  const def=defaultRoster();
+  if(Array.isArray(saved)){ for(let i=0;i<6;i++){ if(saved[i]&&typeof saved[i]==="object"){
+    def[i].name=(""+(saved[i].name||def[i].name)).slice(0,10);
+    if(getCharacter(saved[i].charId).id===saved[i].charId) def[i].charId=saved[i].charId;
+    if(getWeapon(saved[i].weaponId).id===saved[i].weaponId) def[i].weaponId=saved[i].weaponId;
+  } } }
+  CLASS_ROSTER=def;
+}
+function saveClassRoster(){ try{ window.localStorage.setItem(CLASS_KEY, JSON.stringify(CLASS_ROSTER)); }catch(e){} }
+// 학생 계정 선택 → 현재 프로필에 별명/선택 캐릭터·도구 적용(해금돼 있으면 선택까지)
+function applyAccount(i){
+  const a=CLASS_ROSTER[i]; if(!a) return;
+  profile.nickname=a.name;
+  if(profile.unlockedCharacters.indexOf(a.charId)>=0){ profile.selectedCharacterId=a.charId; selectedCharacterId=a.charId; }
+  if(profile.unlockedWeapons.indexOf(a.weaponId)>=0){ profile.selectedWeaponId=a.weaponId; selectedWeaponId=a.weaponId; }
+  saveProfile();
+}
+
 function addGold(amount){ profile.gold = Math.max(0, profile.gold + amount); }
 function unlockCharacter(id){ if(profile.unlockedCharacters.indexOf(id) < 0) profile.unlockedCharacters.push(id); }
 function unlockWeapon(id){ if(profile.unlockedWeapons.indexOf(id) < 0) profile.unlockedWeapons.push(id); }
@@ -948,7 +978,7 @@ const OnlineManager = {
 const STATE = { START:"start", SHOP:"shop",
   ONLINE_MENU:"online_menu", ONLINE_LOBBY:"online_lobby", ONLINE_PLAYING:"online_playing", ONLINE_OVER:"online_over",
   PLAYING:"playing", PAUSED:"paused", OVER:"over", ASSET_CHECK:"asset_check",
-  PROFILE:"profile", COLLECTION:"collection" };
+  PROFILE:"profile", COLLECTION:"collection", LOGIN:"login", ADMIN:"admin" };
 let gameState = STATE.START;
 let confirmLeave = false;   // Esc 나가기 확인 오버레이 표시 여부(온라인/플레이 중)
 let _viewer = null;         // 풀숲 가시성 계산용 내 시점 {x,y,team} (온라인 렌더 직전 설정)
@@ -995,6 +1025,7 @@ let shopIndex = 0;
 let shopItems = [];
 let resultButtonIndex = 0;
 let collectionIndex = 0, collectionTab = "char";   // 수집창 상태
+let loginIndex = 0, loginPick = 0, adminIndex = 0; // 로그인/운영자 화면 상태
 let toastText = "";
 let toastTimer = 0;
 
@@ -1051,6 +1082,8 @@ function handleKeyPress(code){
     else if(code==="KeyT"){ collectionTab=(collectionTab==="char")?"tool":"char"; collectionIndex=0; }
     return;
   }
+  if(gameState === STATE.LOGIN){ handleLoginKey(code); return; }
+  if(gameState === STATE.ADMIN){ handleAdminKey(code); return; }
   if(gameState === STATE.START){ handleStartKey(code); return; }
   if(gameState === STATE.SHOP){ handleShopKey(code); return; }
   if(gameState === STATE.ONLINE_MENU){ handleOnlineMenuKey(code); return; }
@@ -1107,6 +1140,38 @@ function handleStartKey(code){
   if(code==="KeyO"){ openOnlineMenu(); return; }
   if(code==="KeyU"){ gameState=STATE.PROFILE; return; }       // 개인창(내 정보)
   if(code==="KeyI"){ collectionIndex=0; gameState=STATE.COLLECTION; return; } // 수집창
+  if(code==="KeyL"){ loginIndex=0; gameState=STATE.LOGIN; return; }           // 로그인/계정
+}
+function handleLoginKey(code){
+  if(!CLASS_ROSTER) loadClassRoster();
+  const N=4;
+  if(code==="Escape"){ gameState=STATE.START; return; }
+  if(code==="ArrowUp"){ loginIndex=(loginIndex+N-1)%N; return; }
+  if(code==="ArrowDown"){ loginIndex=(loginIndex+1)%N; return; }
+  if(code==="ArrowLeft"){ loginPick=(loginPick+5)%6; return; }   // 계정 슬롯 이동
+  if(code==="ArrowRight"){ loginPick=(loginPick+1)%6; return; }
+  if(code==="Enter"||code==="NumpadEnter"){
+    if(loginIndex===0){ applyAccount(loginPick); showToast(CLASS_ROSTER[loginPick].name+" 계정으로 시작!"); gameState=STATE.START; }
+    else if(loginIndex===1){ changeNickname(); gameState=STATE.START; }
+    else if(loginIndex===2){ let pin=null; try{ pin=window.prompt("운영자 PIN (수업용)"); }catch(e){ pin=null; }
+      if(pin===ADMIN_PIN){ adminIndex=0; gameState=STATE.ADMIN; } else if(pin!==null) showToast("PIN이 올라요"); }
+    else { gameState=STATE.START; }
+  }
+}
+function handleAdminKey(code){
+  if(!CLASS_ROSTER) loadClassRoster();
+  if(code==="Escape"){ gameState=STATE.LOGIN; return; }
+  if(code==="ArrowUp"){ adminIndex=(adminIndex+5)%6; return; }
+  if(code==="ArrowDown"){ adminIndex=(adminIndex+1)%6; return; }
+  const a=CLASS_ROSTER[adminIndex]; if(!a) return;
+  const sc=STUDENT_CHARACTERS.map(c=>c.id), sw=STUDENT_WEAPONS.map(w=>w.id);
+  if(code==="ArrowLeft"||code==="KeyC"){ a.charId=cycleInList(sc, a.charId, code==="ArrowLeft"?-1:1); saveClassRoster(); return; }
+  if(code==="ArrowRight"){ a.charId=cycleInList(sc, a.charId, 1); saveClassRoster(); return; }
+  if(code==="KeyW"){ a.weaponId=cycleInList(sw, a.weaponId, 1); saveClassRoster(); return; }
+  if(code==="Enter"||code==="NumpadEnter"||code==="KeyN"){
+    let nm=null; try{ nm=window.prompt("표시 이름(별명) 2~10자", a.name); }catch(e){ nm=null; }
+    if(nm!==null){ nm=(""+nm).trim().slice(0,10)||a.name; a.name=nm; saveClassRoster(); }
+  }
 }
 function changeMenuValue(row, dir){
   if(row===0) cycleCharacter(dir);
@@ -1352,7 +1417,7 @@ function currentMap(){
 function currentTraps(){ const m=currentMap(); return (m&&m.traps)||[]; }
 // 둔화/버프 반영 이동속도
 function effSpeed(f){ let s=f.moveSpeed||0; if(f.slowTimer>0) s*=GAME_CONFIG.trapSlowMul; if(f.speedBuffTimer>0) s*=GAME_CONFIG.speedBuffMul; return s; }
-function tickStatus(f,dt){ if(f.slowTimer>0)f.slowTimer-=dt; if(f.speedBuffTimer>0)f.speedBuffTimer-=dt; if(f.trapTimer>0)f.trapTimer-=dt; }
+function tickStatus(f,dt){ if(f.slowTimer>0)f.slowTimer-=dt; if(f.speedBuffTimer>0)f.speedBuffTimer-=dt; if(f.trapTimer>0)f.trapTimer-=dt; if(f.fireRevealTimer>0)f.fireRevealTimer-=dt; }
 // 함정 효과(밟으면): damage=약한 피해(비살상, 쿨타임), slow=잠시 둔화. 리스폰 무적 중엔 무시.
 function applyTrapTo(f){
   if(!f || f.dead || f.inactive || f.invincibleTimer>0) return;
@@ -1885,6 +1950,8 @@ function render(){
   else if(gameState===STATE.ASSET_CHECK) drawAssetCheckScreen();
   else if(gameState===STATE.PROFILE) drawProfileScreen();
   else if(gameState===STATE.COLLECTION) drawCollectionScreen();
+  else if(gameState===STATE.LOGIN) drawLoginScreen();
+  else if(gameState===STATE.ADMIN) drawAdminScreen();
   else if(gameState===STATE.SHOP) drawShopScreen();
   else if(gameState===STATE.ONLINE_MENU) drawOnlineMenu();
   else if(gameState===STATE.ONLINE_LOBBY) drawOnlineLobby();
@@ -2041,6 +2108,47 @@ function drawCollectionScreen(){
   }
   ctx.textAlign="center"; ctx.fillStyle="#aab4e0"; ctx.font="14px 'Malgun Gothic',sans-serif";
   ctx.fillText("학생 기본 6캐릭터/6도구는 기본 해금 · 나머지는 상점에서 골드로 해금 · Esc: 돌아가기", LOGW/2, LOGH-22);
+  ctx.restore();
+}
+// 로그인/계정 화면(수업용 간단 — 보안 아님)
+function drawLoginScreen(){
+  if(!CLASS_ROSTER) loadClassRoster();
+  dimScreen(0.82);
+  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="alphabetic";
+  ctx.fillStyle="#9fe0ff"; ctx.font="bold 40px 'Malgun Gothic',sans-serif"; ctx.fillText("로그인 / 계정", LOGW/2, 90);
+  // 계정 슬롯 선택
+  const a=(CLASS_ROSTER&&CLASS_ROSTER[loginPick])||{name:"학생"};
+  ctx.fillStyle="#ffe066"; ctx.font="bold 22px 'Malgun Gothic',sans-serif";
+  ctx.fillText("◀ 계정: "+a.name+" ("+(loginPick+1)+"/6) ▶", LOGW/2, 150);
+  const labels=["이 계정으로 시작","별명 직접 입력","운영자(admin) 들어가기","뒤로"];
+  for(let i=0;i<labels.length;i++){ const y=210+i*54; drawButton(labels[i], LOGW/2, y, 380, 44, i===loginIndex); }
+  ctx.textAlign="center"; ctx.fillStyle="#aab4e0"; ctx.font="14px 'Malgun Gothic',sans-serif";
+  ctx.fillText("↑↓ 선택 · ←→ 계정 · Enter 실행 · Esc 뒤로", LOGW/2, 210+labels.length*54+8);
+  ctx.fillStyle="#6f7aa0"; ctx.font="13px 'Malgun Gothic',sans-serif";
+  ctx.fillText("※ 운영자 PIN(1234)은 보안 기능이 아니라 수업 편의용입니다. 개인정보는 저장하지 않아요.", LOGW/2, LOGH-26);
+  ctx.restore();
+}
+// 운영자 화면: 학생 6슬롯 이름/기본 캐릭터·도구 관리
+function drawAdminScreen(){
+  if(!CLASS_ROSTER) loadClassRoster();
+  dimScreen(0.85);
+  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="alphabetic";
+  ctx.fillStyle="#ffd23f"; ctx.font="bold 36px 'Malgun Gothic',sans-serif"; ctx.fillText("운영자 — 학급 명단", LOGW/2, 70);
+  ctx.fillStyle="#aab4e0"; ctx.font="14px 'Malgun Gothic',sans-serif";
+  ctx.fillText("↑↓ 슬롯 · Enter/N 이름변경 · ←→/C 캐릭터 · W 도구 · Esc 뒤로", LOGW/2, 98);
+  const x=240, w=800, y0=130, rh=66;
+  for(let i=0;i<6;i++){ const a=CLASS_ROSTER[i], sel=(i===adminIndex), y=y0+i*rh;
+    ctx.fillStyle=sel?"rgba(95,160,255,0.25)":"rgba(16,22,52,0.85)"; roundRect(x,y,w,rh-10,10); ctx.fill();
+    ctx.strokeStyle=sel?"#9fe0ff":"#44506e"; ctx.lineWidth=sel?3:2; roundRect(x,y,w,rh-10,10); ctx.stroke();
+    const ch=getCharacter(a.charId);
+    ctx.save(); ctx.translate(x+34,y+(rh-10)/2);
+    if(!drawCharacterSprite(a.charId,18,Math.PI/2,{moving:false})) drawPlayerCharacter({r:18,color:ch.color,subColor:ch.subColor,facing:Math.PI/2});
+    ctx.restore();
+    ctx.textAlign="left"; ctx.textBaseline="middle";
+    ctx.fillStyle="#fff"; ctx.font="bold 18px 'Malgun Gothic',sans-serif"; ctx.fillText((i+1)+". "+a.name, x+64, y+(rh-10)/2-8);
+    ctx.fillStyle="#aab4e0"; ctx.font="13px 'Malgun Gothic',sans-serif";
+    ctx.fillText("캐릭터: "+ch.name+"   ·   도구: "+getWeapon(a.weaponId).name, x+64, y+(rh-10)/2+14);
+  }
   ctx.restore();
 }
 function drawBackground(){
@@ -2396,7 +2504,7 @@ function drawStartScreen(){
   drawCharacterCard(800, 158, 286, 410, ch, w);
   ctx.save(); ctx.textAlign="center";
   ctx.fillStyle="#aab4e0"; ctx.font="15px 'Malgun Gothic',sans-serif";
-  ctx.fillText("↑↓ 항목 이동 · ←→ 값 변경 · Enter 실행 · (단축키 C/W/D/M/T/N/S/O · U 내정보 · I 수집창)", LOGW/2, startY+rows.length*rowH+14);
+  ctx.fillText("↑↓ 항목 이동 · ←→ 값 변경 · Enter 실행 · (단축키 C/W/D/M/T/N/S/O · U 내정보 · I 수집창 · L 로그인)", LOGW/2, startY+rows.length*rowH+14);
   ctx.fillStyle="#8893bb"; ctx.font="14px 'Malgun Gothic',sans-serif";
   ctx.fillText("게임 중 조작 — 방향키 이동 · Z 공격 · X 궁극기 · P 일시정지", LOGW/2, startY+rows.length*rowH+38);
   ctx.fillStyle="#6f7aa0"; ctx.font="13px 'Malgun Gothic',sans-serif";
@@ -2764,6 +2872,7 @@ function tryOnlineSuper(f){
   }
 }
 function fireOnlineWeapon(f){
+  f.fireRevealTimer=GAME_CONFIG.bushAttackRevealTime;   // 풀숲: 공격하면 잠시 드러남
   const w=getWeapon(f.weaponId), c=f.char;
   const count=w.spreadCount, spread=deg2rad(w.spreadAngleDeg||0);
   const speed=GAME_CONFIG.playerBulletSpeed*c.bulletSpeedMul*w.bulletSpeedMul;
@@ -2817,7 +2926,7 @@ function respawnOnline(f){
 function packFighter(f){
   return { x:Math.round(f.x), y:Math.round(f.y), hp:Math.round(f.hp), maxHp:Math.round(f.maxHp),
     facing:Math.round(f.facing*100)/100, score:f.score, dead:!!f.dead, inv:f.invincibleTimer>0, charId:f.char.id,
-    am:f.ammo, rl:f.reloading?1:0, sg:Math.round(f.superGauge||0) };
+    am:f.ammo, rl:f.reloading?1:0, sg:Math.round(f.superGauge||0), fr:f.fireRevealTimer>0?1:0 };
 }
 function hostWriteOnlineState(){
   const H=onlineFighters.host, G=onlineFighters.guest;
@@ -2849,8 +2958,8 @@ function getOnlineDrawData(){
     const H=onlineFighters.host, G=onlineFighters.guest;
     return {
       timeLeft:Math.max(0,Math.ceil(onlineTimeLeft)),
-      host: H?{ x:H.x,y:H.y,hp:H.hp,maxHp:H.maxHp,facing:H.facing,dead:H.dead,inv:H.invincibleTimer>0,charId:H.char.id,score:H.score,am:H.ammo,rl:H.reloading?1:0,sg:H.superGauge }:null,
-      guest:G?{ x:G.x,y:G.y,hp:G.hp,maxHp:G.maxHp,facing:G.facing,dead:G.dead,inv:G.invincibleTimer>0,charId:G.char.id,score:G.score,am:G.ammo,rl:G.reloading?1:0,sg:G.superGauge }:null,
+      host: H?{ x:H.x,y:H.y,hp:H.hp,maxHp:H.maxHp,facing:H.facing,dead:H.dead,inv:H.invincibleTimer>0,charId:H.char.id,score:H.score,am:H.ammo,rl:H.reloading?1:0,sg:H.superGauge,fr:H.fireRevealTimer>0?1:0 }:null,
+      guest:G?{ x:G.x,y:G.y,hp:G.hp,maxHp:G.maxHp,facing:G.facing,dead:G.dead,inv:G.invincibleTimer>0,charId:G.char.id,score:G.score,am:G.ammo,rl:G.reloading?1:0,sg:G.superGauge,fr:G.fireRevealTimer>0?1:0 }:null,
       bullets: onlineBullets.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.color }))
     };
   } else {
@@ -2859,9 +2968,9 @@ function getOnlineDrawData(){
     // 상대는 보간값, 내 캐릭터는 예측값으로 그린다(즉시 반응). 체력/점수 등은 권한값 그대로.
     const ownSlot=(OnlineManager.role==="host")?"host":"guest";
     const mkOpp=(p,slot)=>{ if(!p) return null; const r=onlineRender[slot]||p;
-      return { x:r.x, y:r.y, facing:r.facing, hp:p.hp, maxHp:p.maxHp, dead:p.dead, inv:p.inv, charId:p.charId, score:p.score }; };
+      return { x:r.x, y:r.y, facing:r.facing, hp:p.hp, maxHp:p.maxHp, dead:p.dead, inv:p.inv, charId:p.charId, score:p.score, fr:p.fr }; };
     const mkOwn=(p)=>{ if(!p) return null; const r=(onlinePredict&&!p.dead)?onlinePredict:p;
-      return { x:r.x, y:r.y, facing:r.facing, hp:p.hp, maxHp:p.maxHp, dead:p.dead, inv:p.inv, charId:p.charId, score:p.score }; };
+      return { x:r.x, y:r.y, facing:r.facing, hp:p.hp, maxHp:p.maxHp, dead:p.dead, inv:p.inv, charId:p.charId, score:p.score, fr:p.fr }; };
     const host = (ownSlot==="host") ? mkOwn(s.host) : mkOpp(s.host,"host");
     const guest = (ownSlot==="guest") ? mkOwn(s.guest) : mkOpp(s.guest,"guest");
     // 상대 총알은 권한값으로, 내 총알은 예측값으로 그린다(내 권한 총알은 가려 중복 방지)
@@ -2898,8 +3007,8 @@ function drawSelfMarker(x,y,r){
 function drawOnlineFighter(d, isMe){
   if(!d || d.dead) return;
   const ch=getCharacter(d.charId||"lumi");
-  // 풀숲 가시성(상대가 풀숲에 멀리 있으면 숨김)
-  const vis=bushVisibility(d.x,d.y, isMe?"me":"enemy", isMe, _viewer, false);
+  // 풀숲 가시성(상대가 풀숲에 멀리 있으면 숨김, 공격 직후엔 드러남)
+  const vis=bushVisibility(d.x,d.y, isMe?"me":"enemy", isMe, _viewer, !!d.fr);
   if(vis.hidden){ drawBushRustle(d.x,d.y); return; }
   let alpha=vis.alpha;
   if(d.inv && Math.floor(uiTime*12)%2===0) alpha*=0.4;
@@ -2940,16 +3049,17 @@ function myCombatStatus(){
   if(isTeamOnline()){
     const slot=OnlineManager.mySlot;
     if(OnlineManager.role==="host"){ const f=tFighters[slot]; if(!f)return null;
-      return {ammo:f.ammo,mag:mag,reloading:!!f.reloading,sg:f.superGauge||0,superMax:sm,superName:f.char.superName}; }
+      return {ammo:f.ammo,mag:mag,reloading:!!f.reloading,sg:f.superGauge||0,superMax:sm,superName:f.char.superName,charName:f.char.name,toolName:getWeapon(f.weaponId).name}; }
     const st=OnlineManager.onlineState, p=st&&st.fighters&&st.fighters[slot]; if(!p)return null;
-    return {ammo:p.am,mag:mag,reloading:!!p.rl,sg:p.sg||0,superMax:sm,superName:getCharacter(tRosterCharId(slot)).superName};
+    const ch=getCharacter(tRosterCharId(slot)), pr=OnlineManager.players&&OnlineManager.players[slot];
+    return {ammo:p.am,mag:mag,reloading:!!p.rl,sg:p.sg||0,superMax:sm,superName:ch.superName,charName:ch.name,toolName:getWeapon((pr&&pr.weaponId)||"tool_01").name};
   } else {
-    const role=OnlineManager.role;
+    const role=OnlineManager.role, meta=OnlineManager.meta||{};
     if(role==="host"){ const f=onlineFighters.host; if(!f)return null;
-      return {ammo:f.ammo,mag:mag,reloading:!!f.reloading,sg:f.superGauge||0,superMax:sm,superName:f.char.superName}; }
+      return {ammo:f.ammo,mag:mag,reloading:!!f.reloading,sg:f.superGauge||0,superMax:sm,superName:f.char.superName,charName:f.char.name,toolName:getWeapon(f.weaponId).name}; }
     const st=OnlineManager.onlineState, p=st&&st[role]; if(!p)return null;
-    const meta=OnlineManager.meta||{}; const cid=p.charId||meta.characterGuest||"student_01";
-    return {ammo:p.am,mag:mag,reloading:!!p.rl,sg:p.sg||0,superMax:sm,superName:getCharacter(cid).superName};
+    const cid=p.charId||meta.characterGuest||"student_01"; const ch=getCharacter(cid);
+    return {ammo:p.am,mag:mag,reloading:!!p.rl,sg:p.sg||0,superMax:sm,superName:ch.superName,charName:ch.name,toolName:getWeapon(meta.weaponGuest||"tool_01").name};
   }
 }
 // 바닥 왼쪽에 탄창 + 궁극기 게이지 표시(온라인용)
@@ -2957,9 +3067,12 @@ function drawCombatStrip(){
   const s=myCombatStatus(); if(!s) return;
   ctx.save(); ctx.textBaseline="middle";
   const barX=24, barY=678, barW=240, barH=18, ready=s.sg>=s.superMax;
+  // 내 캐릭터/도구 이름(상단)
+  ctx.textAlign="left"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#bfffad";
+  ctx.fillText("나: "+(s.charName||"")+" · "+(s.toolName||""), barX, 666);
   // 궁극기
-  ctx.textAlign="left"; ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#cfd6f0";
-  ctx.fillText("궁극기("+(s.superName||"")+")", barX, 668);
+  ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#cfd6f0";
+  ctx.fillText("궁극기("+(s.superName||"")+")", barX+230, 666);
   ctx.fillStyle="rgba(0,0,0,0.5)"; roundRect(barX,barY,barW,barH,7); ctx.fill();
   const ratio=clamp(s.sg/s.superMax,0,1);
   if(ready){ const p=0.5+0.5*Math.sin(uiTime*8); ctx.fillStyle="rgba(255,225,80,"+(0.7+p*0.3)+")"; } else ctx.fillStyle="#5fa0ff";
@@ -3287,6 +3400,7 @@ function tBotUpdate(f, dt){
 }
 
 function tFire(f){
+  f.fireRevealTimer=GAME_CONFIG.bushAttackRevealTime;   // 풀숲: 공격하면 잠시 드러남
   const w=getWeapon(f.weaponId), c=f.char;
   const count=w.spreadCount, spread=deg2rad(w.spreadAngleDeg||0);
   const speed=GAME_CONFIG.playerBulletSpeed*c.bulletSpeedMul*w.bulletSpeedMul;
@@ -3346,7 +3460,7 @@ function tPackFighter(f){
   // am/rl/sg는 내 HUD(탄창/장전/궁극기)용 작은 숫자만 추가.
   return { x:Math.round(f.x), y:Math.round(f.y), hp:Math.round(f.hp),
     facing:Math.round(f.facing*100)/100, dead:!!f.dead, inv:f.invincibleTimer>0,
-    am:f.ammo, rl:f.reloading?1:0, sg:Math.round(f.superGauge||0) };
+    am:f.ammo, rl:f.reloading?1:0, sg:Math.round(f.superGauge||0), fr:f.fireRevealTimer>0?1:0 };
 }
 // 게스트가 정적 정보를 로스터(OnlineManager.players)에서 역산하는 도우미
 function tRosterCharId(slot){ const p=OnlineManager.players&&OnlineManager.players[slot]; return (p&&p.characterId)||"student_01"; }
@@ -3420,7 +3534,7 @@ function tGetDrawData(){
   const out={ fighters:[], bullets:[], teamScores:{blue:0,red:0}, timeLeft:0, waiting:false };
   if(OnlineManager.role==="host"){
     for(const slot in tFighters){ const f=tFighters[slot];
-      out.fighters.push({ x:f.x,y:f.y,facing:f.facing,hp:f.hp,maxHp:f.maxHp,dead:f.dead,inv:f.invincibleTimer>0,charId:f.char.id,team:f.team,slot:slot,isMe:slot===OnlineManager.mySlot }); }
+      out.fighters.push({ x:f.x,y:f.y,facing:f.facing,hp:f.hp,maxHp:f.maxHp,dead:f.dead,inv:f.invincibleTimer>0,charId:f.char.id,team:f.team,slot:slot,isMe:slot===OnlineManager.mySlot,fr:f.fireRevealTimer>0?1:0 }); }
     out.bullets=tBullets.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.color }));
     out.teamScores=tTeamScores; out.timeLeft=Math.max(0,Math.ceil(tTimeLeft));
   } else {
@@ -3430,7 +3544,7 @@ function tGetDrawData(){
     for(const slot in s.fighters){ const p=s.fighters[slot]; let rx=p.x,ry=p.y,rf=p.facing;
       if(slot===myslot && tPredict && !p.dead){ rx=tPredict.x; ry=tPredict.y; rf=tPredict.facing; }
       else if(tRenderFighters[slot] && !p.dead){ rx=tRenderFighters[slot].x; ry=tRenderFighters[slot].y; rf=tRenderFighters[slot].facing; }
-      out.fighters.push({ x:rx,y:ry,facing:rf,hp:p.hp,maxHp:p.maxHp||tRosterMaxHp(slot),dead:p.dead,inv:p.inv,charId:p.charId||tRosterCharId(slot),team:p.team||tRosterTeam(slot),slot:slot,isMe:slot===myslot }); }
+      out.fighters.push({ x:rx,y:ry,facing:rf,hp:p.hp,maxHp:p.maxHp||tRosterMaxHp(slot),dead:p.dead,inv:p.inv,charId:p.charId||tRosterCharId(slot),team:p.team||tRosterTeam(slot),slot:slot,isMe:slot===myslot,fr:p.fr }); }
     out.bullets=tBulletsView.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.c }));
     out.teamScores=s.teamScores||{blue:0,red:0}; out.timeLeft=s.timeLeft;
   }
@@ -3440,7 +3554,7 @@ function tGetDrawData(){
 function tDrawFighter(d){
   if(d.dead) return;
   const ch=getCharacter(d.charId||"lumi");
-  const vis=bushVisibility(d.x,d.y, d.team, d.isMe, _viewer, false);
+  const vis=bushVisibility(d.x,d.y, d.team, d.isMe, _viewer, !!d.fr);
   if(vis.hidden){ drawBushRustle(d.x,d.y); return; }
   let alpha=vis.alpha; if(d.inv && Math.floor(uiTime*12)%2===0) alpha*=0.4;
   if(d.isMe) drawSelfMarker(d.x,d.y,22);
@@ -3717,7 +3831,7 @@ function tPveEnd(){
 function tPveGetDrawData(){
   const out={ fighters:[], enemies:[], bullets:[], pve:null, waiting:false };
   if(OnlineManager.role==="host"){
-    for(const s in tFighters){ const f=tFighters[s]; out.fighters.push({ x:f.x,y:f.y,facing:f.facing,hp:f.hp,maxHp:f.maxHp,dead:f.dead,inv:f.invincibleTimer>0,charId:f.char.id,team:"pve",slot:s,isMe:s===OnlineManager.mySlot }); }
+    for(const s in tFighters){ const f=tFighters[s]; out.fighters.push({ x:f.x,y:f.y,facing:f.facing,hp:f.hp,maxHp:f.maxHp,dead:f.dead,inv:f.invincibleTimer>0,charId:f.char.id,team:"pve",slot:s,isMe:s===OnlineManager.mySlot,fr:f.fireRevealTimer>0?1:0 }); }
     for(const id in tEnemies){ const e=tEnemies[id]; out.enemies.push({ x:e.x,y:e.y,r:e.r,hp:e.hp,maxHp:e.maxHp,facing:e.facing,color:e.color,boss:e.isBoss,type:e.type }); }
     out.bullets=tBullets.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.color }));
     out.pve={ stageIndex:tPve.stageIndex, waveIndex:tPve.waveIndex, teamLives:tPve.teamLives, status:tPve.status, phase:tPve.phase, enemiesRemaining:Object.keys(tEnemies).length };
@@ -3728,7 +3842,7 @@ function tPveGetDrawData(){
     for(const s in st.fighters){ const p=st.fighters[s]; let rx=p.x,ry=p.y,rf=p.facing;
       if(s===myslot && tPredict && !p.dead){ rx=tPredict.x; ry=tPredict.y; rf=tPredict.facing; }
       else if(tRenderFighters[s] && !p.dead){ rx=tRenderFighters[s].x; ry=tRenderFighters[s].y; rf=tRenderFighters[s].facing; }
-      out.fighters.push({ x:rx,y:ry,facing:rf,hp:p.hp,maxHp:p.maxHp||tRosterMaxHp(s),dead:p.dead,inv:p.inv,charId:p.charId||tRosterCharId(s),team:"pve",slot:s,isMe:s===myslot }); }
+      out.fighters.push({ x:rx,y:ry,facing:rf,hp:p.hp,maxHp:p.maxHp||tRosterMaxHp(s),dead:p.dead,inv:p.inv,charId:p.charId||tRosterCharId(s),team:"pve",slot:s,isMe:s===myslot,fr:p.fr }); }
     const en=st.enemies||{}; for(const id in en){ const e=en[id]; if(e.dead) continue; const def=getEnemyDef(e.type);
       out.enemies.push({ x:e.x,y:e.y,r:e.r||def.r,hp:e.hp,maxHp:e.maxHp,facing:e.facing,color:e.color||def.color,boss:(e.boss!==undefined?e.boss:(e.type==="boss"||e.type==="miniBoss")),type:e.type }); }
     out.bullets=tBulletsView.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.c }));
@@ -3879,6 +3993,7 @@ function startLoopOnce(){
   if(loopStarted) return;
   loopStarted=true;
   loadProfile();
+  loadClassRoster();           // 수업용 학급 명단(별도 저장)
   loadGameAssets();            // ASSETS_ENABLED=false 면 아무것도 안 함(오늘)
   OnlineManager.initFirebaseIfAvailable();
   applyProfileSelections();
