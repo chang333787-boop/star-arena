@@ -2194,6 +2194,55 @@ function drawToast(){
 }
 
 /* ---- 시작 화면 ---- */
+// 궁극기 자동 설명(설명이 없을 때 superType 기준)
+function superDescOf(char){
+  const t=char.superType;
+  if(t==="burst") return "주변에 반짝 파동을 만들어 가까운 상대를 밀어냅니다.";
+  if(t==="dash")  return "바라보는 방향으로 빠르게 돌진하며 지나간 상대에게 피해를 줍니다.";
+  return "여러 발사체를 한 번에 부채꼴로 쏩니다.";
+}
+function norm01(v,lo,hi){ return clamp((v-lo)/(hi-lo),0,1); }
+function drawStatBar(label, val, x, y, w){
+  ctx.textAlign="left"; ctx.textBaseline="middle";
+  ctx.fillStyle="#aab4e0"; ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.fillText(label, x, y);
+  const bx=x+58, bw=w-58, bh=10;
+  ctx.fillStyle="rgba(0,0,0,0.4)"; roundRect(bx,y-bh/2,bw,bh,5); ctx.fill();
+  ctx.fillStyle="#5fd0ff"; roundRect(bx,y-bh/2,bw*clamp(val,0.05,1),bh,5); ctx.fill();
+}
+// 상용게임 느낌의 캐릭터/도구 카드(이름·역할·설명·도구·궁극기·능력치 막대)
+function drawCharacterCard(x,y,w,h,ch,wpn){
+  ctx.save();
+  ctx.fillStyle="rgba(16,22,52,0.9)"; roundRect(x,y,w,h,14); ctx.fill();
+  ctx.strokeStyle=ch.color; ctx.lineWidth=3; roundRect(x,y,w,h,14); ctx.stroke();
+  // 미리보기 + 이름/역할
+  ctx.save(); ctx.translate(x+44,y+46);
+  if(!drawCharacterSprite(ch.id,26,Math.PI/2,{moving:false})) drawPlayerCharacter({r:26,color:ch.color,subColor:ch.subColor,facing:Math.PI/2});
+  ctx.restore();
+  ctx.textAlign="left"; ctx.textBaseline="alphabetic";
+  ctx.fillStyle="#fff"; ctx.font="bold 22px 'Malgun Gothic',sans-serif"; ctx.fillText(ch.name, x+82, y+34);
+  ctx.fillStyle="#ffe066"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.fillText(ch.role||"캐릭터", x+82, y+54);
+  // 설명
+  ctx.fillStyle="#cfd6f0"; ctx.font="13px 'Malgun Gothic',sans-serif"; ctx.fillText(ch.desc||"", x+18, y+92);
+  // 능력치 막대
+  const cardW=w-36, sx=x+18; let sy=y+118;
+  const dmg=ch.damageMul*(wpn?wpn.damageMul:1), rng=(wpn?wpn.rangeMul:1)*ch.bulletSpeedMul;
+  const ease=clamp((norm01(ch.hpMul,0.8,1.3)+ (1-norm01(ch.speedMul,0.85,1.35)))/2,0.05,1);
+  drawStatBar("체력", norm01(ch.hpMul,0.8,1.25), sx, sy, cardW); sy+=22;
+  drawStatBar("속도", norm01(ch.speedMul,0.85,1.35), sx, sy, cardW); sy+=22;
+  drawStatBar("공격", norm01(dmg,0.4,2.6), sx, sy, cardW); sy+=22;
+  drawStatBar("사거리", norm01(rng,0.5,1.7), sx, sy, cardW); sy+=22;
+  drawStatBar("다루기쉬움", ease, sx, sy, cardW); sy+=30;
+  // 도구
+  ctx.textAlign="left"; ctx.textBaseline="alphabetic";
+  ctx.fillStyle="#9fe0ff"; ctx.font="bold 14px 'Malgun Gothic',sans-serif"; ctx.fillText("도구: "+(wpn?wpn.name:"-"), sx, sy); sy+=20;
+  ctx.fillStyle="#aab4e0"; ctx.font="12px 'Malgun Gothic',sans-serif"; ctx.fillText(wpn?(wpn.desc||"").slice(0,26):"", sx, sy); sy+=26;
+  // 궁극기
+  ctx.fillStyle="#ffd23f"; ctx.font="bold 14px 'Malgun Gothic',sans-serif"; ctx.fillText("특별기술: "+(ch.superName||""), sx, sy); sy+=20;
+  ctx.fillStyle="#dfe6ff"; ctx.font="12px 'Malgun Gothic',sans-serif";
+  const desc=superDescOf(ch); const line1=desc.slice(0,20), line2=desc.slice(20,42);
+  ctx.fillText(line1, sx, sy); if(line2){ sy+=17; ctx.fillText(line2, sx, sy); }
+  ctx.restore();
+}
 function drawStartScreen(){
   dimScreen(0.55);
   drawTitle(74);
@@ -2214,19 +2263,22 @@ function drawStartScreen(){
     {label:"온라인 대전(베타)", value:"(Enter / O)", isVal:false},
     {label:"▶ 게임 시작", value:"(Enter)", isVal:false}
   ];
-  const startY=162, rowH=40, leftX=300, valX=560;
+  const startY=162, rowH=40, leftX=210, valX=440, rowW=520;
   for(let i=0;i<rows.length;i++){
     const y=startY+i*rowH, sel=(i===menuIndex);
     ctx.save();
-    if(sel){ ctx.fillStyle="rgba(95,160,255,0.25)"; roundRect(leftX-30,y-rowH/2+4,710,rowH-8,8); ctx.fill(); ctx.strokeStyle="#9fe0ff"; ctx.lineWidth=2; roundRect(leftX-30,y-rowH/2+4,710,rowH-8,8); ctx.stroke(); }
+    if(sel){ ctx.fillStyle="rgba(95,160,255,0.25)"; roundRect(leftX-30,y-rowH/2+4,rowW,rowH-8,8); ctx.fill(); ctx.strokeStyle="#9fe0ff"; ctx.lineWidth=2; roundRect(leftX-30,y-rowH/2+4,rowW,rowH-8,8); ctx.stroke(); }
     ctx.textBaseline="middle"; ctx.textAlign="left";
     ctx.fillStyle=sel?"#ffe066":"#cfd6f0"; ctx.font="bold 20px 'Malgun Gothic',sans-serif";
     ctx.fillText((rows[i].isVal && sel ? "◀ " : "   ")+rows[i].label, leftX, y);
-    ctx.fillStyle="#ffffff"; ctx.font="17px 'Malgun Gothic',sans-serif";
+    ctx.fillStyle="#ffffff"; ctx.font="16px 'Malgun Gothic',sans-serif";
     let v=rows[i].value; if(rows[i].isVal && sel) v=v+"  ▶";
+    if(v.length>34) v=v.slice(0,33)+"…";
     ctx.fillText(v, valX, y);
     ctx.restore();
   }
+  // 오른쪽: 선택한 캐릭터 카드(상용게임 느낌)
+  drawCharacterCard(800, 158, 286, 410, ch, w);
   ctx.save(); ctx.textAlign="center";
   ctx.fillStyle="#aab4e0"; ctx.font="15px 'Malgun Gothic',sans-serif";
   ctx.fillText("↑↓ 항목 이동 · ←→ 값 변경 · Enter 실행 · (단축키 C/W/D/M/T/N/S/O)", LOGW/2, startY+rows.length*rowH+14);
