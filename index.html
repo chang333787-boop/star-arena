@@ -1020,7 +1020,9 @@ let MATCH = null;
 
 // 메뉴
 let menuIndex = 0;
-const MENU_ROWS = 9; // 0캐릭터 1무기 2난이도 3맵 4모드 5닉네임 6상점 7온라인 8시작
+// 로비 메뉴: 0바로시작 1온라인센터 2캐릭터 3무기 4난이도 5맵 6모드 7상점 8내정보/로그인 9교사용
+const MENU_ROWS = 10;
+const VALUE_ROWS = { "2":1, "3":1, "4":1, "5":1, "6":1 }; // ←→로 값 바꾸는 행
 let shopIndex = 0;
 let shopItems = [];
 let resultButtonIndex = 0;
@@ -1174,17 +1176,25 @@ function handleAdminKey(code){
   }
 }
 function changeMenuValue(row, dir){
-  if(row===0) cycleCharacter(dir);
-  else if(row===1) cycleWeapon(dir);
-  else if(row===2) cycleDifficulty(dir);
-  else if(row===3) cycleMap(dir);
-  else if(row===4) cycleMode(dir);
+  if(row===2) cycleCharacter(dir);
+  else if(row===3) cycleWeapon(dir);
+  else if(row===4) cycleDifficulty(dir);
+  else if(row===5) cycleMap(dir);
+  else if(row===6) cycleMode(dir);
 }
 function activateMenuRow(row){
-  if(row===5) changeNickname();
-  else if(row===6) openShop();
-  else if(row===7) openOnlineMenu();
-  else startGame(); // 값 행 또는 시작 행에서 Enter → 게임 시작
+  if(row===0) startGame();                 // 바로 시작(오프라인)
+  else if(row===1) openOnlineMenu();        // 온라인 센터
+  else if(row===7) openShop();              // 상점/수집
+  else if(row===8){ loginIndex=0; gameState=STATE.LOGIN; }  // 내 정보/로그인
+  else if(row===9) enterTeacherMode();      // 교사용(PIN)
+  else if(VALUE_ROWS[row]) changeMenuValue(row, +1);        // 값 행 Enter → 다음 값
+}
+// 교사용 모드: 학생 흐름과 분리, PIN으로만 진입(보안 아님·수업 편의용)
+function enterTeacherMode(){
+  let pin=null; try{ pin=window.prompt("교사용 PIN (수업용 · 보안 아님)"); }catch(e){ pin=null; }
+  if(pin===ADMIN_PIN){ if(!CLASS_ROSTER) loadClassRoster(); adminIndex=0; gameState=STATE.ADMIN; }
+  else if(pin!==null) showToast("PIN이 올라요");
 }
 
 /* =======================================================================
@@ -2466,50 +2476,87 @@ function drawCharacterCard(x,y,w,h,ch,wpn){
   ctx.fillText(line1, sx, sy); if(line2){ sy+=17; ctx.fillText(line2, sx, sy); }
   ctx.restore();
 }
+// ── 시작 화면 = 게임 로비형 대시보드 ──
 function drawStartScreen(){
-  dimScreen(0.55);
-  drawTitle(74);
-  ctx.save(); ctx.textAlign="center";
-  ctx.fillStyle="#e6ecff"; ctx.font="bold 19px 'Malgun Gothic',sans-serif";
-  ctx.fillText("닉네임: "+profile.nickname+"     보유 골드: "+profile.gold+"G     캐릭터 "+profile.unlockedCharacters.length+"/"+CHARACTERS.length+"     무기 "+profile.unlockedWeapons.length+"/"+WEAPONS.length, LOGW/2, 120);
+  dimScreen(0.62);
+  drawTitle(54);
+  // 식별 바(로그인 상태 가시성)
+  const online = OnlineManager.available ? "온라인 준비됨" : (FIREBASE_CONFIG ? "온라인 연결 중…" : "오프라인(로컬)");
+  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="alphabetic";
+  ctx.fillStyle="#cfe0ff"; ctx.font="bold 16px 'Malgun Gothic',sans-serif";
+  ctx.fillText("👤 "+profile.nickname+"   ·   Lv.1   ·   "+profile.gold+"G   ·   "+online, LOGW/2, 96);
   ctx.restore();
 
   const ch=getCharacter(selectedCharacterId), w=getWeapon(selectedWeaponId);
+  drawLobbyInfoCard(64, 130, 256, 386);
+  drawLobbyMenu(ch, w);
+  // 오른쪽: 내 캐릭터 카드(명확히 "내 캐릭터")
+  ctx.save(); ctx.textAlign="left"; ctx.textBaseline="alphabetic";
+  ctx.fillStyle="#bfffad"; ctx.font="bold 15px 'Malgun Gothic',sans-serif"; ctx.fillText("⭐ 내 캐릭터", 800, 122); ctx.restore();
+  drawCharacterCard(800, 128, 286, 388, ch, w);
+  ctx.save(); ctx.textAlign="center"; ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
+  ctx.fillText("C 캐릭터 변경 · W 무기 변경", 800+143, 536); ctx.restore();
+  // 하단 안내(짧게)
+  ctx.save(); ctx.textAlign="center"; ctx.fillStyle="#aab4e0"; ctx.font="14px 'Malgun Gothic',sans-serif";
+  ctx.fillText("방향키 선택 · Enter 실행 · Esc 뒤로", LOGW/2, LOGH-20); ctx.restore();
+}
+function drawLobbyInfoCard(x,y,w,h){
+  ctx.save();
+  ctx.fillStyle="rgba(16,22,52,0.9)"; roundRect(x,y,w,h,12); ctx.fill();
+  ctx.strokeStyle="#5a7bb0"; ctx.lineWidth=2; roundRect(x,y,w,h,12); ctx.stroke();
+  ctx.textAlign="left"; ctx.textBaseline="alphabetic";
+  ctx.fillStyle="#9fe0ff"; ctx.font="bold 17px 'Malgun Gothic',sans-serif"; ctx.fillText("내 정보", x+18, y+32);
   const rows=[
-    {label:"캐릭터", value:ch.name+" — "+ch.desc, isVal:true},
-    {label:"무기",   value:w.name+" — "+w.desc, isVal:true},
-    {label:"난이도", value:getDifficulty(selectedDifficultyId).name, isVal:true},
-    {label:"맵",     value:getMap(selectedMapId).name+" — "+getMap(selectedMapId).desc, isVal:true},
-    {label:"모드",   value:getMode(selectedModeId).name+" — "+getMode(selectedModeId).desc, isVal:true},
-    {label:"닉네임 변경", value:"(Enter / N)", isVal:false},
-    {label:"상점 / 수집", value:"(Enter / S)", isVal:false},
-    {label:"온라인 대전(베타)", value:"(Enter / O)", isVal:false},
-    {label:"▶ 게임 시작", value:"(Enter)", isVal:false}
+    ["닉네임", profile.nickname],
+    ["레벨", "Lv.1 (준비중)"],
+    ["골드", profile.gold+" G"],
+    ["플레이", profile.totalPlays+" 판"],
+    ["승리", profile.wins+" 승"],
+    ["처치", profile.totalKills+" 회"],
+    ["수집", "캐 "+profile.unlockedCharacters.length+" · 도구 "+profile.unlockedWeapons.length]
   ];
-  const startY=162, rowH=40, leftX=210, valX=440, rowW=520;
-  for(let i=0;i<rows.length;i++){
-    const y=startY+i*rowH, sel=(i===menuIndex);
-    ctx.save();
-    if(sel){ ctx.fillStyle="rgba(95,160,255,0.25)"; roundRect(leftX-30,y-rowH/2+4,rowW,rowH-8,8); ctx.fill(); ctx.strokeStyle="#9fe0ff"; ctx.lineWidth=2; roundRect(leftX-30,y-rowH/2+4,rowW,rowH-8,8); ctx.stroke(); }
-    ctx.textBaseline="middle"; ctx.textAlign="left";
-    ctx.fillStyle=sel?"#ffe066":"#cfd6f0"; ctx.font="bold 20px 'Malgun Gothic',sans-serif";
-    ctx.fillText((rows[i].isVal && sel ? "◀ " : "   ")+rows[i].label, leftX, y);
-    ctx.fillStyle="#ffffff"; ctx.font="16px 'Malgun Gothic',sans-serif";
-    let v=rows[i].value; if(rows[i].isVal && sel) v=v+"  ▶";
-    if(v.length>34) v=v.slice(0,33)+"…";
-    ctx.fillText(v, valX, y);
-    ctx.restore();
+  for(let i=0;i<rows.length;i++){ const ry=y+66+i*38;
+    ctx.fillStyle="#9aa9d6"; ctx.font="13px 'Malgun Gothic',sans-serif"; ctx.fillText(rows[i][0], x+18, ry);
+    ctx.fillStyle="#ffffff"; ctx.font="bold 15px 'Malgun Gothic',sans-serif"; ctx.fillText(rows[i][1], x+88, ry);
   }
-  // 오른쪽: 선택한 캐릭터 카드(상용게임 느낌)
-  drawCharacterCard(800, 158, 286, 410, ch, w);
-  ctx.save(); ctx.textAlign="center";
-  ctx.fillStyle="#aab4e0"; ctx.font="15px 'Malgun Gothic',sans-serif";
-  ctx.fillText("↑↓ 항목 이동 · ←→ 값 변경 · Enter 실행 · (단축키 C/W/D/M/T/N/S/O · U 내정보 · I 수집창 · L 로그인)", LOGW/2, startY+rows.length*rowH+14);
-  ctx.fillStyle="#8893bb"; ctx.font="14px 'Malgun Gothic',sans-serif";
-  ctx.fillText("게임 중 조작 — 방향키 이동 · Z 공격 · X 궁극기 · P 일시정지", LOGW/2, startY+rows.length*rowH+38);
-  ctx.fillStyle="#6f7aa0"; ctx.font="13px 'Malgun Gothic',sans-serif";
-  ctx.fillText("F2 — 에셋 확인(교사용)", LOGW/2, startY+rows.length*rowH+60);
+  ctx.fillStyle="#8893bb"; ctx.font="12px 'Malgun Gothic',sans-serif"; ctx.fillText("N 닉네임 · L 로그인/계정", x+18, y+h-16);
   ctx.restore();
+}
+function drawLobbyMenu(ch, w){
+  const x=350, W=430;
+  const entries=[
+    {type:"h", t:"게임"},
+    {type:"i", i:0, label:"▶ 바로 시작 (오프라인)", color:"#5fd0ff", big:true},
+    {type:"i", i:1, label:"온라인 센터 (방 만들기·참가)", color:"#c79bff"},
+    {type:"h", t:"내 캐릭터 / 무기"},
+    {type:"i", i:2, label:"캐릭터", val:ch.name},
+    {type:"i", i:3, label:"무기", val:w.name},
+    {type:"h", t:"오프라인 설정"},
+    {type:"i", i:4, label:"난이도", val:getDifficulty(selectedDifficultyId).name},
+    {type:"i", i:5, label:"맵", val:getMap(selectedMapId).name},
+    {type:"i", i:6, label:"모드(AI 대전)", val:getMode(selectedModeId).name},
+    {type:"h", t:"더보기"},
+    {type:"i", i:7, label:"상점 / 수집"},
+    {type:"i", i:8, label:"로그인 / 계정 (학생)"},
+    {type:"i", i:9, label:"교사용 모드 ⚙", teacher:true}
+  ];
+  let y=124;
+  for(const e of entries){
+    if(e.type==="h"){ ctx.save(); ctx.textAlign="left"; ctx.textBaseline="alphabetic"; ctx.fillStyle="#6f86bd"; ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.fillText(e.t, x, y+12); ctx.restore(); y+=22; continue; }
+    const h=e.big?40:32, sel=(menuIndex===e.i), cy=y+h/2;
+    ctx.save();
+    if(sel){ ctx.fillStyle=e.teacher?"rgba(110,120,140,0.28)":"rgba(95,160,255,0.26)"; roundRect(x-12,y,W,h,8); ctx.fill();
+      const p=0.5+0.5*Math.sin(uiTime*6); ctx.strokeStyle=e.teacher?"#9aa3b2":(e.color||"#9fe0ff"); ctx.lineWidth=e.big?3:2;
+      if(!e.teacher){ ctx.shadowColor="rgba(120,200,255,"+(0.4+p*0.4)+")"; ctx.shadowBlur=e.big?18:10; }
+      roundRect(x-12,y,W,h,8); ctx.stroke(); ctx.shadowBlur=0; }
+    ctx.textBaseline="middle"; ctx.textAlign="left";
+    const isVal=(e.val!==undefined);
+    ctx.fillStyle=e.teacher?"#97a0b5":(sel?"#ffe066":(e.color||"#dfe6ff")); ctx.font="bold "+(e.big?21:17)+"px 'Malgun Gothic',sans-serif";
+    ctx.fillText((isVal&&sel?"◀ ":"")+e.label, x, cy);
+    if(isVal){ ctx.textAlign="right"; ctx.fillStyle="#ffffff"; ctx.font="15px 'Malgun Gothic',sans-serif"; ctx.fillText(e.val+(sel?"  ▶":""), x+W-24, cy); }
+    ctx.restore();
+    y+=h+6;
+  }
 }
 
 /* ---- 상점 화면 ---- */
