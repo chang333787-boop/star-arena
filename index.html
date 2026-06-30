@@ -1182,6 +1182,7 @@ function createFighters(){
 
   const pPos=teamSlotPos(map.playerSpawn,0);
   player=makeFighter({ team:"player", isPlayer:true, characterId:selectedCharacterId, x:pPos.x, y:pPos.y });
+  initAmmo(player);   // 장전: 사람이 조종하는 플레이어만 탄창 사용
 
   allies=[];
   const allyPool=profile.unlockedCharacters.filter(id=>id!==selectedCharacterId);
@@ -1445,6 +1446,17 @@ function pushFighter(f, angle, distance){
   for(let i=0;i<steps;i++) moveEntity(f, Math.cos(angle)*distance/steps, Math.sin(angle)*distance/steps);
 }
 
+/* ── 장전(탄창) 공통 유틸 — 플레이어가 조종하는 파이터에만 ammo를 둔다(AI/봇/적은 무한) ── */
+function initAmmo(f){ f.ammo=GAME_CONFIG.magazineSize; f.reloading=false; f.reloadTimer=0; }
+function usesAmmo(f){ return f && f.ammo!==undefined; }
+function tickReload(f, dt){ if(usesAmmo(f) && f.reloading){ f.reloadTimer-=dt; if(f.reloadTimer<=0){ f.ammo=GAME_CONFIG.magazineSize; f.reloading=false; f.reloadTimer=0; } } }
+function startReload(f){ if(usesAmmo(f) && !f.reloading && f.ammo<GAME_CONFIG.magazineSize){ f.reloading=true; f.reloadTimer=GAME_CONFIG.reloadTime; } }
+function canFireAmmo(f){ return !usesAmmo(f) || (!f.reloading && f.ammo>0); }   // ammo 없는 파이터는 항상 발사 가능
+function consumeAmmo(f){ if(!usesAmmo(f)) return; f.ammo--; if(f.ammo<=0){ f.ammo=0; f.reloading=true; f.reloadTimer=GAME_CONFIG.reloadTime; } }
+
+// 로컬 수동 장전(R). 온라인은 input.reload로 host가 처리.
+function doReloadManual(){ if(gameState===STATE.PLAYING && player && !player.dead) startReload(player); }
+
 /* =======================================================================
    업데이트
    ======================================================================= */
@@ -1462,8 +1474,10 @@ function updatePlayer(dt){
     player.facing=Math.atan2(my,mx);          // 이동 방향을 바라봄
   }
   player.cooldown-=dt;
-  if(keysDown.has("KeyZ") && player.cooldown<=0){
+  tickReload(player, dt);
+  if(keysDown.has("KeyZ") && player.cooldown<=0 && canFireAmmo(player)){
     firePlayerWeapon();
+    consumeAmmo(player);
     player.cooldown=GAME_CONFIG.playerAttackCooldown*getWeapon(selectedWeaponId).cooldownMul;
   }
   if(player.hitFlash>0) player.hitFlash-=dt;
@@ -1707,6 +1721,17 @@ function render(){
   drawToast();
 }
 
+// 온라인 결과화면 공통 안내: 방장 재시작 / 참가자 대기 / 나가기
+function drawRematchHint(y){
+  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="alphabetic";
+  if(OnlineManager.role==="host"){
+    ctx.fillStyle="#ffe066"; ctx.font="bold 20px 'Malgun Gothic',sans-serif"; ctx.fillText("R / Enter: 같은 방에서 다시 시작",LOGW/2,y);
+  } else {
+    ctx.fillStyle="#9fe0ff"; ctx.font="bold 18px 'Malgun Gothic',sans-serif"; ctx.fillText("방장이 다시 시작하면 함께 시작돼요",LOGW/2,y);
+  }
+  ctx.fillStyle="#aab4e0"; ctx.font="15px 'Malgun Gothic',sans-serif"; ctx.fillText("Esc: 방 나가기",LOGW/2,y+28);
+  ctx.restore();
+}
 // Esc 나가기 확인 오버레이(Canvas 안). window.confirm 대신 사용.
 function drawLeaveConfirm(){
   dimScreen(0.66);
@@ -1988,8 +2013,12 @@ function drawHUD(){
   ctx.strokeStyle=ready?"#fff3b0":"#7088c0"; ctx.lineWidth=ready?3:2; roundRect(barX,barY,barW,barH,8); ctx.stroke();
   ctx.fillStyle="#ffffff"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.textAlign="left"; ctx.fillText(Math.floor(superGauge)+"%",barX+barW+10,barY+barH/2);
   ctx.fillStyle=ready?"#ffe066":"#8893bb"; ctx.fillText(ready?"사용 가능! (X)":"충전 중",barX+barW+60,barY+barH/2);
+  // 탄창(장전) 표시
+  ctx.textAlign="center"; ctx.font="bold 16px 'Malgun Gothic',sans-serif";
+  if(player.reloading){ const p=0.5+0.5*Math.sin(uiTime*10); ctx.fillStyle="rgba(255,210,77,"+(0.6+p*0.4)+")"; ctx.fillText("장전 중…",LOGW/2,barY+barH/2); }
+  else { ctx.fillStyle=(player.ammo<=2)?"#ff9a9a":"#cfeaff"; ctx.fillText("탄창 "+player.ammo+" / "+GAME_CONFIG.magazineSize+"  (R 장전)",LOGW/2,barY+barH/2); }
   ctx.textAlign="right"; ctx.fillStyle="#aab4e0"; ctx.font="bold 14px 'Malgun Gothic',sans-serif";
-  ctx.fillText("방향키 이동 · Z 공격 · X 궁극기 · P 일시정지",LOGW-24,barY+barH/2);
+  ctx.fillText("방향키 이동 · Z 공격 · X 궁극기 · R 장전 · P 일시정지",LOGW-24,barY+barH/2);
   ctx.restore();
 }
 function drawRespawnCountdown(f){
@@ -2274,7 +2303,8 @@ function makeOnlineFighter(slot, d){
     char:ch, weaponId:d.weaponId, color:ch.color, subColor:ch.subColor, name:ch.name,
     maxHp:maxHp, hp:maxHp, displayHp:maxHp, moveSpeed:GAME_CONFIG.playerMoveSpeed*ch.speedMul,
     cooldown:0, score:0, dead:false, respawnTimer:0, invincibleTimer:0, hitFlash:0,
-    spawnX:d.x, spawnY:d.y };
+    spawnX:d.x, spawnY:d.y,
+    ammo:GAME_CONFIG.magazineSize, reloading:false, reloadTimer:0, superGauge:0 };
 }
 
 /* ---- 입력 송신(throttle + 변화 시 즉시) ---- */
@@ -2362,7 +2392,8 @@ function updateOnlineGuest(dt){
 
   // 발사 예측: 내 총알을 로컬에서 즉시 보여준다(시각용; 실제 피해 판정은 호스트가 함)
   onlinePredictCd -= dt;
-  if(onlinePredict && mine && !mine.dead && keysDown.has("KeyZ") && onlinePredictCd<=0){
+  const myAmmoOk = !mine || mine.am===undefined || (!mine.rl && mine.am>0);  // 탄창 0/장전중이면 예측 발사 안 함
+  if(onlinePredict && mine && !mine.dead && keysDown.has("KeyZ") && onlinePredictCd<=0 && myAmmoOk){
     const w=getWeapon(selectedWeaponId), c=getCharacter(selectedCharacterId);
     const count=w.spreadCount, spread=deg2rad(w.spreadAngleDeg||0);
     const speed=GAME_CONFIG.playerBulletSpeed*c.bulletSpeedMul*w.bulletSpeedMul;
@@ -2397,7 +2428,34 @@ function updateOnlineFighter(f, input, dt){
   const ml=Math.hypot(mx,my);
   if(ml>0){ mx/=ml; my/=ml; moveEntity(f, mx*f.moveSpeed*dt, my*f.moveSpeed*dt); f.facing=Math.atan2(my,mx); }
   f.cooldown-=dt;
-  if(input.attack && f.cooldown<=0){ fireOnlineWeapon(f); f.cooldown=GAME_CONFIG.playerAttackCooldown*getWeapon(f.weaponId).cooldownMul; }
+  tickReload(f, dt);
+  if(input.reload) startReload(f);
+  if(input.super) tryOnlineSuper(f);
+  if(input.attack && f.cooldown<=0 && canFireAmmo(f)){ fireOnlineWeapon(f); consumeAmmo(f); f.cooldown=GAME_CONFIG.playerAttackCooldown*getWeapon(f.weaponId).cooldownMul; }
+}
+// 온라인 1v1 궁극기(host 판정). 게이지 가득 찼을 때만, 장전과 무관.
+function tryOnlineSuper(f){
+  if(f.dead || (f.superGauge||0) < GAME_CONFIG.superCharge) return;
+  f.superGauge=0; if(f.invincibleTimer>0) f.invincibleTimer=0;
+  const opp = f.slot==="host" ? onlineFighters.guest : onlineFighters.host;
+  const type=f.char.superType;
+  if(type==="dash"){
+    const a=f.facing, steps=16, stepLen=GAME_CONFIG.superDashDistance/steps; let hit=false;
+    spawnSuperWave(f.x,f.y,60);
+    for(let i=0;i<steps;i++){ moveEntity(f, Math.cos(a)*stepLen, Math.sin(a)*stepLen);
+      effects.push({kind:"dashTrail",x:f.x,y:f.y,t:0,life:0.35,color:f.color});
+      if(!hit && opp && !opp.dead && opp.invincibleTimer<=0 && dist(f.x,f.y,opp.x,opp.y)<f.r+opp.r+8){ applyOnlineDamage(opp,GAME_CONFIG.superDamage,f.slot,true); hit=true; } }
+  } else if(type==="triple"){
+    const count=5, spread=deg2rad(48), speed=GAME_CONFIG.playerBulletSpeed*1.1, range=GAME_CONFIG.playerRange*1.2, radius=GAME_CONFIG.playerBulletRadius*1.3;
+    for(let i=0;i<count;i++){ const ang=f.facing-spread/2+spread*(i/(count-1)); const mz=f.r+6;
+      onlineBullets.push({x:f.x+Math.cos(ang)*mz,y:f.y+Math.sin(ang)*mz,vx:Math.cos(ang)*speed,vy:Math.sin(ang)*speed,r:radius,damage:GAME_CONFIG.superDamage,owner:f.slot,color:"#fff0a0",alive:true,traveled:0,maxRange:range,isSuper:true}); }
+  } else { // burst
+    spawnSuperWave(f.x,f.y,GAME_CONFIG.superRadius);
+    if(opp && !opp.dead && opp.invincibleTimer<=0 && dist(f.x,f.y,opp.x,opp.y)<=GAME_CONFIG.superRadius+opp.r){
+      applyOnlineDamage(opp,GAME_CONFIG.superDamage,f.slot,true);
+      pushFighter(opp, Math.atan2(opp.y-f.y,opp.x-f.x), GAME_CONFIG.superKnockback);
+    }
+  }
 }
 function fireOnlineWeapon(f){
   const w=getWeapon(f.weaponId), c=f.char;
@@ -2425,7 +2483,7 @@ function updateOnlineBullets(dt){
       if(wall){ b.alive=false; break; }
       const target = b.owner==="host" ? onlineFighters.guest : onlineFighters.host;
       if(target && !target.dead && target.invincibleTimer<=0 && dist(b.x,b.y,target.x,target.y)<b.r+target.r){
-        applyOnlineDamage(target, b.damage, b.owner); b.alive=false; break;
+        applyOnlineDamage(target, b.damage, b.owner, b.isSuper); b.alive=false; break;
       }
       if(b.traveled>b.maxRange){ b.alive=false; break; }
     }
@@ -2433,9 +2491,12 @@ function updateOnlineBullets(dt){
   onlineBullets=onlineBullets.filter(b=>b.alive);
   if(onlineBullets.length>40) onlineBullets=onlineBullets.slice(onlineBullets.length-40); // DB payload 제한
 }
-function applyOnlineDamage(target, dmg, fromSlot){
+function applyOnlineDamage(target, dmg, fromSlot, isSuper){
   if(target.dead || target.invincibleTimer>0) return;
   target.hp-=dmg; target.hitFlash=0.15;
+  // 기본 공격(비궁극기) 명중 시 공격자 궁극기 게이지 충전
+  const attacker = fromSlot==="host" ? onlineFighters.host : onlineFighters.guest;
+  if(attacker && !isSuper) attacker.superGauge=Math.min(GAME_CONFIG.superCharge,(attacker.superGauge||0)+GAME_CONFIG.superChargePerHit);
   if(target.hp<=0){
     target.hp=0; target.dead=true; target.respawnTimer=GAME_CONFIG.respawnDelay;
     const killer = fromSlot==="host" ? onlineFighters.host : onlineFighters.guest;
@@ -2449,7 +2510,8 @@ function respawnOnline(f){
 }
 function packFighter(f){
   return { x:Math.round(f.x), y:Math.round(f.y), hp:Math.round(f.hp), maxHp:Math.round(f.maxHp),
-    facing:Math.round(f.facing*100)/100, score:f.score, dead:!!f.dead, inv:f.invincibleTimer>0, charId:f.char.id };
+    facing:Math.round(f.facing*100)/100, score:f.score, dead:!!f.dead, inv:f.invincibleTimer>0, charId:f.char.id,
+    am:f.ammo, rl:f.reloading?1:0, sg:Math.round(f.superGauge||0) };
 }
 function hostWriteOnlineState(){
   const H=onlineFighters.host, G=onlineFighters.guest;
@@ -2480,8 +2542,8 @@ function getOnlineDrawData(){
     const H=onlineFighters.host, G=onlineFighters.guest;
     return {
       timeLeft:Math.max(0,Math.ceil(onlineTimeLeft)),
-      host: H?{ x:H.x,y:H.y,hp:H.hp,maxHp:H.maxHp,facing:H.facing,dead:H.dead,inv:H.invincibleTimer>0,charId:H.char.id,score:H.score }:null,
-      guest:G?{ x:G.x,y:G.y,hp:G.hp,maxHp:G.maxHp,facing:G.facing,dead:G.dead,inv:G.invincibleTimer>0,charId:G.char.id,score:G.score }:null,
+      host: H?{ x:H.x,y:H.y,hp:H.hp,maxHp:H.maxHp,facing:H.facing,dead:H.dead,inv:H.invincibleTimer>0,charId:H.char.id,score:H.score,am:H.ammo,rl:H.reloading?1:0,sg:H.superGauge }:null,
+      guest:G?{ x:G.x,y:G.y,hp:G.hp,maxHp:G.maxHp,facing:G.facing,dead:G.dead,inv:G.invincibleTimer>0,charId:G.char.id,score:G.score,am:G.ammo,rl:G.reloading?1:0,sg:G.superGauge }:null,
       bullets: onlineBullets.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.color }))
     };
   } else {
@@ -2556,8 +2618,49 @@ function renderOnlineMatch(){
   drawOnlineFighter(data.guest, OnlineManager.role==="guest");
   drawEffects();
   drawOnlineHUD(data);
+  drawCombatStrip();
   if(!OnlineManager.opponentConnected) drawCenterBanner("상대 연결 끊김…", "#ff7a7a");
   if(data.waiting) drawCenterBanner("동기화 대기 중…", "#9fe0ff");
+}
+// 내 전투 상태(탄창/장전/궁극기) — 온라인 모든 모드 공통. host는 직접, guest는 state에서.
+function myCombatStatus(){
+  const mag=GAME_CONFIG.magazineSize, sm=GAME_CONFIG.superCharge;
+  if(isTeamOnline()){
+    const slot=OnlineManager.mySlot;
+    if(OnlineManager.role==="host"){ const f=tFighters[slot]; if(!f)return null;
+      return {ammo:f.ammo,mag:mag,reloading:!!f.reloading,sg:f.superGauge||0,superMax:sm,superName:f.char.superName}; }
+    const st=OnlineManager.onlineState, p=st&&st.fighters&&st.fighters[slot]; if(!p)return null;
+    return {ammo:p.am,mag:mag,reloading:!!p.rl,sg:p.sg||0,superMax:sm,superName:getCharacter(tRosterCharId(slot)).superName};
+  } else {
+    const role=OnlineManager.role;
+    if(role==="host"){ const f=onlineFighters.host; if(!f)return null;
+      return {ammo:f.ammo,mag:mag,reloading:!!f.reloading,sg:f.superGauge||0,superMax:sm,superName:f.char.superName}; }
+    const st=OnlineManager.onlineState, p=st&&st[role]; if(!p)return null;
+    const meta=OnlineManager.meta||{}; const cid=p.charId||meta.characterGuest||"student_01";
+    return {ammo:p.am,mag:mag,reloading:!!p.rl,sg:p.sg||0,superMax:sm,superName:getCharacter(cid).superName};
+  }
+}
+// 바닥 왼쪽에 탄창 + 궁극기 게이지 표시(온라인용)
+function drawCombatStrip(){
+  const s=myCombatStatus(); if(!s) return;
+  ctx.save(); ctx.textBaseline="middle";
+  const barX=24, barY=678, barW=240, barH=18, ready=s.sg>=s.superMax;
+  // 궁극기
+  ctx.textAlign="left"; ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#cfd6f0";
+  ctx.fillText("궁극기("+(s.superName||"")+")", barX, 668);
+  ctx.fillStyle="rgba(0,0,0,0.5)"; roundRect(barX,barY,barW,barH,7); ctx.fill();
+  const ratio=clamp(s.sg/s.superMax,0,1);
+  if(ready){ const p=0.5+0.5*Math.sin(uiTime*8); ctx.fillStyle="rgba(255,225,80,"+(0.7+p*0.3)+")"; } else ctx.fillStyle="#5fa0ff";
+  roundRect(barX,barY,barW*ratio,barH,7); ctx.fill();
+  ctx.strokeStyle=ready?"#fff3b0":"#7088c0"; ctx.lineWidth=ready?3:2; roundRect(barX,barY,barW,barH,7); ctx.stroke();
+  ctx.fillStyle=ready?"#ffe066":"#8893bb"; ctx.font="bold 12px 'Malgun Gothic',sans-serif";
+  ctx.fillText(ready?"사용 가능!(X)":Math.floor(s.sg)+"%", barX+barW+8, barY+barH/2);
+  // 탄창
+  ctx.font="bold 15px 'Malgun Gothic',sans-serif";
+  if(s.ammo===undefined){ /* 봇/관전 */ }
+  else if(s.reloading){ const p=0.5+0.5*Math.sin(uiTime*10); ctx.fillStyle="rgba(255,210,77,"+(0.6+p*0.4)+")"; ctx.fillText("장전 중…", barX+barW+95, barY+barH/2); }
+  else { ctx.fillStyle=(s.ammo<=2)?"#ff9a9a":"#cfeaff"; ctx.fillText("탄창 "+s.ammo+"/"+s.mag+" (R)", barX+barW+95, barY+barH/2); }
+  ctx.restore();
 }
 function drawOnlineHUD(data){
   ctx.save();
@@ -2575,8 +2678,8 @@ function drawOnlineHUD(data){
   ctx.fillText(String(data.timeLeft),LOGW/2,26);
   ctx.fillStyle="#aab4e0"; ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.fillText("온라인 1대1 (베타) · 방 "+(OnlineManager.roomCode||""),LOGW/2,52);
   ctx.fillStyle="rgba(10,12,32,0.72)"; ctx.fillRect(0,656,LOGW,64);
-  ctx.textAlign="center"; ctx.fillStyle="#aab4e0"; ctx.font="bold 15px 'Malgun Gothic',sans-serif";
-  ctx.fillText("방향키 이동 · Z 공격 · Esc 나가기   (베타: 궁극기 비활성)",LOGW/2,688);
+  ctx.textAlign="right"; ctx.fillStyle="#aab4e0"; ctx.font="bold 14px 'Malgun Gothic',sans-serif";
+  ctx.fillText("방향키 이동 · Z 공격 · X 궁극기 · R 장전 · Esc 나가기",LOGW-24,688);
   ctx.restore();
 }
 function drawCenterBanner(text, color){
@@ -2650,7 +2753,7 @@ function drawOnlineOver(){
   else if(s){ hs=s.host?s.host.score:0; gs=s.guest?s.guest.score:0; }
   ctx.fillStyle="#fff"; ctx.font="bold 30px 'Malgun Gothic',sans-serif"; ctx.fillText("방장 "+hs+" : "+gs+" 참가자",LOGW/2,250);
   ctx.fillStyle="#aab4e0"; ctx.font="17px 'Malgun Gothic',sans-serif"; ctx.fillText("온라인 베타는 골드 보상이 없어요.",LOGW/2,300);
-  ctx.fillStyle="#ffe066"; ctx.font="18px 'Malgun Gothic',sans-serif"; ctx.fillText("Enter / Esc 로 시작 화면으로",LOGW/2,360);
+  drawRematchHint(360);
   ctx.restore();
 }
 
@@ -2700,6 +2803,8 @@ function tMakeFighter(slot, team, characterId, weaponId, isBot, idx, map){
     x:sp.x, y:sp.y, spawnX:base.x, spawnY:base.y, r:22, facing: team==="red"?Math.PI:0,
     maxHp:maxHp, hp:maxHp, displayHp:maxHp, moveSpeed:GAME_CONFIG.playerMoveSpeed*ch.speedMul,
     cooldown:0, score:0, dead:false, respawnTimer:0, invincibleTimer:0, hitFlash:0,
+    // 실제 플레이어만 탄창 사용(봇은 무한). 궁극기 게이지는 모두 보유(봇은 미사용).
+    ammo: isBot?undefined:GAME_CONFIG.magazineSize, reloading:false, reloadTimer:0, superGauge:0,
     ai:{ fireTimer:rand(0,0.5), strafeDir:1, strafeTimer:0, reTimer:0, stuckTimer:0, stuckDir:1 } };
 }
 
@@ -2807,7 +2912,36 @@ function tUpdateFighter(f, input, dt){
   const ml=Math.hypot(mx,my);
   if(ml>0){ mx/=ml; my/=ml; moveEntity(f, mx*f.moveSpeed*dt, my*f.moveSpeed*dt); f.facing=Math.atan2(my,mx); }
   f.cooldown-=dt;
-  if(input.attack && f.cooldown<=0){ tFire(f); f.cooldown=GAME_CONFIG.playerAttackCooldown*getWeapon(f.weaponId).cooldownMul; }
+  tickReload(f, dt);
+  if(input.reload) startReload(f);
+  if(input.super) tDoSuper(f);
+  if(input.attack && f.cooldown<=0 && canFireAmmo(f)){ tFire(f); consumeAmmo(f); f.cooldown=GAME_CONFIG.playerAttackCooldown*getWeapon(f.weaponId).cooldownMul; }
+}
+
+// 팀(3v3)/PVE 궁극기(host 판정). 아군/끊긴 대상엔 피해 없음.
+function tDamageEnemy(e, id, dmg, killer){ e.hp-=dmg; if(e.hp<=0){ if(killer) killer.score+=e.score; delete tEnemies[id]; } }
+function tDoSuper(f){
+  if(f.dead || f.inactive || (f.superGauge||0) < GAME_CONFIG.superCharge) return;
+  f.superGauge=0; if(f.invincibleTimer>0) f.invincibleTimer=0;
+  const isPve=getOnlineMode(OnlineManager.mode).modeType==="pve";
+  const type=f.char.superType;
+  if(type==="dash"){
+    const a=f.facing, steps=16, stepLen=GAME_CONFIG.superDashDistance/steps, hitset={};
+    spawnSuperWave(f.x,f.y,60);
+    for(let i=0;i<steps;i++){ moveEntity(f,Math.cos(a)*stepLen,Math.sin(a)*stepLen);
+      effects.push({kind:"dashTrail",x:f.x,y:f.y,t:0,life:0.35,color:f.color});
+      if(isPve){ for(const id in tEnemies){ const e=tEnemies[id]; if(e.dead||hitset[id])continue; if(dist(f.x,f.y,e.x,e.y)<f.r+e.r+8){ tDamageEnemy(e,id,GAME_CONFIG.superDamage,f); hitset[id]=true; } } }
+      else { for(const slot in tFighters){ const o=tFighters[slot]; if(o.team===f.team||o.dead||o.invincibleTimer>0||hitset[slot])continue; if(dist(f.x,f.y,o.x,o.y)<f.r+o.r+8){ tApplyDamage(o,GAME_CONFIG.superDamage,f.team,f.slot,true); hitset[slot]=true; } } }
+    }
+  } else if(type==="triple"){
+    const count=5, spread=deg2rad(48), speed=GAME_CONFIG.playerBulletSpeed*1.1, range=GAME_CONFIG.playerRange*1.2, radius=GAME_CONFIG.playerBulletRadius*1.3;
+    for(let i=0;i<count;i++){ const ang=f.facing-spread/2+spread*(i/(count-1)); const mz=f.r+6;
+      tBullets.push({x:f.x+Math.cos(ang)*mz,y:f.y+Math.sin(ang)*mz,vx:Math.cos(ang)*speed,vy:Math.sin(ang)*speed,r:radius,damage:GAME_CONFIG.superDamage,team:f.team,owner:f.slot,color:"#fff0a0",alive:true,traveled:0,maxRange:range,isSuper:true}); }
+  } else { // burst
+    spawnSuperWave(f.x,f.y,GAME_CONFIG.superRadius);
+    if(isPve){ for(const id in tEnemies){ const e=tEnemies[id]; if(e.dead)continue; if(dist(f.x,f.y,e.x,e.y)<=GAME_CONFIG.superRadius+e.r){ tDamageEnemy(e,id,GAME_CONFIG.superDamage,f); } } }
+    else { for(const slot in tFighters){ const o=tFighters[slot]; if(o.team===f.team||o.dead||o.invincibleTimer>0)continue; if(dist(f.x,f.y,o.x,o.y)<=GAME_CONFIG.superRadius+o.r){ tApplyDamage(o,GAME_CONFIG.superDamage,f.team,f.slot,true); pushFighter(o,Math.atan2(o.y-f.y,o.x-f.x),GAME_CONFIG.superKnockback); } } }
+  }
 }
 
 function tBotUpdate(f, dt){
@@ -2859,7 +2993,7 @@ function tUpdateBullets(dt){
       if(wall){ b.alive=false; break; }
       for(const slot in tFighters){ const t=tFighters[slot];
         if(t.team===b.team || t.dead || t.invincibleTimer>0) continue;
-        if(dist(b.x,b.y,t.x,t.y) < b.r+t.r){ tApplyDamage(t, b.damage, b.team, b.owner); b.alive=false; break; }
+        if(dist(b.x,b.y,t.x,t.y) < b.r+t.r){ tApplyDamage(t, b.damage, b.team, b.owner, b.isSuper); b.alive=false; break; }
       }
       if(!b.alive) break;
       if(b.traveled>b.maxRange){ b.alive=false; break; }
@@ -2869,9 +3003,11 @@ function tUpdateBullets(dt){
   if(tBullets.length>T_MAX_BULLETS) tBullets=tBullets.slice(tBullets.length-T_MAX_BULLETS);
 }
 
-function tApplyDamage(target, dmg, fromTeam, fromSlot){
+function tApplyDamage(target, dmg, fromTeam, fromSlot, isSuper){
   if(target.dead || target.invincibleTimer>0 || target.team===fromTeam) return;
   target.hp-=dmg; target.hitFlash=0.15;
+  const attacker=tFighters[fromSlot];
+  if(attacker && !isSuper) attacker.superGauge=Math.min(GAME_CONFIG.superCharge,(attacker.superGauge||0)+GAME_CONFIG.superChargePerHit);
   if(target.hp<=0){
     target.hp=0; target.dead=true; target.respawnTimer=GAME_CONFIG.respawnDelay;
     if(TEAM_COLOR[fromTeam]!==undefined) tTeamScores[fromTeam]=(tTeamScores[fromTeam]||0)+1;
@@ -2888,8 +3024,10 @@ function tRespawn(f){
 function tPackFighter(f){
   // 매 틱 전송 최소화: 변하는 값만 보낸다.
   // 정적인 값(charId/team/slot/maxHp)은 players 로스터로 게스트가 역산한다(렉 최적화).
+  // am/rl/sg는 내 HUD(탄창/장전/궁극기)용 작은 숫자만 추가.
   return { x:Math.round(f.x), y:Math.round(f.y), hp:Math.round(f.hp),
-    facing:Math.round(f.facing*100)/100, dead:!!f.dead, inv:f.invincibleTimer>0 };
+    facing:Math.round(f.facing*100)/100, dead:!!f.dead, inv:f.invincibleTimer>0,
+    am:f.ammo, rl:f.reloading?1:0, sg:Math.round(f.superGauge||0) };
 }
 // 게스트가 정적 정보를 로스터(OnlineManager.players)에서 역산하는 도우미
 function tRosterCharId(slot){ const p=OnlineManager.players&&OnlineManager.players[slot]; return (p&&p.characterId)||"student_01"; }
@@ -3019,9 +3157,10 @@ function tRender(){
   ctx.textAlign="center"; ctx.fillStyle="#fff"; ctx.font="bold 36px 'Malgun Gothic',sans-serif"; ctx.fillText(String(data.timeLeft),LOGW/2,26);
   ctx.fillStyle="#aab4e0"; ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.fillText("온라인 3대3 (베타) · 방 "+(OnlineManager.roomCode||""),LOGW/2,52);
   ctx.fillStyle="rgba(10,12,32,0.72)"; ctx.fillRect(0,656,LOGW,64);
-  ctx.textAlign="center"; ctx.fillStyle="#aab4e0"; ctx.font="bold 15px 'Malgun Gothic',sans-serif";
-  ctx.fillText("방향키 이동 · Z 공격 · Esc 나가기   (베타: 궁극기 비활성)",LOGW/2,688);
+  ctx.textAlign="right"; ctx.fillStyle="#aab4e0"; ctx.font="bold 14px 'Malgun Gothic',sans-serif";
+  ctx.fillText("방향키 · Z 공격 · X 궁극기 · R 장전 · Esc 나가기",LOGW-24,688);
   ctx.restore();
+  drawCombatStrip();
   if(!OnlineManager.connected) drawCenterBanner("네트워크 연결 확인 중…","#ff7a7a");
   if(data.waiting) drawCenterBanner("동기화 대기 중…","#9fe0ff");
 }
@@ -3065,7 +3204,7 @@ function tDrawOver(){
   const s=OnlineManager.onlineState; if(OnlineManager.role!=="host" && s && s.teamScores){ bs=s.teamScores.blue; rs=s.teamScores.red; }
   ctx.fillStyle="#fff"; ctx.font="bold 30px 'Malgun Gothic',sans-serif"; ctx.fillText("블루 "+bs+" : "+rs+" 레드",LOGW/2,250);
   ctx.fillStyle="#aab4e0"; ctx.font="17px 'Malgun Gothic',sans-serif"; ctx.fillText("온라인 베타는 골드 보상이 없어요.",LOGW/2,300);
-  ctx.fillStyle="#ffe066"; ctx.font="18px 'Malgun Gothic',sans-serif"; ctx.fillText("Enter / Esc 로 시작 화면으로",LOGW/2,360);
+  drawRematchHint(360);
   ctx.restore();
 }
 
@@ -3151,7 +3290,10 @@ function tPveUpdatePlayer(f,input,dt){
   let mx=0,my=0; if(input.up)my-=1; if(input.down)my+=1; if(input.left)mx-=1; if(input.right)mx+=1;
   const ml=Math.hypot(mx,my); if(ml>0){mx/=ml;my/=ml; moveEntity(f,mx*f.moveSpeed*dt,my*f.moveSpeed*dt); f.facing=Math.atan2(my,mx);}
   f.cooldown-=dt;
-  if(input.attack && f.cooldown<=0){ tFire(f); f.cooldown=GAME_CONFIG.playerAttackCooldown*getWeapon(f.weaponId).cooldownMul; }
+  tickReload(f, dt);
+  if(input.reload) startReload(f);
+  if(input.super) tDoSuper(f);
+  if(input.attack && f.cooldown<=0 && canFireAmmo(f)){ tFire(f); consumeAmmo(f); f.cooldown=GAME_CONFIG.playerAttackCooldown*getWeapon(f.weaponId).cooldownMul; }
 }
 function tHurtPlayer(f,dmg){
   if(f.dead||f.inactive||f.invincibleTimer>0) return;
@@ -3194,7 +3336,9 @@ function tPveUpdateBullets(dt){
       let wall=false; for(const o of OBSTACLES){ if(circleRectOverlap(b.x,b.y,b.r,o)){ wall=true; break; } } if(wall){ b.alive=false; break; }
       if(b.team==="pve"){
         for(const id in tEnemies){ const e=tEnemies[id]; if(e.dead) continue;
-          if(dist(b.x,b.y,e.x,e.y)<b.r+e.r){ e.hp-=b.damage; if(e.hp<=0){ const k=tFighters[b.owner]; if(k) k.score+=e.score; delete tEnemies[id]; } b.alive=false; break; } }
+          if(dist(b.x,b.y,e.x,e.y)<b.r+e.r){ const k=tFighters[b.owner];
+            if(k && !b.isSuper) k.superGauge=Math.min(GAME_CONFIG.superCharge,(k.superGauge||0)+GAME_CONFIG.superChargePerHit);
+            tDamageEnemy(e,id,b.damage,k); b.alive=false; break; } }
       } else {
         for(const slot in tFighters){ const f=tFighters[slot]; if(f.dead||f.inactive||f.invincibleTimer>0) continue;
           if(dist(b.x,b.y,f.x,f.y)<b.r+f.r){ tHurtPlayer(f, b.damage); b.alive=false; break; } }
@@ -3292,8 +3436,9 @@ function tPveRender(){
   ctx.fillStyle="#aab4e0"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.fillText("웨이브 "+(pve.waveIndex+1)+"/"+stage.waves.length+" · 남은 적 "+pve.enemiesRemaining,24,46);
   ctx.textAlign="right"; ctx.fillStyle="#ff8f8f"; ctx.font="bold 20px 'Malgun Gothic',sans-serif"; ctx.fillText("팀 라이프 ♥ "+pve.teamLives,LOGW-24,32);
   ctx.fillStyle="rgba(10,12,32,0.72)"; ctx.fillRect(0,656,LOGW,64);
-  ctx.textAlign="center"; ctx.fillStyle="#aab4e0"; ctx.font="bold 15px 'Malgun Gothic',sans-serif"; ctx.fillText("방향키 이동 · Z 공격 · Esc 나가기   (최대 6인 협동 · 베타)",LOGW/2,688);
+  ctx.textAlign="right"; ctx.fillStyle="#aab4e0"; ctx.font="bold 14px 'Malgun Gothic',sans-serif"; ctx.fillText("방향키 · Z 공격 · X 궁극기 · R 장전 · Esc 나가기",LOGW-24,688);
   ctx.restore();
+  drawCombatStrip();
   let boss=null; for(const e of data.enemies){ if(e.boss){ boss=e; break; } }
   if(boss){ const bw=420,bh=16,bx=LOGW/2-bw/2,by=72;
     ctx.save(); ctx.fillStyle="rgba(0,0,0,0.5)"; roundRect(bx,by,bw,bh,8); ctx.fill();
@@ -3317,7 +3462,7 @@ function tPveDrawOver(){
   let reached=tPve.stageIndex+1; const st=(OnlineManager.onlineState&&OnlineManager.onlineState.pve)?OnlineManager.onlineState.pve:null; if(st) reached=st.stageIndex+1;
   ctx.fillStyle="#fff"; ctx.font="bold 24px 'Malgun Gothic',sans-serif"; ctx.fillText("도달 스테이지: "+reached+" / "+PVE_STAGES.length,LOGW/2,250);
   ctx.fillStyle="#aab4e0"; ctx.font="17px 'Malgun Gothic',sans-serif"; ctx.fillText("온라인 베타는 골드 보상이 없어요.",LOGW/2,300);
-  ctx.fillStyle="#ffe066"; ctx.font="18px 'Malgun Gothic',sans-serif"; ctx.fillText("Enter / Esc 로 시작 화면으로",LOGW/2,360);
+  drawRematchHint(360);
   ctx.restore();
 }
 
