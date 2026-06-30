@@ -910,6 +910,7 @@ const STATE = { START:"start", SHOP:"shop",
   PLAYING:"playing", PAUSED:"paused", OVER:"over", ASSET_CHECK:"asset_check" };
 let gameState = STATE.START;
 let confirmLeave = false;   // Esc 나가기 확인 오버레이 표시 여부(온라인/플레이 중)
+let _viewer = null;         // 풀숲 가시성 계산용 내 시점 {x,y,team} (온라인 렌더 직전 설정)
 
 let player = null;        // 내가 조종하는 캐릭터
 let allies = [];          // 아군 AI
@@ -1244,18 +1245,41 @@ function endGame(){
 /* =======================================================================
    이동 / 충돌
    ======================================================================= */
+// 캐릭터-장애물 충돌은 hitbox를 안쪽으로 살짝 줄여 모서리 답답함을 완화(벽 관통은 막음).
+// 탄환 충돌은 inset을 쓰지 않아 기존처럼 또렷하게 막힌다.
+function entityHitsObstacle(cx, cy, r){
+  const ins=GAME_CONFIG.obstacleHitboxInset||0;
+  for(const o of OBSTACLES){
+    const iw=o.w-ins*2, ih=o.h-ins*2;
+    if(iw<=0||ih<=0){ if(circleRectOverlap(cx,cy,r,o)) return true; continue; }
+    if(circleRectOverlap(cx,cy,r,{x:o.x+ins,y:o.y+ins,w:iw,h:ih})) return true;
+  }
+  return false;
+}
 function moveEntity(ent, dx, dy){
   const ox=ent.x, oy=ent.y;
   ent.x+=dx;
-  for(const o of OBSTACLES){ if(circleRectOverlap(ent.x,ent.y,ent.r,o)){ ent.x=ox; break; } }
+  if(entityHitsObstacle(ent.x,ent.y,ent.r)) ent.x=ox;   // x축 막히면 되돌림(모서리에서 미끄러짐 유지)
   ent.y+=dy;
-  for(const o of OBSTACLES){ if(circleRectOverlap(ent.x,ent.y,ent.r,o)){ ent.y=oy; break; } }
+  if(entityHitsObstacle(ent.x,ent.y,ent.r)) ent.y=oy;
   ent.x=clamp(ent.x, ARENA.x+ent.r, ARENA.x+ARENA.w-ent.r);
   ent.y=clamp(ent.y, ARENA.y+ent.r, ARENA.y+ARENA.h-ent.r);
 }
-function inBush(ent){
-  for(const b of BUSHES){ if(ent.x>=b.x&&ent.x<=b.x+b.w&&ent.y>=b.y&&ent.y<=b.y+b.h) return true; }
+function inBush(ent){ return isInBushXY(ent.x, ent.y); }
+function isInBushXY(x,y){
+  for(const b of BUSHES){ if(x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h) return true; }
   return false;
+}
+// 풀숲 가시성: 내/아군은 항상 보임(풀숲 안이면 반투명), 적은 풀숲+멀면 숨김, 가까우면/공격 직후엔 보임.
+// viewer={x,y,team}. 반환 {hidden, alpha}
+function bushVisibility(fx, fy, fTeam, isMine, viewer, recentlyFired){
+  const inB=isInBushXY(fx,fy);
+  if(isMine) return { hidden:false, alpha: inB?0.6:1 };       // 내 캐릭터는 풀숲에서도 항상 명확(살짝 반투명)
+  if(!inB) return { hidden:false, alpha:1 };
+  if(viewer && fTeam===viewer.team) return { hidden:false, alpha:0.6 }; // 아군: 보임(흐릿)
+  if(recentlyFired) return { hidden:false, alpha:0.7 };        // 공격 직후엔 드러남
+  if(viewer && dist(fx,fy,viewer.x,viewer.y) <= GAME_CONFIG.bushRevealDistance) return { hidden:false, alpha:0.55 };
+  return { hidden:true, alpha:0.55 };                          // 멀리 있는 풀숲 속 적 → 숨김
 }
 function canBeHit(ent){ return ent && !ent.dead && ent.invincibleTimer<=0; }
 function hasLineOfSight(ax,ay,bx,by){
@@ -1861,11 +1885,12 @@ function drawObstacles(){
 
 function drawFighter(f){
   if(f.dead) return;
-  let alpha=1;
-  if(inBush(f)){
-    if(f.team==="enemy"){ const dd=dist(f.x,f.y,player.x,player.y); if(dd>240){ drawBushRustle(f.x,f.y); return; } alpha=0.55; }
-    else { alpha=f.isPlayer?0.6:0.55; }
-  }
+  // 풀숲 가시성: 내 시점(player) 기준. 적이 풀숲에 멀리 있으면 숨김(살랑이는 풀만).
+  const viewer={ x:player.x, y:player.y, team:"player" };
+  const recently = f.lastFireTime!==undefined && (matchElapsed-f.lastFireTime) < GAME_CONFIG.bushAttackRevealTime;
+  const vis=bushVisibility(f.x, f.y, f.team, f.isPlayer, viewer, recently);
+  if(vis.hidden){ drawBushRustle(f.x,f.y); return; }
+  let alpha=vis.alpha;
   if(f.invincibleTimer>0 && Math.floor(f.invincibleTimer*12)%2===0) alpha*=0.35;
   ctx.save(); ctx.globalAlpha=alpha; ctx.translate(f.x,f.y);
   // 학생 캐릭터(아군/플레이어)는 이미지 우선, 실패 시 도형. 적(크롬)은 항상 도형.
@@ -2591,7 +2616,10 @@ function drawSelfMarker(x,y,r){
 function drawOnlineFighter(d, isMe){
   if(!d || d.dead) return;
   const ch=getCharacter(d.charId||"lumi");
-  let alpha=1;
+  // 풀숲 가시성(상대가 풀숲에 멀리 있으면 숨김)
+  const vis=bushVisibility(d.x,d.y, isMe?"me":"enemy", isMe, _viewer, false);
+  if(vis.hidden){ drawBushRustle(d.x,d.y); return; }
+  let alpha=vis.alpha;
   if(d.inv && Math.floor(uiTime*12)%2===0) alpha*=0.4;
   if(isMe) drawSelfMarker(d.x,d.y,22);
   ctx.save(); ctx.globalAlpha=alpha; ctx.translate(d.x,d.y);
@@ -2613,6 +2641,8 @@ function drawOnlineFighter(d, isMe){
 function renderOnlineMatch(){
   if(isTeamOnline()){ tRender(); return; }
   const data=getOnlineDrawData();
+  const me = OnlineManager.role==="host" ? data.host : data.guest;
+  _viewer = me ? { x:me.x, y:me.y, team:"me" } : null;
   for(const b of data.bullets) drawOnlineBullet(b);
   drawOnlineFighter(data.host, OnlineManager.role==="host");
   drawOnlineFighter(data.guest, OnlineManager.role==="guest");
@@ -3120,7 +3150,9 @@ function tGetDrawData(){
 function tDrawFighter(d){
   if(d.dead) return;
   const ch=getCharacter(d.charId||"lumi");
-  let alpha=1; if(d.inv && Math.floor(uiTime*12)%2===0) alpha*=0.4;
+  const vis=bushVisibility(d.x,d.y, d.team, d.isMe, _viewer, false);
+  if(vis.hidden){ drawBushRustle(d.x,d.y); return; }
+  let alpha=vis.alpha; if(d.inv && Math.floor(uiTime*12)%2===0) alpha*=0.4;
   if(d.isMe) drawSelfMarker(d.x,d.y,22);
   ctx.save(); ctx.globalAlpha=alpha; ctx.translate(d.x,d.y);
   // 팀 색 링
@@ -3141,6 +3173,7 @@ function tDrawFighter(d){
 function tRender(){
   if(getOnlineMode(OnlineManager.mode).modeType==="pve"){ tPveRender(); return; }
   const data=tGetDrawData();
+  const me=data.fighters.find(f=>f.isMe); _viewer = me ? { x:me.x, y:me.y, team:me.team } : null;
   for(const b of data.bullets) drawOnlineBullet(b);
   for(const f of data.fighters) tDrawFighter(f);
   drawEffects();
@@ -3412,7 +3445,9 @@ function tPveGetDrawData(){
   return out;
 }
 function tDrawEnemy(e){
-  ctx.save(); ctx.translate(e.x,e.y);
+  ctx.save();
+  if(isInBushXY(e.x,e.y)) ctx.globalAlpha=0.6;   // PVE 적도 풀숲 안이면 반투명
+  ctx.translate(e.x,e.y);
   ctx.fillStyle=e.color; ctx.beginPath();
   for(let i=0;i<6;i++){ const a=Math.PI/6+i*Math.PI/3; const px=Math.cos(a)*e.r,py=Math.sin(a)*e.r; if(i===0)ctx.moveTo(px,py); else ctx.lineTo(px,py); }
   ctx.closePath(); ctx.fill(); ctx.strokeStyle="#ffd0d8"; ctx.lineWidth=2; ctx.stroke();
@@ -3424,6 +3459,7 @@ function tDrawEnemy(e){
 }
 function tPveRender(){
   const data=tPveGetDrawData();
+  const me=data.fighters.find(f=>f.isMe); _viewer = me ? { x:me.x, y:me.y, team:"pve" } : null;
   for(const b of data.bullets) drawOnlineBullet(b);
   for(const e of data.enemies) tDrawEnemy(e);
   for(const f of data.fighters) tDrawFighter(f);
