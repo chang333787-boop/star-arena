@@ -374,7 +374,7 @@ function getMode(id){ for(const m of MODES){ if(m.id===id) return m; } return MO
    - 온라인 동기화에는 이미지가 들어가지 않습니다(캐릭터/도구 id만 전송 → assetId는 id로 역산).
    ======================================================================= */
 // 내일 교사가 PNG를 넣은 뒤 true 로만 바꾸면 됩니다. (오늘은 false 유지)
-let ASSETS_ENABLED = false;
+let ASSETS_ENABLED = true;
 const ASSET_BASE = "assets/";
 
 // 캐릭터 에셋 파일 이름 규칙(1차 적용: 상태별 5프레임). 없는 파일은 자동으로 fallback.

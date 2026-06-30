@@ -1,5 +1,15 @@
 # 학생 에셋 적용 (1차) — STUDENT_ASSET_INTAKE
 
+## ✅ 실제 적용 결과 (2026-06-30, v1.14)
+- **캐릭터 6명 × 5프레임 = 30개 PNG 생성 완료** (idle/move/attack/hit/return), `ASSETS_ENABLED=true`.
+- **무기 아이콘 6개 생성 완료** (icon.png). 발사체/적중효과(projectile/effect_hit)는 **미적용 → 색 원형 fallback**.
+- reference 3장(`reference/`)에서 `tools/slice_assets.py`로 자동 컷 + 배경 투명화. 행/열 좌표와 여백을 보정해 옆칸 침범·이름글자 제거.
+- 검증: 럭키/달이/시고니/눈꽃/모아/별골렘 각 행 정확, attack에 고정 도구 보임, 모아 다리·별골렘 형태 유지 확인. 하네스 4종 PASS.
+- 남은 제한: 발사체/적중효과 미적용, 온라인 hit 프레임 미표시, 일부 프레임 우측에 아주 작은 잔여 스파클이 남을 수 있음(추후 미세조정). 다시 자르려면 `python tools/slice_assets.py` (상단 MOTION/MASTER 좌표 조정 가능).
+
+---
+
+
 이번 적용은 **idle / move / attack / hit / return 5프레임** 방식입니다. (방향별 세부 모션은 추후 고도화)
 캐릭터와 도구는 **고정 매칭**이며, reference 시트의 이름/외형/무기 모양을 **재해석하지 않습니다.**
 

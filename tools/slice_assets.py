@@ -24,11 +24,12 @@ CHARS = ["student_01","student_02","student_03","student_04","student_05","stude
 TOOLS = ["tool_01","tool_02","tool_03","tool_04","tool_05","tool_06"]
 FRAMES = ["idle","move","attack","hit","return"]
 
-# ── 그리드 추정값(0~1 비율). 어긋나면 여기를 조정 ──
-# 02_basic_motion_master.png : 6행(캐릭터) x 5열(대기/이동/공격/피격/리턴)
-MOTION = dict(top=0.135, left=0.155, right=1.0, bottom=1.0, rows=6, cols=5)
-# 01_fixed_character_weapon_master.png : 6행, 마지막 열이 무기 아이콘
-MASTER = dict(top=0.065, bottom=1.0, rows=6, icon_x0=0.785, icon_x1=1.0)
+# ── 그리드 비율(0~1). 어긋나면 여기를 조정 후 재실행 ──
+# 02_basic_motion_master.png(1672x941): 6행(캐릭터) x 5열(대기/이동/공격/피격/리턴)
+MOTION = dict(top=0.142, left=0.145, right=0.999, bottom=0.996, rows=6, cols=5,
+              attack_w=0.62)   # 공격 칸은 발사체 꼬리를 빼려고 왼쪽 일부만 사용
+# 01_fixed_character_weapon_master.png(1491x1055): 마지막 열이 무기 아이콘(아래 이름 글자는 제외)
+MASTER = dict(top=0.07, bottom=0.999, rows=6, icon_x0=0.80, icon_x1=1.0, icon_h=0.64)
 
 def load(name):
     for ext in (".png",".jpg",".jpeg",".PNG",".JPG"):
@@ -52,11 +53,11 @@ def autocrop(im, pad=8):
     l=max(0,l-pad); t=max(0,t-pad); r=min(im.size[0],r+pad); b=min(im.size[1],b+pad)
     return im.crop((l,t,r,b))
 
-def cell(im, x0,y0,x1,y1, inset=0.06):
-    """비율 좌표로 셀을 잘라 배경 제거 + 여백 정리."""
+def cell(im, x0,y0,x1,y1, ixl=0.09, ixr=0.09, iy=0.05):
+    """비율 좌표로 셀을 잘라 배경 제거 + 여백 정리. ixl/ixr=좌/우 안쪽여백(옆칸 침범 방지), iy=세로."""
     W,H=im.size
-    iw=(x1-x0)*inset; ih=(y1-y0)*inset
-    box=(int((x0+iw)*W), int((y0+ih)*H), int((x1-iw)*W), int((y1-ih)*H))
+    wl=(x1-x0)*ixl; wr=(x1-x0)*ixr; ih=(y1-y0)*iy
+    box=(int((x0+wl)*W), int((y0+ih)*H), int((x1-wr)*W), int((y1-ih)*H))
     return autocrop(remove_bg(im.crop(box)))
 
 def save(im, path):
@@ -74,7 +75,12 @@ else:
     for ri,cid in enumerate(CHARS):
         for ci,fr in enumerate(FRAMES):
             x0=g["left"]+ci*cw; y0=g["top"]+ri*rh
-            img=cell(motion, x0,y0, x0+cw, y0+rh)
+            x1=x0+cw
+            if fr=="attack":
+                x1=x0+cw*g["attack_w"]                 # 공격: 발사체 꼬리 제외(왼쪽 일부만)
+                img=cell(motion, x0,y0, x1, y0+rh, ixl=0.06, ixr=0.0)  # 무기 쪽(오른쪽)은 안 자름
+            else:
+                img=cell(motion, x0,y0, x1, y0+rh, ixl=0.08, ixr=0.135)  # 오른쪽을 더 잘라 옆칸 캐릭터 침범 방지
             save(img, os.path.join(ROOT,"assets","characters",cid,fr+".png")); made+=1
 
 # 2) 무기 아이콘 (이미지 1 마지막 열)
@@ -85,7 +91,7 @@ else:
     g=MASTER; H=g["bottom"]-g["top"]; rh=H/g["rows"]
     for ri,tid in enumerate(TOOLS):
         y0=g["top"]+ri*rh
-        img=cell(master, g["icon_x0"], y0, g["icon_x1"], y0+rh)
+        img=cell(master, g["icon_x0"], y0, g["icon_x1"], y0+rh*g["icon_h"], ixl=0.04, ixr=0.04, iy=0.04)  # 아래 이름글자 제외
         save(img, os.path.join(ROOT,"assets","weapons",tid,"icon.png")); made+=1
 
 # 3) 이미지를 실제로 만들었을 때만 ASSETS_ENABLED 켜기(빈 상태로 켜서 404 나는 것 방지)
