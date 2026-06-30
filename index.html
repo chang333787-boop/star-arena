@@ -264,6 +264,11 @@ const MAPS = [
       { x:120, y:230, w:130, h:110 },
       { x:1030,y:376, w:130, h:110 },
       { x:545, y:470, w:190, h:70 }
+    ],
+    traps:[
+      { x:560, y:170, w:160, h:46, type:"damage" },   // 반짝 가시판
+      { x:430, y:430, w:120, h:60, type:"slow" },      // 끈끈이 젤리판
+      { x:760, y:430, w:120, h:60, type:"slow" }
     ]
   },
   {
@@ -283,6 +288,11 @@ const MAPS = [
       { x:1040,y:280, w:120, h:90 },
       { x:590, y:120, w:110, h:70 },
       { x:580, y:560, w:120, h:70 }
+    ],
+    traps:[
+      { x:560, y:355, w:160, h:60, type:"slow" },      // 중앙 통로 둔화
+      { x:330, y:200, w:110, h:46, type:"damage" },
+      { x:840, y:440, w:110, h:46, type:"damage" }
     ]
   },
   {
@@ -301,6 +311,11 @@ const MAPS = [
       { x:520, y:520, w:240, h:90 },
       { x:120, y:360, w:150, h:120 },
       { x:1010,y:240, w:150, h:120 }
+    ],
+    traps:[
+      { x:560, y:300, w:160, h:50, type:"damage" },
+      { x:430, y:470, w:130, h:60, type:"slow" },
+      { x:720, y:170, w:130, h:60, type:"slow" }
     ]
   }
 ];
@@ -1227,6 +1242,7 @@ function resetMatch(){
   bossActive=false; bossDefeated=false;
   matchRewardGiven=false; matchGoldEarned=0; matchDropName="";
   resultButtonIndex=0;
+  POWERUPS=[]; powerupAcc=0;
   keysDown.clear();
 }
 
@@ -1282,6 +1298,91 @@ function bushVisibility(fx, fy, fTeam, isMine, viewer, recentlyFired){
   return { hidden:true, alpha:0.55 };                          // 멀리 있는 풀숲 속 적 → 숨김
 }
 function canBeHit(ent){ return ent && !ent.dead && ent.invincibleTimer<=0; }
+
+/* ── 함정 / 버프 아이템(하트·번개 젤리) — 맵 데이터 기반, host(또는 로컬)가 판정 ── */
+let POWERUPS=[];           // {id,x,y,type:"heal"|"speed"} — host/로컬 권한
+let powerupAcc=0, powerupId=0;
+// 현재 모드의 맵(장애물/풀숲/함정 출처). drawArenaFloor와 동일 규칙.
+function currentMap(){
+  return isTeamOnline()?getMap(tMapId):(isOnlineState()?getMap(ONLINE_MAP_ID):((MATCH&&MATCH.map)?MATCH.map:getMap(selectedMapId)));
+}
+function currentTraps(){ const m=currentMap(); return (m&&m.traps)||[]; }
+// 둔화/버프 반영 이동속도
+function effSpeed(f){ let s=f.moveSpeed||0; if(f.slowTimer>0) s*=GAME_CONFIG.trapSlowMul; if(f.speedBuffTimer>0) s*=GAME_CONFIG.speedBuffMul; return s; }
+function tickStatus(f,dt){ if(f.slowTimer>0)f.slowTimer-=dt; if(f.speedBuffTimer>0)f.speedBuffTimer-=dt; if(f.trapTimer>0)f.trapTimer-=dt; }
+// 함정 효과(밟으면): damage=약한 피해(비살상, 쿨타임), slow=잠시 둔화. 리스폰 무적 중엔 무시.
+function applyTrapTo(f){
+  if(!f || f.dead || f.inactive || f.invincibleTimer>0) return;
+  for(const t of currentTraps()){
+    if(circleRectOverlap(f.x,f.y,f.r,t)){
+      if(t.type==="slow"){ f.slowTimer=GAME_CONFIG.trapSlowTime; }
+      else { if(!(f.trapTimer>0)){ f.hp=Math.max(1, f.hp-GAME_CONFIG.trapDamage); f.hitFlash=0.12; f.trapTimer=GAME_CONFIG.trapCooldown; spawnHit?spawnHit(f.x,f.y,"#ff9a9a"):0; } }
+    }
+  }
+}
+// 아이템 1개 생성(장애물/함정/시작지점 회피)
+function spawnPowerupHost(map){
+  if(POWERUPS.length>=GAME_CONFIG.powerupMaxCount) return;
+  map=map||currentMap();
+  for(let tryN=0; tryN<20; tryN++){
+    const x=rand(ARENA.x+40, ARENA.x+ARENA.w-40), y=rand(ARENA.y+40, ARENA.y+ARENA.h-40);
+    let bad=false;
+    for(const o of (map.obstacles||[])){ if(circleRectOverlap(x,y,20,o)){ bad=true; break; } }
+    if(!bad) for(const t of (map.traps||[])){ if(circleRectOverlap(x,y,20,t)){ bad=true; break; } }
+    if(!bad){ const sp=map.playerSpawn, ep=map.enemySpawn;
+      if(sp && dist(x,y,sp.x,sp.y)<120) bad=true; else if(ep && dist(x,y,ep.x,ep.y)<120) bad=true; }
+    if(!bad){ POWERUPS.push({ id:++powerupId, x:Math.round(x), y:Math.round(y), type: Math.random()<0.5?"heal":"speed" }); return; }
+  }
+}
+function applyPowerup(f, type){
+  if(type==="heal"){ f.hp=Math.min(f.maxHp, f.hp+GAME_CONFIG.healPowerupAmount); effects.push({kind:"respawn",x:f.x,y:f.y,t:0,life:0.4,color:"#4bd86b"}); }
+  else { f.speedBuffTimer=GAME_CONFIG.speedBuffTime; effects.push({kind:"respawn",x:f.x,y:f.y,t:0,life:0.4,color:"#ffe066"}); }
+}
+// host/로컬: 아이템 주기 생성 + 픽업 판정. fighters=플레이어가 조종하는 파이터 배열.
+function tickPowerupsHost(dt, fighters){
+  powerupAcc+=dt; if(powerupAcc>=GAME_CONFIG.powerupSpawnInterval){ powerupAcc=0; spawnPowerupHost(); }
+  for(let i=POWERUPS.length-1;i>=0;i--){ const p=POWERUPS[i];
+    for(const f of fighters){ if(!f||f.dead||f.inactive) continue;
+      if(dist(f.x,f.y,p.x,p.y) < f.r+16){ applyPowerup(f,p.type); POWERUPS.splice(i,1); break; } }
+  }
+}
+function drawTraps(){
+  for(const t of currentTraps()){
+    ctx.save();
+    if(t.type==="slow"){ // 끈끈이 젤리판
+      ctx.fillStyle="rgba(120,230,180,0.35)"; roundRect(t.x,t.y,t.w,t.h,10); ctx.fill();
+      ctx.strokeStyle="rgba(90,210,150,0.7)"; ctx.lineWidth=2; roundRect(t.x,t.y,t.w,t.h,10); ctx.stroke();
+      ctx.fillStyle="rgba(150,240,200,0.5)"; for(let i=0;i<6;i++){ const px=t.x+((i*41.7)%t.w), py=t.y+((i*29.3)%t.h); ctx.beginPath(); ctx.arc(px+10,py+10,5,0,Math.PI*2); ctx.fill(); }
+    } else { // 반짝 가시판
+      ctx.fillStyle="rgba(255,120,140,0.28)"; roundRect(t.x,t.y,t.w,t.h,10); ctx.fill();
+      ctx.strokeStyle="rgba(255,120,140,0.7)"; ctx.lineWidth=2; roundRect(t.x,t.y,t.w,t.h,10); ctx.stroke();
+      ctx.fillStyle="rgba(255,220,120,0.8)"; const pulse=0.5+0.5*Math.sin(uiTime*5);
+      for(let i=0;i<5;i++){ const px=t.x+10+((i*53.7)%(t.w-20)), py=t.y+t.h/2; drawStar(px,py,4,5+pulse*2,2,"rgba(255,220,120,0.8)"); }
+    }
+    ctx.restore();
+  }
+}
+function powerupsView(){
+  if(gameState===STATE.ONLINE_PLAYING){
+    if(OnlineManager.role==="host") return POWERUPS;
+    const s=OnlineManager.onlineState; return (s&&s.powerups)||[];
+  }
+  return POWERUPS;
+}
+function drawPowerups(list){
+  for(const p of (list||[])){
+    ctx.save(); ctx.translate(p.x,p.y);
+    const bob=Math.sin(uiTime*4+p.id)*3; ctx.translate(0,bob);
+    const heal=(p.type==="heal"||p.t===0);
+    const g=ctx.createRadialGradient(0,0,2,0,0,18); g.addColorStop(0,heal?"#7dffa8":"#fff0a0"); g.addColorStop(1,"rgba(0,0,0,0)");
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(0,0,18,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle=heal?"#39d36b":"#ffd23f"; roundRect(-11,-11,22,22,7); ctx.fill();
+    ctx.strokeStyle="#fff"; ctx.lineWidth=2; roundRect(-11,-11,22,22,7); ctx.stroke();
+    ctx.fillStyle="#fff"; ctx.font="bold 15px 'Malgun Gothic',sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText(heal?"♥":"⚡",0,1);
+    ctx.restore();
+  }
+}
 function hasLineOfSight(ax,ay,bx,by){
   const d=dist(ax,ay,bx,by), steps=Math.max(1,Math.ceil(d/16));
   for(let i=1;i<steps;i++){
@@ -1494,7 +1595,7 @@ function updatePlayer(dt){
   const ml=Math.hypot(mx,my);
   if(ml>0){
     mx/=ml; my/=ml;                          // 대각선 정규화
-    moveEntity(player, mx*player.moveSpeed*dt, my*player.moveSpeed*dt);
+    moveEntity(player, mx*effSpeed(player)*dt, my*effSpeed(player)*dt);
     player.facing=Math.atan2(my,mx);          // 이동 방향을 바라봄
   }
   player.cooldown-=dt;
@@ -1622,10 +1723,12 @@ function update(dt){
   if(gameState!==STATE.PLAYING) return;
   matchElapsed+=dt;
   for(const f of allFighters()) f.displayHp=lerp(f.displayHp, f.hp, Math.min(1,dt*8));
+  for(const f of allFighters()){ tickStatus(f,dt); applyTrapTo(f); }   // 함정/상태(둔화·버프)
   updatePlayer(dt);
   for(const a of allies) updateAI(a, dt);
   for(const e of enemies) updateAI(e, dt);
   updateBullets(dt);
+  tickPowerupsHost(dt, [player]);                                     // 아이템: 로컬은 플레이어만 획득
   updateEffects(dt);
   if(matchElapsed>=GAME_CONFIG.gameTime){ matchElapsed=GAME_CONFIG.gameTime; endGame(); }
 }
@@ -1717,8 +1820,10 @@ function render(){
   ctx.clearRect(0,0,LOGW,LOGH);
   drawBackground();
   drawArenaFloor();
+  drawTraps();
   drawBushes();
   drawObstacles();
+  if(gameState===STATE.PLAYING||gameState===STATE.PAUSED||gameState===STATE.OVER||gameState===STATE.ONLINE_PLAYING) drawPowerups(powerupsView());
 
   if(gameState===STATE.PLAYING || gameState===STATE.PAUSED || gameState===STATE.OVER){
     drawBullets();
@@ -2317,6 +2422,7 @@ function resetOnlineMatchFromRoom(){
   onlineFighters.guest = makeOnlineFighter("guest", { x:map.enemySpawn.x, y:map.enemySpawn.y, facing:Math.PI,
                           characterId:meta.characterGuest||"lumi", weaponId:meta.weaponGuest||"star_blaster" });
   onlineBullets=[]; onlineTimeLeft=GAME_CONFIG.gameTime; onlineWinner=null;
+  POWERUPS=[]; powerupAcc=0;
   onlineWriteAcc=0; onlineInputAcc=0; onlineLastInputStr="";
   onlineRender={ host:null, guest:null }; onlineBulletsView=[]; onlineLastStateRef=null; onlinePredict=null;
   onlinePredictBullets=[]; onlinePredictCd=0;
@@ -2367,6 +2473,7 @@ function updateOnlineHost(dt){
   updateOnlineFighter(H, hi, dt);
   updateOnlineFighter(G, gi, dt);
   updateOnlineBullets(dt);
+  tickPowerupsHost(dt, [H, G]);
   onlineTimeLeft-=dt;
   H.displayHp=lerp(H.displayHp,H.hp,Math.min(1,dt*8)); G.displayHp=lerp(G.displayHp,G.hp,Math.min(1,dt*8));
   onlineWriteAcc+=dt;
@@ -2451,7 +2558,8 @@ function updateOnlineFighter(f, input, dt){
   let mx=0,my=0;
   if(input.up)my-=1; if(input.down)my+=1; if(input.left)mx-=1; if(input.right)mx+=1;
   const ml=Math.hypot(mx,my);
-  if(ml>0){ mx/=ml; my/=ml; moveEntity(f, mx*f.moveSpeed*dt, my*f.moveSpeed*dt); f.facing=Math.atan2(my,mx); }
+  tickStatus(f, dt); applyTrapTo(f);
+  if(ml>0){ mx/=ml; my/=ml; moveEntity(f, mx*effSpeed(f)*dt, my*effSpeed(f)*dt); f.facing=Math.atan2(my,mx); }
   f.cooldown-=dt;
   tickReload(f, dt);
   if(input.reload) startReload(f);
@@ -2543,7 +2651,8 @@ function hostWriteOnlineState(){
   if(!H||!G) return;
   const bl=[];
   for(const b of onlineBullets) bl.push({ x:Math.round(b.x), y:Math.round(b.y), r:Math.round(b.r), o:b.owner, c:b.color, vx:Math.round(b.vx), vy:Math.round(b.vy) });
-  OnlineManager.writeHostState({ timeLeft:Math.max(0,Math.round(onlineTimeLeft)), host:packFighter(H), guest:packFighter(G), bullets:bl });
+  const pw=POWERUPS.map(p=>({x:p.x,y:p.y,t:p.type==="heal"?0:1,id:p.id}));
+  OnlineManager.writeHostState({ timeLeft:Math.max(0,Math.round(onlineTimeLeft)), host:packFighter(H), guest:packFighter(G), bullets:bl, powerups:pw });
 }
 function hostEndOnlineMatch(){
   const H=onlineFighters.host, G=onlineFighters.guest;
@@ -2875,6 +2984,7 @@ function resetTeamMatchFromRoom(){
   tBullets=[]; tWriteAcc=0; tInputAcc=0; tLastInputStr=""; tWinner=null; tResultText="";
   tRenderFighters={}; tPredict=null; tBulletsView=[]; tLastStateRef=null;
   tEnemies={}; tEnemyId=0; tEnemiesView={};
+  POWERUPS=[]; powerupAcc=0;
   if(mode.modeType==="pve"){
     const stage=PVE_STAGES[0]; tMapId=stage.mapId;
     tPve={ stageIndex:0, waveIndex:0, teamLives:stage.teamLives, status:"playing", phase:"wave", phaseTimer:0, enemiesRemaining:0 };
@@ -2929,6 +3039,7 @@ function tUpdateHost(dt){
     tUpdateFighter(f, input, dt);
   }
   tUpdateBullets(dt);
+  tickPowerupsHost(dt, Object.keys(tFighters).map(s=>tFighters[s]).filter(f=>!f.isBot));
   for(const slot in tFighters){ const f=tFighters[slot]; f.displayHp=lerp(f.displayHp,f.hp,Math.min(1,dt*8)); }
   tTimeLeft-=dt;
   tWriteAcc+=dt; if(tWriteAcc>=1/T_STATE_FPS){ tWriteAcc=0; tHostWriteState(); }
@@ -2940,7 +3051,8 @@ function tUpdateFighter(f, input, dt){
   if(f.hitFlash>0) f.hitFlash-=dt; if(f.invincibleTimer>0) f.invincibleTimer-=dt;
   let mx=0,my=0; if(input.up)my-=1; if(input.down)my+=1; if(input.left)mx-=1; if(input.right)mx+=1;
   const ml=Math.hypot(mx,my);
-  if(ml>0){ mx/=ml; my/=ml; moveEntity(f, mx*f.moveSpeed*dt, my*f.moveSpeed*dt); f.facing=Math.atan2(my,mx); }
+  tickStatus(f, dt); applyTrapTo(f);
+  if(ml>0){ mx/=ml; my/=ml; moveEntity(f, mx*effSpeed(f)*dt, my*effSpeed(f)*dt); f.facing=Math.atan2(my,mx); }
   f.cooldown-=dt;
   tickReload(f, dt);
   if(input.reload) startReload(f);
@@ -3070,7 +3182,8 @@ function tHostWriteState(){
   const bl=[];
   // 게스트 렌더에 필요한 것만(x,y,r,c,vx,vy). owner/team은 게스트가 안 써서 제외(렉 최적화).
   for(const b of tBullets) bl.push({ x:Math.round(b.x), y:Math.round(b.y), r:Math.round(b.r), c:b.color, vx:Math.round(b.vx), vy:Math.round(b.vy) });
-  const st={ timeLeft:Math.max(0,Math.round(tTimeLeft)), teamScores:tTeamScores, fighters:fighters, bullets:bl };
+  const st={ timeLeft:Math.max(0,Math.round(tTimeLeft)), teamScores:tTeamScores, fighters:fighters, bullets:bl,
+    powerups:POWERUPS.map(p=>({x:p.x,y:p.y,t:p.type==="heal"?0:1,id:p.id})) };
   // PVE면 적/스테이지 정보도 함께 보낸다. color/r/boss는 type으로 게스트가 역산(전송 제외).
   if(getOnlineMode(OnlineManager.mode).modeType==="pve"){
     const en={}; for(const id in tEnemies){ const e=tEnemies[id]; en[id]={ x:Math.round(e.x), y:Math.round(e.y), hp:Math.round(e.hp), maxHp:Math.round(e.maxHp), facing:Math.round(e.facing*100)/100, type:e.type, dead:!!e.dead }; }
@@ -3314,6 +3427,7 @@ function tPveUpdateHost(dt){
   }
   for(const id in tEnemies) tEnemyUpdate(tEnemies[id], dt);
   tPveUpdateBullets(dt);
+  tickPowerupsHost(dt, Object.keys(tFighters).map(s=>tFighters[s]).filter(f=>!f.inactive));
   tPveProgress(dt);
   tWriteAcc+=dt; if(tWriteAcc>=1/T_STATE_FPS){ tWriteAcc=0; tHostWriteState(); }
 }
@@ -3321,7 +3435,8 @@ function tPveUpdatePlayer(f,input,dt){
   if(f.dead){ f.respawnTimer-=dt; if(f.respawnTimer<=0 && tPve.teamLives>0) tRespawn(f); return; }
   if(f.hitFlash>0)f.hitFlash-=dt; if(f.invincibleTimer>0)f.invincibleTimer-=dt;
   let mx=0,my=0; if(input.up)my-=1; if(input.down)my+=1; if(input.left)mx-=1; if(input.right)mx+=1;
-  const ml=Math.hypot(mx,my); if(ml>0){mx/=ml;my/=ml; moveEntity(f,mx*f.moveSpeed*dt,my*f.moveSpeed*dt); f.facing=Math.atan2(my,mx);}
+  tickStatus(f, dt); applyTrapTo(f);
+  const ml=Math.hypot(mx,my); if(ml>0){mx/=ml;my/=ml; moveEntity(f,mx*effSpeed(f)*dt,my*effSpeed(f)*dt); f.facing=Math.atan2(my,mx);}
   f.cooldown-=dt;
   tickReload(f, dt);
   if(input.reload) startReload(f);
