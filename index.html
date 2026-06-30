@@ -926,6 +926,7 @@ const STATE = { START:"start", SHOP:"shop",
 let gameState = STATE.START;
 let confirmLeave = false;   // Esc 나가기 확인 오버레이 표시 여부(온라인/플레이 중)
 let _viewer = null;         // 풀숲 가시성 계산용 내 시점 {x,y,team} (온라인 렌더 직전 설정)
+let _pveBossSeen = false;    // PVE 보스 등장 연출 1회용
 
 let player = null;        // 내가 조종하는 캐릭터
 let allies = [];          // 아군 AI
@@ -3363,8 +3364,8 @@ const PVE_ENEMY_TYPES = {
   shooter:  { hp:55,  speed:110, dmg:12, r:20, color:"#46c0e0", ranged:true,  range:380, fireCd:1.4, bulletSpeed:360, score:2 },
   tank:     { hp:230, speed:78,  dmg:16, r:30, color:"#5a5f78", ranged:false, contactCd:1.0, score:3 },
   elite:    { hp:160, speed:130, dmg:14, r:24, color:"#b266ff", ranged:true,  range:420, fireCd:1.0, bulletSpeed:400, score:4 },
-  miniBoss: { hp:380, speed:108, dmg:20, r:34, color:"#ff4d6d", ranged:true,  range:460, fireCd:0.85,bulletSpeed:420, score:8,  threeWay:true },
-  boss:     { hp:900, speed:95,  dmg:26, r:46, color:"#b3203a", ranged:true,  range:520, fireCd:0.7, bulletSpeed:440, score:30, threeWay:true }
+  miniBoss: { hp:380, speed:108, dmg:20, r:46, color:"#ff4d6d", ranged:true,  range:460, fireCd:0.85,bulletSpeed:420, score:8,  threeWay:true },
+  boss:     { hp:900, speed:92,  dmg:26, r:66, color:"#b3203a", ranged:true,  range:520, fireCd:0.78,bulletSpeed:430, score:30, threeWay:true }
 };
 const PVE_STAGES = [
   { id:"stage1", name:"1스테이지: 별빛 훈련장 침입", mapId:"training", teamLives:12,
@@ -3563,14 +3564,28 @@ function tDrawEnemy(e){
   ctx.save();
   if(isInBushXY(e.x,e.y)) ctx.globalAlpha=0.6;   // PVE 적도 풀숲 안이면 반투명
   ctx.translate(e.x,e.y);
+  if(e.boss){ // 보스 오라(맥동하는 외곽 글로우)
+    const pulse=0.5+0.5*Math.sin(uiTime*5), gr=ctx.createRadialGradient(0,0,e.r*0.5,0,0,e.r+22+pulse*8);
+    gr.addColorStop(0,"rgba(255,80,110,0.35)"); gr.addColorStop(1,"rgba(255,80,110,0)");
+    ctx.fillStyle=gr; ctx.beginPath(); ctx.arc(0,0,e.r+22+pulse*8,0,Math.PI*2); ctx.fill();
+  }
   ctx.fillStyle=e.color; ctx.beginPath();
   for(let i=0;i<6;i++){ const a=Math.PI/6+i*Math.PI/3; const px=Math.cos(a)*e.r,py=Math.sin(a)*e.r; if(i===0)ctx.moveTo(px,py); else ctx.lineTo(px,py); }
-  ctx.closePath(); ctx.fill(); ctx.strokeStyle="#ffd0d8"; ctx.lineWidth=2; ctx.stroke();
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle=e.boss?"#ffd400":"#ffd0d8"; ctx.lineWidth=e.boss?5:2; ctx.stroke();
   ctx.save(); ctx.rotate(e.facing); ctx.fillStyle="#ff4d6d"; roundRect(2,-5,e.r-4,10,3); ctx.fill(); ctx.restore();
+  if(e.boss){ // 왕관
+    ctx.fillStyle="#ffd400";
+    ctx.beginPath(); ctx.moveTo(-e.r*0.55,-e.r*0.8); ctx.lineTo(-e.r*0.2,-e.r-14); ctx.lineTo(-e.r*0.05,-e.r*0.8); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(e.r*0.55,-e.r*0.8); ctx.lineTo(e.r*0.2,-e.r-14); ctx.lineTo(e.r*0.05,-e.r*0.8); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(0,-e.r*0.9); ctx.lineTo(-e.r*0.18,-e.r-18); ctx.lineTo(e.r*0.18,-e.r-18); ctx.closePath(); ctx.fill();
+  }
   ctx.restore();
-  const w=Math.max(28,e.r*1.6),h=5,bx=e.x-w/2,by=e.y-e.r-12;
-  ctx.save(); ctx.fillStyle="rgba(0,0,0,0.5)"; roundRect(bx,by,w,h,3); ctx.fill();
-  ctx.fillStyle="#ff5a5a"; roundRect(bx,by,w*clamp(e.hp/(e.maxHp||1),0,1),h,3); ctx.fill(); ctx.restore();
+  if(!e.boss){ // 일반 적 체력바(보스는 상단 큰 바로 표시)
+    const w=Math.max(28,e.r*1.6),h=5,bx=e.x-w/2,by=e.y-e.r-12;
+    ctx.save(); ctx.fillStyle="rgba(0,0,0,0.5)"; roundRect(bx,by,w,h,3); ctx.fill();
+    ctx.fillStyle="#ff5a5a"; roundRect(bx,by,w*clamp(e.hp/(e.maxHp||1),0,1),h,3); ctx.fill(); ctx.restore();
+  }
 }
 function tPveRender(){
   const data=tPveGetDrawData();
@@ -3591,11 +3606,18 @@ function tPveRender(){
   ctx.restore();
   drawCombatStrip();
   let boss=null; for(const e of data.enemies){ if(e.boss){ boss=e; break; } }
-  if(boss){ const bw=420,bh=16,bx=LOGW/2-bw/2,by=72;
-    ctx.save(); ctx.fillStyle="rgba(0,0,0,0.5)"; roundRect(bx,by,bw,bh,8); ctx.fill();
-    ctx.fillStyle="#ff4d6d"; roundRect(bx,by,bw*clamp(boss.hp/boss.maxHp,0,1),bh,8); ctx.fill();
-    ctx.strokeStyle="#ffd400"; ctx.lineWidth=2; roundRect(bx,by,bw,bh,8); ctx.stroke();
-    ctx.fillStyle="#fff"; ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("보스",LOGW/2,by+bh/2); ctx.restore(); }
+  if(boss){ const bw=560,bh=24,bx=LOGW/2-bw/2,by=74;
+    ctx.save();
+    ctx.fillStyle="#ffd400"; ctx.font="bold 16px 'Malgun Gothic',sans-serif"; ctx.textAlign="center"; ctx.textBaseline="bottom";
+    ctx.fillText("👑 보스",LOGW/2,by-2);
+    ctx.fillStyle="rgba(0,0,0,0.55)"; roundRect(bx,by,bw,bh,9); ctx.fill();
+    const pulse=0.6+0.4*Math.sin(uiTime*6);
+    ctx.fillStyle="rgba(255,77,109,"+(0.8+pulse*0.2)+")"; roundRect(bx,by,bw*clamp(boss.hp/boss.maxHp,0,1),bh,9); ctx.fill();
+    ctx.strokeStyle="#ffd400"; ctx.lineWidth=3; roundRect(bx,by,bw,bh,9); ctx.stroke();
+    ctx.fillStyle="#fff"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.textBaseline="middle"; ctx.fillText(Math.ceil(boss.hp)+" / "+Math.round(boss.maxHp),LOGW/2,by+bh/2); ctx.restore(); }
+  // 보스 첫 등장 연출(호스트/게스트 모두 draw data 기준)
+  if(boss && !_pveBossSeen){ _pveBossSeen=true; effects.push({kind:"bossArrival",x:LOGW/2,y:LOGH/2,t:0,life:1.6,color:"#ff4d6d"}); }
+  else if(!boss) _pveBossSeen=false;
   if(data.waiting) drawCenterBanner("동기화 대기 중…","#9fe0ff");
   else if(pve.status==="failed") drawCenterBanner("실패…","#ff7a7a");
   else if(pve.status==="complete") drawCenterBanner("올 클리어! 🎉","#ffe066");
