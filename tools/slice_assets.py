@@ -27,7 +27,7 @@ FRAMES = ["idle","move","attack","hit","return"]
 # ── 그리드 비율(0~1). 어긋나면 여기를 조정 후 재실행 ──
 # 02_basic_motion_master.png(1672x941): 6행(캐릭터) x 5열(대기/이동/공격/피격/리턴)
 MOTION = dict(top=0.142, left=0.145, right=0.999, bottom=0.996, rows=6, cols=5,
-              attack_w=0.78)   # 공격 칸: 무기+근접 궤적 포함(바깥 궤적은 feather로 페이드)
+              attack_w=0.72)   # 공격 칸: 무기까지만(긴 궤적 제외) + 바깥은 feather 페이드
 # 01_fixed_character_weapon_master.png(1491x1055): 마지막 열이 무기 아이콘(아래 이름 글자는 제외)
 MASTER = dict(top=0.07, bottom=0.999, rows=6, icon_x0=0.80, icon_x1=1.0, icon_h=0.64)
 
@@ -109,7 +109,7 @@ else:
             if fr=="attack":
                 x1=x0+cw*g["attack_w"]                 # 공격: 발사체 꼬리 일부 포함
                 img=cell(motion, x0,y0, x1, y0+rh, ixl=0.06, ixr=0.0)  # 무기 쪽(오른쪽)은 안 자름
-                img=feather_right(img, 0.26)           # 오른쪽 궤적을 부드럽게 페이드(직선 컷 방지)
+                img=feather_right(img, 0.30)           # 오른쪽 궤적을 부드럽게 페이드(직선 컷 방지)
             else:
                 img=cell(motion, x0,y0, x1, y0+rh, ixl=0.08, ixr=0.135)  # 오른쪽을 더 잘라 옆칸 캐릭터 침범 방지
             img=center_h(img)   # 캐릭터를 가로 중앙 정렬(렌더가 중앙 기준이라 위치 흔들림 방지)
