@@ -317,6 +317,29 @@ const MAPS = [
       { x:430, y:470, w:130, h:60, type:"slow" },
       { x:720, y:170, w:130, h:60, type:"slow" }
     ]
+  },
+  {
+    id:"lane3", name:"3라인 실험장", desc:"위/중앙/아래 3갈래 길(점령전 대비)",
+    floorColor:"#202a3e", strokeColor:"#5a7bb0",
+    playerSpawn:{x:110,y:360}, enemySpawn:{x:1170,y:360},
+    obstacles:[
+      { x:300, y:232, w:680, h:26, kind:"rock" },   // 위/중 구분 벽(양옆 통로)
+      { x:300, y:462, w:680, h:26, kind:"rock" },   // 중/아래 구분 벽
+      { x:600, y:330, w:80,  h:60, kind:"crystal" },// 중앙 거점
+      { x:250, y:120, w:60,  h:60, kind:"box" },
+      { x:970, y:540, w:60,  h:60, kind:"box" }
+    ],
+    bushes:[
+      { x:430, y:120, w:170, h:80 },
+      { x:700, y:520, w:170, h:80 },
+      { x:120, y:330, w:120, h:60 },
+      { x:1040,y:330, w:120, h:60 }
+    ],
+    traps:[
+      { x:560, y:150, w:170, h:46, type:"slow" },     // 위 라인
+      { x:560, y:520, w:170, h:46, type:"slow" },     // 아래 라인
+      { x:560, y:330, w:80,  h:60, type:"damage" }    // 중앙 거점 주변
+    ]
   }
 ];
 
@@ -705,7 +728,7 @@ const OnlineManager = {
           const ts=firebase.database.ServerValue.TIMESTAMP;
           const room={
             meta:{ status:"waiting", hostUid:self.uid, guestUid:null, createdAt:ts, updatedAt:ts,
-              mapId:"training", characterHost:selectedCharacterId, characterGuest:null,
+              mapId:selectedMapId||"training", characterHost:selectedCharacterId, characterGuest:null,
               weaponHost:selectedWeaponId, weaponGuest:null, winner:null },
             players:{ host:{ uid:self.uid, nickname:profile.nickname, characterId:selectedCharacterId,
               weaponId:selectedWeaponId, connected:true, lastSeen:ts, input:emptyInput() } }
@@ -845,8 +868,10 @@ const OnlineManager = {
           if(snap.val()){ if(triesLeft>0){ tryCreate(triesLeft-1); return; } if(onDone) onDone(false,"방 생성 실패(코드 충돌)"); return; }
           const ts=firebase.database.ServerValue.TIMESTAMP;
           const team = mode.modeType==="pve" ? "pve" : "blue";
+          // PVE는 스테이지 맵을 따르므로 mapId는 1스테이지 맵, PVP(3v3)는 host가 고른 맵
+          const mapId = mode.modeType==="pve" ? (PVE_STAGES[0].mapId) : (selectedMapId||"training");
           const room={ meta:{ mode:modeId, status:"waiting", hostUid:self.uid, createdAt:ts, updatedAt:ts,
-              mapId:"training", maxPlayers:mode.maxPlayers, winner:null, resultText:"", stageIndex:0, waveIndex:0 },
+              mapId:mapId, maxPlayers:mode.maxPlayers, winner:null, resultText:"", stageIndex:0, waveIndex:0 },
             players:{ p1:{ uid:self.uid, nickname:profile.nickname, slot:"p1", team:team, characterId:selectedCharacterId,
               weaponId:selectedWeaponId, connected:true, ready:false, isBot:false, lastSeen:ts, input:emptyInput() } } };
           ref.set(room).then(function(){
@@ -1305,7 +1330,7 @@ let POWERUPS=[];           // {id,x,y,type:"heal"|"speed"} — host/로컬 권�
 let powerupAcc=0, powerupId=0;
 // 현재 모드의 맵(장애물/풀숲/함정 출처). drawArenaFloor와 동일 규칙.
 function currentMap(){
-  return isTeamOnline()?getMap(tMapId):(isOnlineState()?getMap(ONLINE_MAP_ID):((MATCH&&MATCH.map)?MATCH.map:getMap(selectedMapId)));
+  return isTeamOnline()?getMap(tMapId):(isOnlineState()?getMap(onlineMapId()):((MATCH&&MATCH.map)?MATCH.map:getMap(selectedMapId)));
 }
 function currentTraps(){ const m=currentMap(); return (m&&m.traps)||[]; }
 // 둔화/버프 반영 이동속도
@@ -1938,7 +1963,7 @@ function drawBackground(){
 }
 function isOnlineState(){ return gameState===STATE.ONLINE_MENU||gameState===STATE.ONLINE_LOBBY||gameState===STATE.ONLINE_PLAYING||gameState===STATE.ONLINE_OVER; }
 function drawArenaFloor(){
-  const map=isTeamOnline()?getMap(tMapId):(isOnlineState()?getMap(ONLINE_MAP_ID):((MATCH&&MATCH.map)?MATCH.map:getMap(selectedMapId)));
+  const map=isTeamOnline()?getMap(tMapId):(isOnlineState()?getMap(onlineMapId()):((MATCH&&MATCH.map)?MATCH.map:getMap(selectedMapId)));
   ctx.save();
   ctx.fillStyle=map.floorColor; roundRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h,18); ctx.fill();
   ctx.beginPath(); ctx.rect(ARENA.x,ARENA.y,ARENA.w,ARENA.h); ctx.clip();
@@ -2326,7 +2351,7 @@ function drawShopScreen(){
    host가 권한(authoritative)을 갖고 게임을 계산해 state를 쓰고,
    guest는 자기 입력만 쓰고 host가 보낸 state를 그린다.
    ======================================================================= */
-const ONLINE_MAP_ID = "training";   // 베타는 훈련장 맵만 사용
+function onlineMapId(){ const m=OnlineManager.meta; return (m && m.mapId) || "training"; }   // 온라인 활성 맵(meta.mapId 기준, 없으면 훈련장)
 const ONLINE_STATE_FPS = 30;        // 입력/상태 동기화 빈도(초당 횟수). 높일수록 부드럽고 Firebase 사용량 증가
 
 let onlineFighters = { host:null, guest:null };
@@ -2347,7 +2372,7 @@ function lerpAngle(a,b,t){ let d=b-a; while(d>Math.PI)d-=Math.PI*2; while(d<-Mat
 
 function openOnlineMenu(){
   onlineMenuIndex=0;
-  OBSTACLES=getMap(ONLINE_MAP_ID).obstacles; BUSHES=getMap(ONLINE_MAP_ID).bushes;
+  OBSTACLES=getMap(onlineMapId()).obstacles; BUSHES=getMap(onlineMapId()).bushes;
   gameState=STATE.ONLINE_MENU;
 }
 
@@ -2366,6 +2391,9 @@ function handleOnlineMenuKey(code){
   if(onlineMenuIndex>=n) onlineMenuIndex=0;
   if(code==="ArrowUp"){ onlineMenuIndex=(onlineMenuIndex+n-1)%n; return; }
   if(code==="ArrowDown"){ onlineMenuIndex=(onlineMenuIndex+1)%n; return; }
+  // ←→ 또는 M: 방 만들 때 쓸 맵 선택(PVE 제외, 방장이 미리 고름)
+  if(code==="ArrowLeft"){ cycleMap(-1); return; }
+  if(code==="ArrowRight"||code==="KeyM"){ cycleMap(1); return; }
   if(code==="Enter"||code==="NumpadEnter"){
     const o=opts[onlineMenuIndex];
     if(o.kind==="create"){ if(o.modeId==="online1v1") doCreateRoom(); else doCreateTeamRoom(o.modeId); }
@@ -2468,8 +2496,8 @@ function onRoomMetaChanged(){
 /* ---- 매치 준비 ---- */
 function resetOnlineMatchFromRoom(){
   const meta=OnlineManager.meta||{};
-  OBSTACLES=getMap(ONLINE_MAP_ID).obstacles; BUSHES=getMap(ONLINE_MAP_ID).bushes;
-  const map=getMap(ONLINE_MAP_ID);
+  OBSTACLES=getMap(onlineMapId()).obstacles; BUSHES=getMap(onlineMapId()).bushes;
+  const map=getMap(onlineMapId());
   onlineFighters.host  = makeOnlineFighter("host",  { x:map.playerSpawn.x, y:map.playerSpawn.y, facing:0,
                           characterId:meta.characterHost||"lumi", weaponId:meta.weaponHost||"star_blaster" });
   onlineFighters.guest = makeOnlineFighter("guest", { x:map.enemySpawn.x, y:map.enemySpawn.y, facing:Math.PI,
@@ -2897,14 +2925,17 @@ function drawOnlineMenu(){
     ctx.restore(); return;
   }
   ctx.fillStyle="#e6ecff"; ctx.font="18px 'Malgun Gothic',sans-serif"; ctx.fillText("닉네임: "+profile.nickname,LOGW/2,196);
+  // 방장이 만들 방의 맵(1대1/3대3에 적용, PVE는 스테이지 맵)
+  ctx.fillStyle="#ffe066"; ctx.font="bold 16px 'Malgun Gothic',sans-serif";
+  ctx.fillText("◀ 맵: "+getMap(selectedMapId).name+" ▶   (←→/M 변경 · PVE는 스테이지 맵)",LOGW/2,222);
   const opts=onlineMenuOptions();
   if(onlineMenuIndex>=opts.length) onlineMenuIndex=0;
   for(let i=0;i<opts.length;i++){
-    const y=240+i*52, sel=(i===onlineMenuIndex);
-    drawButton(opts[i].label, LOGW/2, y, 380, 44, sel);
+    const y=260+i*50, sel=(i===onlineMenuIndex);
+    drawButton(opts[i].label, LOGW/2, y, 380, 42, sel);
   }
   ctx.textAlign="center"; ctx.fillStyle="#aab4e0"; ctx.font="15px 'Malgun Gothic',sans-serif";
-  ctx.fillText("↑↓ 선택 · Enter 실행 · Esc 뒤로",LOGW/2,240+opts.length*52+18);
+  ctx.fillText("↑↓ 선택 · ←→ 맵 · Enter 실행 · Esc 뒤로",LOGW/2,260+opts.length*50+18);
   ctx.restore();
 }
 function drawOnlineLobby(){
@@ -3044,7 +3075,7 @@ function resetTeamMatchFromRoom(){
     tBuildFighters();
     if(OnlineManager.role==="host") tPveStartWave();
   } else {
-    tMapId="training";
+    tMapId=(OnlineManager.meta&&OnlineManager.meta.mapId)||"training";   // 3v3: host가 고른 맵(게스트도 meta로 동일)
     tBuildFighters();
     tTimeLeft=GAME_CONFIG.gameTime; tTeamScores={blue:0,red:0};
   }
