@@ -596,6 +596,7 @@ function saveProfile(){
     a.unlockedCharacters=profile.unlockedCharacters; a.unlockedWeapons=profile.unlockedWeapons;
     a.level=profile.level||a.level||1; a.exp=profile.exp||a.exp||0; a.lastUpdated=profile.lastUpdated;
     saveAccounts();
+    pushCloudOrPending(currentStudentId);   // 진행도 클라우드 동기화(불가하면 pending)
   } else {
     try { window.localStorage.setItem(PROFILE_KEY, JSON.stringify(profile)); } catch(e){}
   }
@@ -689,18 +690,160 @@ function createStudent(id, name, pin){
   accounts.students[id]=newAccount(id,name,pin); saveAccounts();
   return { ok:true };
 }
-function setStudentPin(id, pin){ const a=accounts.students[id]; if(!a) return false; a.pinHash=hashPin(id,pin); saveAccounts(); return true; }
+function setStudentPin(id, pin){ const a=accounts.students[id]; if(!a) return false; a.pinHash=hashPin(id,pin); a.lastUpdated=nowTs(); saveAccounts(); return true; }
 function resetStudent(id){ const a=accounts.students[id]; if(!a) return false;
   a.gold=0; a.wins=0; a.losses=0; a.draws=0; a.totalPlays=0; a.totalKills=0; a.bossKills=0;
   a.unlockedCharacters=DEFAULT_UNLOCKED_CHARACTERS.slice(); a.unlockedWeapons=DEFAULT_UNLOCKED_WEAPONS.slice();
   a.selectedCharacterId=DEFAULT_UNLOCKED_CHARACTERS[0]; a.selectedWeaponId=DEFAULT_UNLOCKED_WEAPONS[0]; a.level=1; a.exp=0;
-  saveAccounts(); return true; }
+  a.lastUpdated=nowTs(); saveAccounts(); return true; }
 function deleteStudent(id){ if(accounts.students[id]){ delete accounts.students[id]; saveAccounts(); return true; } return false; }
 function studentList(){ return accounts&&accounts.students?Object.keys(accounts.students).map(k=>accounts.students[k]):[]; }
 
 function addGold(amount){ profile.gold = Math.max(0, profile.gold + amount); }
 function unlockCharacter(id){ if(profile.unlockedCharacters.indexOf(id) < 0) profile.unlockedCharacters.push(id); }
 function unlockWeapon(id){ if(profile.unlockedWeapons.indexOf(id) < 0) profile.unlockedWeapons.push(id); }
+
+/* ============================================================
+   학생 계정 클라우드 동기화 (Firebase Realtime Database)
+   경로: classes/{classCode}/students/{studentId}
+   - 로컬(localStorage)은 오프라인 캐시. 온라인이면 클라우드가 기준 데이터.
+   - 원문 PIN은 절대 저장하지 않음(pinHash만). 기존 hashPin 호환.
+   - ⚠ 정적 페이지 + 클라이언트 hashPin은 "수업용 간이 보호"이지 진짜 보안이 아님.
+   ============================================================ */
+const ACCOUNTS_BACKUP_KEY = "starArena.accounts.backup.v1";
+let cloudAccountStatus = "로컬 전용";   // 로그인/패널 표시용 상태
+const AccountStore = {
+  cloudReady(){ return !!(OnlineManager && OnlineManager.available && OnlineManager.db); },
+  _sref(){ return OnlineManager.db.ref("classes/"+ADMIN_CONFIG.classCode+"/students"); },
+  _ref(id){ return this._sref().child(id); },
+  // 계정 → 클라우드 레코드(스키마 필드만, undefined 없음)
+  toRecord(a){
+    return {
+      id:a.id, name:a.name||"", pinHash:a.pinHash||"",
+      level:a.level||1, exp:a.exp||0, gold:a.gold||0,
+      wins:a.wins||0, losses:a.losses||0, draws:a.draws||0,
+      totalPlays:a.totalPlays||0, totalKills:a.totalKills||0, bossKills:a.bossKills||0,
+      selectedCharacterId:a.selectedCharacterId||null, selectedWeaponId:a.selectedWeaponId||null,
+      selectedDifficultyId:a.selectedDifficultyId||null, selectedMapId:a.selectedMapId||null, selectedModeId:a.selectedModeId||null,
+      unlockedCharacters:(a.unlockedCharacters||[]).slice(), unlockedWeapons:(a.unlockedWeapons||[]).slice(),
+      createdAt:a.createdAt||nowTs(), lastLoginAt:a.lastLoginAt||0, lastUpdated:a.lastUpdated||nowTs(),
+      isActive:(a.isActive!==false)
+    };
+  },
+  // ── 로컬 캐시 계층 ──
+  loadLocalAccounts(){ loadAccounts(); return accounts; },
+  saveLocalAccounts(){ saveAccounts(); },
+  cacheLocal(rec){ if(!accounts) loadAccounts(); const cur=accounts.students[rec.id]||{}; delete cur._pendingSync; accounts.students[rec.id]=Object.assign(cur, rec); saveAccounts(); },
+  // ── 클라우드 CRUD (Promise) ──  null=없음, undefined=조회오류(네트워크)
+  loadCloudStudent(id){ const self=this; return new Promise(function(res){
+    if(!self.cloudReady()) return res(null);
+    self._ref(id).once("value").then(function(s){ res(s.val()||null); }).catch(function(){ res(undefined); });
+  }); },
+  loadCloudAccounts(){ const self=this; return new Promise(function(res){
+    if(!self.cloudReady()) return res(null);
+    self._sref().once("value").then(function(s){ res(s.val()||{}); }).catch(function(){ res(undefined); });
+  }); },
+  // 저장: transaction으로 '오래된 로컬이 최신 클라우드를 덮어쓰지 않게'(최신 lastUpdated 우선)
+  saveCloudStudent(a){ const self=this; return new Promise(function(res){
+    if(!self.cloudReady()) return res(false);
+    const rec=self.toRecord(a);
+    try{
+      self._ref(a.id).transaction(function(cur){
+        if(cur && typeof cur.lastUpdated==="number" && rec.lastUpdated < cur.lastUpdated) return;  // 클라우드가 최신 → 덮어쓰지 않음(abort)
+        return rec;
+      }, function(err){ res(!err); }, false);
+    }catch(e){ res(false); }
+  }); },
+  deleteCloudStudent(id){ const self=this; return new Promise(function(res){
+    if(!self.cloudReady()) return res(false);
+    self._ref(id).remove().then(function(){ res(true); }).catch(function(){ res(false); });
+  }); },
+  // 클라우드 → 로컬 병합(클라우드가 최신/누락이면 반영). 로컬 전용 계정은 유지.
+  syncAccounts(){ const self=this; return new Promise(function(res){
+    self.loadCloudAccounts().then(function(cloud){
+      if(cloud===undefined||cloud===null){ res(false); return; }
+      if(!accounts) loadAccounts();
+      let n=0;
+      for(const id in cloud){ const c=cloud[id], loc=accounts.students[id];
+        if(!loc || (typeof c.lastUpdated==="number" && c.lastUpdated >= (loc.lastUpdated||0))){ accounts.students[id]=c; n++; } }
+      saveAccounts(); cloudAccountStatus="학급 계정 연결됨"; res(n);
+    });
+  }); },
+  // 오프라인 저장 → pending. 재연결 시 flush(최신 우선).
+  markPending(id){ if(accounts&&accounts.students[id]){ accounts.students[id]._pendingSync=true; saveAccounts(); } },
+  flushPending(){ const self=this; if(!self.cloudReady()||!accounts) return;
+    Object.keys(accounts.students).forEach(function(id){ const a=accounts.students[id];
+      if(a && a._pendingSync){ self.saveCloudStudent(a).then(function(ok){ if(ok){ delete a._pendingSync; saveAccounts(); } }); } });
+  }
+};
+// 진행도/계정 변경을 클라우드에 밀어넣기(불가하면 pending)
+function pushCloudOrPending(id){
+  if(!accounts||!accounts.students[id]) return;
+  if(AccountStore.cloudReady()){
+    AccountStore.saveCloudStudent(accounts.students[id]).then(function(ok){ if(!ok) AccountStore.markPending(id); });
+  } else { AccountStore.markPending(id); }
+}
+// 클라우드 준비되면(익명 인증 완료) 계정 동기화 + pending flush
+function onCloudAccountsReady(){
+  cloudAccountStatus="학급 계정 연결 중…";
+  AccountStore.syncAccounts().then(function(r){
+    if(r===false){ cloudAccountStatus="이 기기에 저장된 계정만 사용 가능"; return; }
+    AccountStore.flushPending();
+    const l=studentList(); if((!adminSelId||!accounts.students[adminSelId]) && l[0]) adminSelId=l[0].id;
+  });
+}
+// 클라우드 우선 학생 로그인(비동기). 실패 유형별 메시지 분리.
+function studentLoginCloud(id, pin, cb){
+  id=(""+id).trim();
+  const localTry=function(offline){ const r=studentLogin(id,pin); if(r.ok&&offline) r.offline=true; cb(r); };
+  if(!AccountStore.cloudReady()){ localTry(true); return; }
+  cloudAccountStatus="학급 계정 확인 중…";
+  AccountStore.loadCloudStudent(id).then(function(rec){
+    if(rec===undefined){ // 조회 오류(네트워크) → 로컬 캐시로
+      const r=studentLogin(id,pin);
+      if(r.ok){ r.offline=true; cb(r); } else cb({ok:false,msg:"연결이 불안정해요 — 이 기기에 저장된 계정만 로그인 가능"});
+      return;
+    }
+    if(rec===null){ if(accounts&&accounts.students[id]){ localTry(false); return; } cb({ok:false,msg:"계정이 없어요"}); return; }
+    if(rec.isActive===false){ cb({ok:false,msg:"사용 중지된 계정이에요"}); return; }
+    if(rec.pinHash!==hashPin(id,pin)){ cb({ok:false,msg:"비밀번호(PIN)가 올라요"}); return; }
+    rec.lastLoginAt=nowTs(); AccountStore.cacheLocal(rec);
+    bindStudent(id);
+    session={ role:"student", studentId:id, name:rec.name, loginAt:nowTs() }; saveSession();
+    pushCloudOrPending(id);          // lastLoginAt 반영
+    cloudAccountStatus="학급 계정 연결됨";
+    cb({ok:true});
+  });
+}
+// 교사: 로컬 계정을 클라우드로 이전(스캔→확인→업로드, 원본은 백업 보관)
+function adminMigrateLocal(){
+  if(!AccountStore.cloudReady()){ showToast("온라인 연결 후 이용하세요"); return; }
+  const list=studentList(); if(!list.length){ showToast("이전할 로컬 계정이 없어요"); return; }
+  AccountStore.loadCloudAccounts().then(function(cloud){
+    if(cloud===undefined){ showToast("클라우드 조회 실패 — 잠시 후 다시"); return; }
+    cloud=cloud||{}; const toNew=[],toOver=[],toSkip=[];
+    list.forEach(function(a){ const c=cloud[a.id];
+      if(!c) toNew.push(a); else if((a.lastUpdated||0)>=(c.lastUpdated||0)) toOver.push(a); else toSkip.push(a); });
+    const msg="클라우드로 이전:\n· 신규 업로드 "+toNew.length+"개\n· 덮어쓰기(로컬이 최신) "+toOver.length+"개"+(toOver.length?" ["+toOver.map(function(a){return a.id;}).join(", ")+"]":"")+"\n· 건너뜀(클라우드가 최신) "+toSkip.length+"개\n진행할까요?";
+    let ok=false; try{ ok=window.confirm(msg); }catch(e){ ok=true; }
+    if(!ok) return;
+    try{ window.localStorage.setItem(ACCOUNTS_BACKUP_KEY, JSON.stringify(accounts)); }catch(e){}   // 원본 백업(즉시 삭제 안 함)
+    const targets=toNew.concat(toOver);
+    if(!targets.length){ showToast("이전할 항목 없음(모두 클라우드가 최신)"); return; }
+    let up=0,fail=0,done=0;
+    targets.forEach(function(a){ AccountStore.saveCloudStudent(a).then(function(s){ if(s)up++; else fail++;
+      if(++done===targets.length){ showToast("이전 완료 — 업로드 "+up+" · 건너뜀 "+toSkip.length+" · 실패 "+fail+" (원본 백업 보관)"); } }); });
+  });
+}
+// 교사: 클라우드에서 학생 목록 새로고침
+function adminRefreshFromCloud(){
+  if(!AccountStore.cloudReady()){ showToast("오프라인 — 이 기기 목록만 표시"); return; }
+  AccountStore.syncAccounts().then(function(n){
+    if(n===false){ showToast("클라우드 조회 실패"); return; }
+    const l=studentList(); if(!adminSelId||!accounts.students[adminSelId]) adminSelId=l[0]?l[0].id:null;
+    showToast("클라우드 새로고침 — 학생 "+l.length+"명");
+  });
+}
 
 /* ---- 온라인(Firebase) 관리 ----
    온라인 대전을 켜려면 아래 FIREBASE_CONFIG 에 본인 Firebase 프로젝트 설정을 넣으세요.
@@ -782,6 +925,7 @@ const OnlineManager = {
         self.uid = (cred && cred.user) ? cred.user.uid : (self.auth.currentUser ? self.auth.currentUser.uid : null);
         self.available=true; self.status="온라인 준비 완료";
         self.watchConnection();
+        try{ onCloudAccountsReady(); }catch(e){}   // 학급 계정 클라우드 동기화 + pending flush
       }).catch(function(e){ self.available=false; self.status="로그인 실패 (로컬 모드)"; });
     }catch(e){ this.available=false; this.status="로그인 실패 (로컬 모드)"; }
   },
@@ -789,7 +933,8 @@ const OnlineManager = {
   watchConnection:function(){
     try{
       const self=this, cref=this.db.ref(".info/connected");
-      const cb=function(snap){ self.connected = snap.val()===true; };
+      const cb=function(snap){ const was=self.connected; self.connected = snap.val()===true;
+        if(!was && self.connected){ try{ AccountStore.flushPending(); }catch(e){} } };   // 재연결 시 오프라인 변경 동기화
       cref.on("value", cb);
       this.unsubs.push(function(){ try{ cref.off("value", cb); }catch(e){} });
     }catch(e){}
@@ -1234,9 +1379,11 @@ function promptStudentLogin(presetId){
   if(id===null) return;
   let pin=null; try{ pin=window.prompt("비밀번호(PIN)"); }catch(e){ pin=null; }
   if(pin===null) return;
-  const r=studentLogin(id, pin);
-  if(r.ok){ loginMsg=""; goToStartScreen(); showToast((profile.nickname||"")+"님 환영합니다!"); }
-  else { loginMsg=r.msg||"로그인 실패"; showToast(loginMsg); }
+  loginMsg="학급 계정 확인 중…";
+  studentLoginCloud(id, pin, function(r){
+    if(r.ok){ loginMsg=""; goToStartScreen(); showToast((profile.nickname||"")+"님 환영합니다!"+(r.offline?" (오프라인)":"")); }
+    else { loginMsg=r.msg||"로그인 실패"; showToast(loginMsg); }
+  });
 }
 // ── 교사용 로그인 화면 ──
 function handleAdminLoginKey(code){
@@ -1262,6 +1409,8 @@ function handleAdminKey(code){
   if(code==="KeyP"){ adminResetPin(); return; }                 // PIN 재설정
   if(code==="KeyR"){ adminResetStudent(); return; }             // 계정 초기화
   if(code==="KeyX"||code==="Delete"){ adminDeleteStudent(); return; } // 계정 삭제
+  if(code==="KeyS"){ adminRefreshFromCloud(); return; }         // 클라우드 새로고침
+  if(code==="KeyM"){ adminMigrateLocal(); return; }             // 로컬 계정 클라우드 이전
 }
 function adminCreateStudent(){
   let id=null,name=null,pin=null;
@@ -1271,27 +1420,53 @@ function adminCreateStudent(){
   if(!name) return;
   try{ pin=window.prompt("초기 PIN (4~8자리)"); }catch(e){}
   if(!pin) return;
-  const r=createStudent(id,name,pin);
-  if(r.ok){ adminSelId=(""+id).trim(); showToast("계정 생성: ID "+id+" / PIN "+pin+" — 학생에게 전달하세요"); }
-  else showToast("생성 실패: "+r.msg);
+  id=(""+id).trim();
+  const proceed=function(){
+    const r=createStudent(id,name,pin);        // 로컬 생성(검증 포함)
+    if(!r.ok){ showToast("생성 실패: "+r.msg); return; }
+    adminSelId=id;
+    if(AccountStore.cloudReady()){
+      AccountStore.saveCloudStudent(accounts.students[id]).then(function(ok){
+        if(ok) showToast("계정 생성(클라우드 저장): ID "+id+" / PIN "+pin+" — 학생에게 전달");
+        else { AccountStore.markPending(id); showToast("로컬 생성됨 · 클라우드 저장 실패 — 재연결 시 동기화"); }
+      });
+    } else { AccountStore.markPending(id); showToast("계정 생성(이 기기): ID "+id+" / PIN "+pin+" — 온라인 연결 시 클라우드 저장"); }
+  };
+  // 중복 ID는 Firebase 기준으로 검사
+  if(AccountStore.cloudReady()){
+    AccountStore.loadCloudStudent(id).then(function(rec){
+      if(rec===undefined){ showToast("클라우드 조회 실패 — 잠시 후 다시"); return; }
+      if(rec && rec.isActive!==false){ showToast("이미 있는 ID(클라우드): "+id); return; }
+      proceed();
+    });
+  } else proceed();
 }
 function adminResetPin(){
   if(!adminSelId){ showToast("학생을 먼저 선택하세요"); return; }
   let pin=null; try{ pin=window.prompt("새 PIN (4~8자리) — "+adminSelId); }catch(e){}
   if(!pin) return; pin=(""+pin).trim();
   if(pin.length<4||pin.length>8){ showToast("PIN은 4~8자리"); return; }
-  setStudentPin(adminSelId,pin); showToast(adminSelId+" PIN 변경: "+pin);
+  setStudentPin(adminSelId,pin);
+  if(AccountStore.cloudReady()){ AccountStore.saveCloudStudent(accounts.students[adminSelId]).then(function(ok){ showToast(adminSelId+" PIN 변경"+(ok?"(클라우드 반영)":" — 클라우드 실패, 재연결 시 동기화")); if(!ok)AccountStore.markPending(adminSelId); }); }
+  else { AccountStore.markPending(adminSelId); showToast(adminSelId+" PIN 변경(이 기기) — 온라인 연결 시 반영"); }
 }
 function adminResetStudent(){
   if(!adminSelId){ showToast("학생을 먼저 선택하세요"); return; }
   let c=null; try{ c=window.prompt("초기화하려면 학생 ID를 정확히 입력 ("+adminSelId+")"); }catch(e){}
-  if(c===adminSelId){ resetStudent(adminSelId); showToast(adminSelId+" 골드/전적/수집 초기화 완료"); }
+  if(c===adminSelId){ resetStudent(adminSelId); pushCloudOrPending(adminSelId); showToast(adminSelId+" 초기화 완료"+(AccountStore.cloudReady()?"(클라우드 반영)":"(이 기기 · 재연결 시 반영)")); }
   else if(c!==null) showToast("ID가 일치하지 않아 취소");
 }
 function adminDeleteStudent(){
   if(!adminSelId){ showToast("학생을 먼저 선택하세요"); return; }
   let c=null; try{ c=window.prompt("삭제하려면 학생 ID를 정확히 입력 ("+adminSelId+") — 되돌릴 수 없음"); }catch(e){}
-  if(c===adminSelId){ deleteStudent(adminSelId); const l=studentList(); adminSelId=l[0]?l[0].id:null; showToast("삭제 완료"); }
+  if(c===adminSelId){ const id=adminSelId;
+    if(AccountStore.cloudReady()){
+      AccountStore.deleteCloudStudent(id).then(function(ok){
+        if(ok){ deleteStudent(id); const l=studentList(); adminSelId=l[0]?l[0].id:null; showToast("삭제 완료(클라우드 반영)"); }
+        else showToast("클라우드 삭제 실패 — 다시 시도하세요(로컬 유지)");
+      });
+    } else { deleteStudent(id); const l=studentList(); adminSelId=l[0]?l[0].id:null; showToast("이 기기에서 삭제 — 온라인 연결 시 클라우드 반영 필요"); }
+  }
   else if(c!==null) showToast("ID가 일치하지 않아 취소");
 }
 function changeMenuValue(row, dir){
@@ -2271,6 +2446,10 @@ function drawLoginScreen(){
   ctx.fillText(loginMsg||"↑↓ 선택 · Enter 실행 · Esc 뒤로", LOGW/2, cardY+250+34);
   ctx.fillStyle="#6f7aa0"; ctx.font="13px 'Malgun Gothic',sans-serif";
   ctx.fillText("학생 ID/PIN은 선생님이 발급합니다. (계정이 없으면 선생님께 요청)", LOGW/2, LOGH-30);
+  // 학급 계정(클라우드) 연결 상태
+  const cloudOn=AccountStore.cloudReady();
+  ctx.fillStyle=cloudOn?"#7fd88a":"#c9a06a"; ctx.font="13px 'Malgun Gothic',sans-serif";
+  ctx.fillText(cloudOn?("● 학급 계정 연결됨 — 어느 기기에서나 로그인"):("○ "+(OnlineManager.status||"학급 계정 연결 중…")+" — 연결되면 다른 기기에서도 로그인"), LOGW/2, LOGH-52);
   ctx.restore();
 }
 // 교사용 로그인(학생과 다른 톤: 보라/회색)
@@ -2297,6 +2476,8 @@ function drawAdminScreen(){
   ctx.fillStyle="#c79bff"; ctx.font="bold 30px 'Malgun Gothic',sans-serif"; ctx.fillText("교사용 패널 — 학급 계정", 40, 54);
   ctx.fillStyle="#b0a0d0"; ctx.font="14px 'Malgun Gothic',sans-serif";
   ctx.fillText("학급코드: "+(accounts.classCode||"-")+"   ·   학생 "+studentList().length+"명", 44, 80);
+  ctx.fillStyle=AccountStore.cloudReady()?"#7fd88a":"#d8a87f"; ctx.font="13px 'Malgun Gothic',sans-serif";
+  ctx.fillText(AccountStore.cloudReady()?("클라우드 연결됨 · "+cloudAccountStatus):("오프라인(이 기기 저장) · "+OnlineManager.status), 44, 98); ctx.fillStyle="#b0a0d0";
   // 좌: 학생 목록
   const lx=40, ly=104, lw=470, rowH=40; const list=studentList();
   ctx.fillStyle="rgba(40,32,64,0.9)"; roundRect(lx,ly,lw,560,12); ctx.fill();
@@ -2330,9 +2511,9 @@ function drawAdminScreen(){
   } else { ctx.fillStyle="#9a90b8"; ctx.font="16px 'Malgun Gothic',sans-serif"; ctx.fillText("왼쪽에서 학생을 선택하세요 (없으면 A 로 생성)", rx+24, ry2+50); }
   // 하단 액션 안내
   ctx.fillStyle="#d6cdee"; ctx.font="bold 15px 'Malgun Gothic',sans-serif";
-  ctx.fillText("A 계정 만들기   ·   P PIN 재설정   ·   R 초기화   ·   X 삭제   ·   ↑↓ 선택   ·   Esc 로그아웃", rx+24, ry2+440);
+  ctx.fillText("A 만들기 · P PIN재설정 · R 초기화 · X 삭제 · S 클라우드새로고침 · M 로컬→클라우드이전 · ↑↓ 선택 · Esc 로그아웃", rx+24, ry2+440);
   ctx.fillStyle="#6f6a80"; ctx.font="12px 'Malgun Gothic',sans-serif";
-  ctx.fillText("계정 생성 시 ID/PIN을 학생에게 전달하세요. PIN은 해시로 저장(원문 복구 불가, 재설정만).", rx+24, ry2+470);
+  ctx.fillText("생성/변경은 로컬+클라우드에 저장. PIN은 해시 저장(원문 미저장). 다른 기기 로그인은 M(이전) 후 가능.", rx+24, ry2+470);
   ctx.restore();
 }
 function fmtTs(t){ if(!t) return "-"; try{ const d=new Date(t); return (d.getMonth()+1)+"/"+d.getDate(); }catch(e){ return "-"; } }
