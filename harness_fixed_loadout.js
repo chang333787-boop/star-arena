@@ -63,13 +63,15 @@ run("6캐릭터 HP/속도 정확 일치", ()=>{
 });
 
 console.log("=== 3) Z 무기 수치(피해·간격·사거리·탄속·크기·탄창·장전) ===");
-const WSPEC={ // [dmg, cooldown, range, speed, radius, count, spreadDeg, mag, reload]
-  tool_01:[18,0.42,470,520,9,1,0,7,1.3],
-  tool_02:[29,0.65,680,430,14,1,0,5,1.5],
-  tool_03:[11,0.50,500,650,10,1,0,7,1.2],
-  tool_04:[5.2,0.32,260,440,7,3,32,12,1.0],
-  tool_05:[14.3,0.48,363,420,12,1,0,7,1.2],   // PVE 시뮬 조정(+10%/+10%)
-  tool_06:[6,0.55,310,390,10,3,24,8,1.4] };   // PVE 시뮬 조정(확산 28→24)
+// v1.21: 탄속은 설계값 × TEMPO.playerBullet(0.85) — "게임이 너무 빠름" 전역 하향.
+//         시고니(tool_03) 너프: 피해 11→9.5·탄속 650→560(×0.85=476).
+const WSPEC={ // [dmg, cooldown, range, speed(실효), radius, count, spreadDeg, mag, reload]
+  tool_01:[18,0.42,470,520*0.85,9,1,0,7,1.3],
+  tool_02:[29,0.65,680,430*0.85,14,1,0,5,1.5],
+  tool_03:[9.5,0.50,500,560*0.85,10,1,0,7,1.2],
+  tool_04:[5.2,0.32,260,440*0.85,7,3,32,12,1.0],
+  tool_05:[14.3,0.48,363,420*0.85,12,1,0,7,1.2],   // PVE 시뮬 조정(+10%/+10%)
+  tool_06:[6,0.55,310,390*0.85,10,3,24,8,1.4] };   // PVE 시뮬 조정(확산 28→24)
 run("6무기 실제 발사 스펙 = 설계값", ()=>{
   for(const cid in MATCHING){
     const wid=MATCHING[cid];
@@ -89,7 +91,7 @@ run("부메랑 플래그(tool_03만)", ()=>{
   check("tool_01 부메랑 아님", !api.getWeapon("tool_01").boomerang);
 });
 run("부가효과 데이터", ()=>{
-  check("눈꽃 12% 둔화 0.6s", api.getWeapon("tool_04").slowPct===0.12 && api.getWeapon("tool_04").slowTime===0.6);
+  check("눈꽃 20% 둔화 0.6s (v1.21 패시브)", api.getWeapon("tool_04").slowPct===0.20 && api.getWeapon("tool_04").slowTime===0.6);
   check("별골렘 10% 둔화 0.7s", api.getWeapon("tool_06").slowPct===0.10 && api.getWeapon("tool_06").slowTime===0.7);
   check("모아 밀치기 35/0.4s", api.getWeapon("tool_05").knockback===35 && api.getWeapon("tool_05").knockImmuneTime===0.4);
 });
@@ -112,8 +114,8 @@ run("학생 캐릭터 선택은 그대로 유지", ()=>{
 });
 
 console.log("=== 5) 로비/상점 구조 ===");
-run("메뉴 8행 + 상점 비활성", ()=>{
-  check("MENU_ROWS=8", api.MENU_ROWS===8);
+run("메뉴 9행(v1.20 캠페인 행 추가) + 상점 비활성", ()=>{
+  check("MENU_ROWS=9", api.MENU_ROWS===9);
   check("SHOP_ENABLED=false", api.SHOP_ENABLED===false);
 });
 run("아군 봇도 학생 캐릭터 + 고정 무기", ()=>{

@@ -16,7 +16,7 @@ globalThis.cancelAnimationFrame=noop;
 script+=`;globalThis.__api={
   GAME_CONFIG, getWeapon, getAbility, getWeaponForCharacter,
   startGame, handleKeyPress, keysDown, useCharacterSpecial, useCharacterSuper,
-  castSpecialFor, castUltimateFor, envLocal, tickSkillZones, get skillZones(){return skillZones;},
+  castSpecialFor, castUltimateFor, envLocal, tickSkillZones, tickMoaPassive, bulletHitDamage, get skillZones(){return skillZones;},
   newAttackId, tryChargeGauge, applySlowTo, applyKnockbackTo, effSpeed, incomingDamage, applyDamage, isFrozen,
   get player(){return player;}, get allies(){return allies;}, get enemies(){return enemies;}, get enemy(){return enemy;},
   get bullets(){return bullets;}, get superGauge(){return superGauge;}, setSuper:(v)=>{superGauge=v;},
@@ -45,11 +45,12 @@ run("부메랑 왕복", ()=>{
   api.keysDown.add("KeyZ"); frames(1); api.keysDown.clear();   // 1회 발사
   check("부메랑 1발 생성", api.bullets.length===1 && api.bullets[0].boomerang===true);
   const hp0=e.maxHp;
-  frames(40);   // 나가기(150/650≈0.23s) — 1타
+  frames(50);   // 나가기(150/476≈0.32s) — 1타 (v1.21 너프: 9.5·탄속 476)
   const afterOut=e.hp;
-  check("나갈 때 11 피해", Math.round(hp0-afterOut)===11);
-  frames(140);  // 500까지 갔다가 복귀 — 2타 후 소멸
-  check("돌아올 때 추가 11(총 22)", Math.round(hp0-e.hp)===22);
+  check("나갈 때 9.5 피해", Math.abs(hp0-afterOut-9.5)<1e-6);
+  frames(190);  // 500까지 갔다가 복귀 — 2타 후 소멸
+  // 복귀타는 적의 등 뒤에서 맞음 → 기습 패시브 +20% (9.5×1.2=11.4). 총 20.9
+  check("돌아올 때 추가 11.4(기습 +20% — 총 20.9)", Math.abs(hp0-e.hp-20.9)<1e-6);
   check("부메랑 소멸(잔류 없음)", api.bullets.length===0);
   check("왕복 2타여도 게이지 최대 20", api.superGauge===20);
 });
@@ -64,13 +65,13 @@ run("눈꽃 3발/탄약1", ()=>{
   check("탄약 1개만 소비", p.ammo===ammo0-1);
   frames(30);   // 명중(150px, 440spd)
   check("최소 1발 이상 명중해도 게이지 20", api.superGauge===20);
-  check("둔화 적용(12%)", e.wSlowTimer>0 && Math.abs(e.wSlowPct-0.12)<1e-9);
+  check("둔화 적용(20% — v1.21 패시브)", e.wSlowTimer>0 && Math.abs(e.wSlowPct-0.20)<1e-9);
 });
 run("둔화 중첩 없음(시간만 갱신)", ()=>{
   const {e}=setup("student_04", 60);
-  api.applySlowTo(e, 0.12, 0.6);
-  api.applySlowTo(e, 0.12, 0.6);
-  check("pct 그대로 12%", Math.abs(e.wSlowPct-0.12)<1e-9);
+  api.applySlowTo(e, 0.20, 0.6);
+  api.applySlowTo(e, 0.20, 0.6);
+  check("pct 그대로 20%", Math.abs(e.wSlowPct-0.20)<1e-9);
   check("타이머 0.6 이하(누적 아님)", e.wSlowTimer<=0.6+1e-9);
   api.applySlowTo(e, 0.30, 0.2);
   check("더 강한 둔화(30%)로 교체", Math.abs(e.wSlowPct-0.30)<1e-9);
@@ -106,29 +107,30 @@ run("럭키 C 명중해도 게이지 0 유지", ()=>{
   check("적이 피해 받음", e.hp<e.maxHp);
   check("C 피해로 재충전 안 됨", api.superGauge===0);
 });
-run("럭키 X(별똥별) 폭발 피해 22 · 게이지 0 유지", ()=>{
-  const {p,e}=setup("student_01", 220);
+run("럭키 X(v1.21 일자 폭발): 5개 생성·같은 대상 1회 30 · 게이지 0 유지", ()=>{
+  const {p,e}=setup("student_01", 160);   // 폭발 1~2개 반경 안(겹침) — 그래도 1회만
   api.setSuper(0);
   api.handleKeyPress("KeyX");
-  check("별똥별 장판 생성", api.skillZones.some(z=>z.type==="meteor"));
-  frames(40);   // 0.45초 예고 후 폭발
-  check("폭발 피해 22", Math.round(e.maxHp-e.hp)===22);
+  check("폭발 예고 5개 일자 생성", api.skillZones.filter(z=>z.type==="meteor").length===5);
+  frames(80);   // 예고(0.5+0.07*4) 후 순차 폭발
+  check("같은 대상 1회만 30 피해", Math.round(e.maxHp-e.hp)===30);
   check("X 피해로 게이지 충전 없음", api.superGauge===0);
   check("장판 정리됨", !api.skillZones.some(z=>z.type==="meteor"));
 });
 
-console.log("=== 6) 별골렘 X 방패: 60% 감소·최소 1 ===");
+console.log("=== 6) 별골렘 X 방패(v1.21): 75% 감소·최소 1·막은 피해로 궁 충전 ===");
 run("방패 피해 감소", ()=>{
   const {p}=setup("student_06", 400);
   api.castSpecialFor(p, api.envLocal());
-  check("방패 켜짐(2.5s)", p.shieldTimer>2.4);
-  const hp0=p.hp;
+  check("방패 켜짐(2.0s·쿨5s)", p.shieldTimer>1.9 && p.specialCd<=5);
+  const g0=api.superGauge; const hp0=p.hp;
   api.applyDamage(p, 10, "enemy", 999, p.x, p.y);
-  check("10 피해 → 4로 감소", Math.abs((hp0-p.hp)-4)<1e-6);
+  check("10 피해 → 2.5로 감소(75%↓)", Math.abs((hp0-p.hp)-2.5)<1e-6);
+  check("수호자 패시브: 막은 7.5×0.6=4.5 게이지", Math.abs(api.superGauge-(g0+4.5))<1e-6);
   const hp1=p.hp;
   api.applyDamage(p, 1, "enemy", 999, p.x, p.y);
   check("최소 피해 1 보장", Math.abs((hp1-p.hp)-1)<1e-6);
-  check("이동속도 20% 감소", Math.abs(api.effSpeed(p)-p.moveSpeed*0.8)<1e-6);
+  check("이동속도 20% 감소(×TEMPO)", Math.abs(api.effSpeed(p)-p.moveSpeed*0.8*0.90)<1e-6);
 });
 
 console.log("=== 7) 시고니 C 질주: 1초 무적 + 후반 50% 감소 + 45% 가속 ===");
@@ -138,7 +140,7 @@ run("질주 버프", ()=>{
   api.handleKeyPress("KeyC");
   check("가속 3초", p.cSpeedTimer>2.9);
   check("처음 1초 무적", p.invincibleTimer>0.9);
-  check("이동속도 +45%", Math.abs(api.effSpeed(p)-p.moveSpeed*1.45)<1e-6);
+  check("이동속도 +45%(×TEMPO)", Math.abs(api.effSpeed(p)-p.moveSpeed*1.45*0.90)<1e-6);
   const hp0=p.hp;
   api.applyDamage(p, 20, "enemy", 999, p.x, p.y);
   check("무적 중 피해 0", p.hp===hp0);
@@ -147,35 +149,48 @@ run("질주 버프", ()=>{
   check("후반 피해 50%(10)", Math.abs((hp0-p.hp)-10)<1e-6);
 });
 
-console.log("=== 8) 모아 X 구급상자 / C 전체 회복(팀만) ===");
-run("구급상자: 처음 닿은 아군 30, 1회용, 1인 1개", ()=>{
+console.log("=== 8) 모아(v1.21 서포터): X 오오라 기물 / C 전체 무적 2초 / 패시브 근처 회복 ===");
+run("X 오오라 기물: 5초·반경140·팀원 초당 10", ()=>{
   api.setSel("student_05",null,"normal","training","duo"); api.startGame(); frames(2);
   const p=api.player, ally=api.allies[0], e=api.enemy;
   e.freezeTimer=9999; e.x=p.x+500;
-  ally.freezeTimer=9999;                    // 아군 고정
+  ally.freezeTimer=9999; ally.x=p.x+50; ally.y=p.y;
   p.hp=p.maxHp; ally.hp=ally.maxHp-50;
-  ally.x=p.x+10; ally.y=p.y;                // 상자 반경(32) 안
   api.castSpecialFor(p, api.envLocal());
-  check("구급상자 설치", api.skillZones.some(z=>z.type==="medkit"));
-  api.tickSkillZones(0.05, api.envLocal());
-  check("아군 30 회복", Math.abs(ally.hp-(ally.maxHp-20))<1e-6);
-  check("사용 후 제거(1회용)", !api.skillZones.some(z=>z.type==="medkit"));
+  check("오오라 기물 설치(5초)", api.skillZones.some(z=>z.type==="healTotem" && z.timer===5));
+  const h0=ally.hp;
+  for(let i=0;i<63;i++) api.tickSkillZones(1/60, api.envLocal());
+  check("팀원 1초에 +10", Math.abs(ally.hp-(h0+10))<1e-6);
+  check("적은 회복 없음", e.hp===e.maxHp);
   p.specialCd=0;
-  api.castSpecialFor(p, api.envLocal()); api.castSpecialFor(p, api.envLocal());
-  check("동시 1개만 존재", api.skillZones.filter(z=>z.type==="medkit").length===1);
+  api.castSpecialFor(p, api.envLocal());
+  check("동시 1개만 존재", api.skillZones.filter(z=>z.type==="healTotem").length===1);
 });
-run("모아 C: 살아있는 팀원만 +100(초과 금지·부활 없음·적 회복 없음)", ()=>{
+run("모아 C: 살아있는 팀 전체(본인 포함) 무적 2초", ()=>{
   api.setSel("student_05",null,"normal","training","duo"); api.startGame(); frames(2);
   const p=api.player, ally=api.allies[0], e=api.enemy;
-  e.freezeTimer=9999; const ehp0=e.hp=e.maxHp-30;
-  p.hp=p.maxHp-40; ally.hp=ally.maxHp-120<1?1:ally.maxHp-100; ally.hp=Math.max(1,ally.maxHp-100);
-  const deadAllyHp=0;
+  e.freezeTimer=9999; ally.freezeTimer=9999;
+  p.invincibleTimer=0; ally.invincibleTimer=0; const einv0=e.invincibleTimer||0;
   api.setSuper(100);
   api.handleKeyPress("KeyC");
-  check("자신 회복(최대 상한)", p.hp===p.maxHp);
-  check("아군 +100", Math.abs(ally.hp-Math.min(ally.maxHp, Math.max(1,ally.maxHp-100)+100))<1e-6);
-  check("적은 회복 안 됨", e.hp===ehp0);
+  check("본인 무적 2초", p.invincibleTimer===2);
+  check("아군 무적 2초", ally.invincibleTimer===2);
+  check("적은 무적 없음", (e.invincibleTimer||0)===einv0);
   check("게이지 0", api.superGauge===0);
+  const hp0=p.hp;
+  api.applyDamage(p, 30, "enemy", 999, p.x, p.y);
+  check("무적 중 피해 0", p.hp===hp0);
+});
+run("모아 패시브: 반경 180 팀원 초당 5(본인 제외)", ()=>{
+  api.setSel("student_05",null,"normal","training","duo"); api.startGame(); frames(2);
+  const p=api.player, ally=api.allies[0];
+  ally.freezeTimer=9999; ally.x=p.x+100; ally.y=p.y; ally.hp=ally.maxHp-30;
+  const h0=ally.hp; p.moaAcc=0;
+  for(let i=0;i<63;i++) api.tickMoaPassive(p, 1/60, api.envLocal);
+  check("1초에 +5", Math.abs(ally.hp-(h0+5))<1e-6);
+  ally.x=p.x+400; const h1=ally.hp; p.moaAcc=0;
+  for(let i=0;i<63;i++) api.tickMoaPassive(p, 1/60, api.envLocal);
+  check("반경 밖(400px)은 회복 없음", ally.hp===h1);
 });
 
 console.log("=== 9) 눈꽃 X 얼음바닥 / C 빙결(보스 저항) ===");
@@ -191,39 +206,51 @@ run("얼음 바닥: 30% 둔화 + 첫 진입 4", ()=>{
   api.tickSkillZones(0.5, api.envLocal());
   check("같은 바닥 반복 피해 없음", e.hp===hp1);
 });
-run("눈꽃 C: 일반 적 빙결 1초+깨질 때 30 / 보스는 40% 둔화+30", ()=>{
+run("눈꽃 C(v1.21 강화): 빙결 1.5초+깨질 때 40 / 보스는 50% 둔화+40", ()=>{
   const {p,e}=setup("student_04", 100);
   e.freezeTimer=0;
   api.setSuper(100);
   api.handleKeyPress("KeyC");
-  check("일반 적 빙결", e.freezeTimer>0.9);
+  check("일반 적 빙결(1.5초)", e.freezeTimer>1.4);
   check("빙결 중 이동속도 0", api.effSpeed(e)===0);
   const hp0=e.hp;
-  api.tickSkillZones(1.05, api.envLocal());
-  check("빙결 종료 시 30 피해", Math.abs((hp0-e.hp)-30)<1e-6);
+  api.tickSkillZones(1.55, api.envLocal());
+  check("빙결 종료 시 40 피해", Math.abs((hp0-e.hp)-40)<1e-6);
   // 보스 저항
   const {p:p2,e:e2}=setup("student_04", 100);
   e2.freezeTimer=0; e2.isBoss=true;
   api.setSuper(100);
   api.handleKeyPress("KeyC");
   check("보스는 빙결 없음", !(e2.freezeTimer>0));
-  check("보스 40% 둔화", Math.abs(e2.wSlowPct-0.40)<1e-9);
-  check("보스 피해 30 즉시", Math.abs((e2.maxHp-e2.hp)-30)<1e-6);
+  check("보스 50% 둔화", Math.abs(e2.wSlowPct-0.50)<1e-9);
+  check("보스 피해 40 즉시", Math.abs((e2.maxHp-e2.hp)-40)<1e-6);
 });
 
-console.log("=== 10) 달이 X/C ===");
-run("달이 X: 38dmg/950rng 탄환 · C: 반사 비행기", ()=>{
+console.log("=== 10) 달이(v1.21 저격수): X 대형 탄환 / C 관통 일직선 / 패시브 ===");
+run("달이 X: 38dmg/950rng/560spd/r26 + 저격 플래그", ()=>{
   const {p,e}=setup("student_02", 300);
   api.handleKeyPress("KeyX");
   const xb=api.bullets[api.bullets.length-1];
-  check("X 탄환 38/950/480/r16", Math.round(xb.damage)===38 && xb.maxRange===950 && Math.round(Math.hypot(xb.vx,xb.vy))===480 && xb.r===16);
+  check("X 탄환 38/950/560/r26", Math.round(xb.damage)===38 && xb.maxRange===950 && Math.round(Math.hypot(xb.vx,xb.vy))===560 && xb.r===26);
   check("X 탄환은 게이지 미충전(isSuper)", xb.isSuper===true);
+  check("저격 패시브 플래그(snipe=320)", xb.snipe===320);
+});
+run("달이 C: 눈앞 일직선(900×56) 위 적 55 즉시 + 저격선 이펙트", ()=>{
+  const {p,e}=setup("student_02", 300);
+  p.facing=0; e.y=p.y;                       // 일직선 위
   api.setSuper(100);
   api.handleKeyPress("KeyC");
-  const cb=api.bullets[api.bullets.length-1];
-  check("C 통통비행기(반사6·45dmg·r18)", cb.bounce===true && cb.maxBounce===6 && Math.round(cb.damage)===45 && cb.r===18);
-  frames(30);
-  check("적 1명 맞으면 소멸(관통 없음)", !api.bullets.some(b=>b.bounce) || e.hp===e.maxHp);
+  check("라인 위 적 55 피해(즉시)", Math.abs((e.maxHp-e.hp)-55)<1e-6);
+  check("저격선 이펙트 존(beam)", api.skillZones.some(z=>z.type==="beam"));
+  check("게이지 0", api.superGauge===0);
+});
+run("달이 패시브: 320px+ 비행 후 명중 +30%", ()=>{
+  check("원거리 29→37.7", Math.abs(api.bulletHitDamage({damage:29,snipe:320,traveled:350,vx:1,vy:0},{facing:0})-37.7)<1e-6);
+  check("근거리 보너스 없음", api.bulletHitDamage({damage:29,snipe:320,traveled:100,vx:1,vy:0},{facing:0})===29);
+});
+run("시고니 패시브: 등 뒤 명중 +20%", ()=>{
+  check("등 뒤 10→12", Math.abs(api.bulletHitDamage({damage:10,stab:1,vx:1,vy:0},{facing:0})-12)<1e-9);
+  check("정면 보너스 없음", api.bulletHitDamage({damage:10,stab:1,vx:1,vy:0},{facing:Math.PI})===10);
 });
 
 console.log("=== 11) 별골렘 C 블랙홀: 끌어당김 + 상한 18 + 아군 무영향 ===");

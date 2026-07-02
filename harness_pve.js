@@ -173,7 +173,7 @@ run("눈꽃 C(얼음 깨기)로 주변 적 빙결→파괴 피해", ()=>{
   me.superGauge=api.GAME_CONFIG.superCharge;
   api.castUlt(me);
   check("일반 몬스터 즉시 빙결(1초)", e.freezeTimer>0);
-  api.tickZones(1.05);   // 빙결 종료 → 파괴 피해 30
+  api.tickZones(1.55);   // 빙결(v1.21: 1.5s) 종료 → 파괴 피해 40
   check("적 피해/처치됨", !api.tEnemies[eid] || api.tEnemies[eid].hp<ehp0);
   check("사용 후 게이지 0", me.superGauge===0);
 });
