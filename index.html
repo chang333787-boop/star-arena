@@ -125,36 +125,45 @@ const REWARD_CONFIG = {
    - superType: "burst"(원형폭발) / "dash"(돌진) / "triple"(다중탄환)  ← 그대로 두세요
    - 자세한 교체 방법은 ASSET_GUIDE.md / STUDENT_CHARACTER_SLOTS.md 참고
    ======================================================================= */
+/* 확정 밸런스(STAR_ARENA_BALANCE_PLAN 기준): 배율은 기준값(체력100/속도225) 대비
+   정확한 분수로 적어 실제 계산값이 설계 숫자와 1:1로 일치하게 한다.
+   damageMul은 전부 1.0(피해는 무기 데이터에서 관리). X/C는 specialName/ultName + 코드 구현. */
 const STUDENT_CHARACTERS = [
-  // 슬롯1 · 럭키 (별조각 발사기)
-  { id:"student_01", name:"럭키", role:"균형형", desc:"동글동글 균형형 별 친구",
+  // 슬롯1 · 럭키 (별조각 발사기) — 체력100 · 속도225
+  { id:"student_01", name:"럭키", role:"골고루형", desc:"동글동글 균형형 별 친구",
     color:"#ffe14d", subColor:"#fff3b0", hpMul:1.0, speedMul:1.0, damageMul:1.0, bulletSpeedMul:1.0,
-    superType:"burst", superName:"별빛 폭발", defaultWeaponId:"tool_01", assetId:"student_01",
+    specialName:"별똥별 콩!", ultName:"별빛 일곱 발",
+    superType:"burst", superName:"별빛 일곱 발", defaultWeaponId:"tool_01", assetId:"student_01",
     unlockCost:0, unlockedByDefault:true },
-  // 슬롯2 · 달이 (종이비행기 런처)
-  { id:"student_02", name:"달이", role:"튼튼형", desc:"든든한 곰돌이",
-    color:"#a9744f", subColor:"#e6c9a8", hpMul:1.15, speedMul:0.9, damageMul:1.05, bulletSpeedMul:1.0,
-    superType:"burst", superName:"포근 폭발", defaultWeaponId:"tool_02", assetId:"student_02",
+  // 슬롯2 · 달이 (종이비행기 런처) — 체력90 · 속도216
+  { id:"student_02", name:"달이", role:"멀리 공격형", desc:"든든한 곰돌이",
+    color:"#a9744f", subColor:"#e6c9a8", hpMul:90/100, speedMul:216/225, damageMul:1.0, bulletSpeedMul:1.0,
+    specialName:"초장거리 종이비행기", ultName:"통통 거대 비행기",
+    superType:"burst", superName:"통통 거대 비행기", defaultWeaponId:"tool_02", assetId:"student_02",
     unlockCost:0, unlockedByDefault:true },
-  // 슬롯3 · 시고니 (반짝 부메랑)
-  { id:"student_03", name:"시고니", role:"빠른형", desc:"날쌘 외계 고양이",
-    color:"#c6e84a", subColor:"#eaffb0", hpMul:0.85, speedMul:1.25, damageMul:0.95, bulletSpeedMul:1.0,
-    superType:"dash", superName:"슈웅 돌진", defaultWeaponId:"tool_03", assetId:"student_03",
+  // 슬롯3 · 시고니 (반짝 부메랑) — 체력85 · 속도259
+  { id:"student_03", name:"시고니", role:"빠른 공격형", desc:"날쌘 외계 고양이",
+    color:"#c6e84a", subColor:"#eaffb0", hpMul:85/100, speedMul:259/225, damageMul:1.0, bulletSpeedMul:1.0,
+    specialName:"반짝 가시 길", ultName:"초고속 반짝 질주",
+    superType:"dash", superName:"초고속 반짝 질주", defaultWeaponId:"tool_03", assetId:"student_03",
     unlockCost:0, unlockedByDefault:true },
-  // 슬롯4 · 눈꽃 (비눗방울 부채)
-  { id:"student_04", name:"눈꽃", role:"원거리형", desc:"시원한 물의 요정",
-    color:"#5ec8ff", subColor:"#cdeeff", hpMul:0.9, speedMul:1.0, damageMul:1.0, bulletSpeedMul:1.25,
-    superType:"triple", superName:"비눗방울 폭풍", defaultWeaponId:"tool_04", assetId:"student_04",
+  // 슬롯4 · 눈꽃 (비눗방울 부채) — 체력95 · 속도234
+  { id:"student_04", name:"눈꽃", role:"가까이 방해형", desc:"시원한 물의 요정",
+    color:"#5ec8ff", subColor:"#cdeeff", hpMul:95/100, speedMul:234/225, damageMul:1.0, bulletSpeedMul:1.0,
+    specialName:"미끄러운 얼음 바닥", ultName:"꽁꽁 얼음 깨기",
+    superType:"triple", superName:"꽁꽁 얼음 깨기", defaultWeaponId:"tool_04", assetId:"student_04",
     unlockCost:0, unlockedByDefault:true },
-  // 슬롯5 · 모아 (쿠션 방패)
-  { id:"student_05", name:"모아", role:"지원형", desc:"다정한 숲의 친구",
-    color:"#5ad36b", subColor:"#cdeec0", hpMul:1.05, speedMul:1.0, damageMul:1.0, bulletSpeedMul:1.0,
-    superType:"burst", superName:"쿠션 파동", defaultWeaponId:"tool_05", assetId:"student_05",
+  // 슬롯5 · 모아 (쿠션 방패) — 체력110 · 속도221
+  { id:"student_05", name:"모아", role:"친구 지킴이", desc:"다정한 숲의 친구",
+    color:"#5ad36b", subColor:"#cdeec0", hpMul:110/100, speedMul:221/225, damageMul:1.0, bulletSpeedMul:1.0,
+    specialName:"폭신 구급상자", ultName:"모두 건강해져라!",
+    superType:"burst", superName:"모두 건강해져라!", defaultWeaponId:"tool_05", assetId:"student_05",
     unlockCost:0, unlockedByDefault:true },
-  // 슬롯6 · 별골렘 (젤리 캡슐)
-  { id:"student_06", name:"별골렘", role:"방해형/광역형", desc:"튼튼한 별 로봇",
-    color:"#7a5cff", subColor:"#c3b6ff", hpMul:1.1, speedMul:1.0, damageMul:1.0, bulletSpeedMul:1.0,
-    superType:"burst", superName:"젤리 충격파", defaultWeaponId:"tool_06", assetId:"student_06",
+  // 슬롯6 · 별골렘 (젤리 캡슐) — 체력140 · 속도209
+  { id:"student_06", name:"별골렘", role:"튼튼 방어형", desc:"튼튼한 별 로봇",
+    color:"#7a5cff", subColor:"#c3b6ff", hpMul:140/100, speedMul:209/225, damageMul:1.0, bulletSpeedMul:1.0,
+    specialName:"젤리 철벽 방패", ultName:"젤리 블랙홀",
+    superType:"burst", superName:"젤리 블랙홀", defaultWeaponId:"tool_06", assetId:"student_06",
     unlockCost:0, unlockedByDefault:true }
 ];
 
@@ -197,30 +206,42 @@ const CHARACTERS = STUDENT_CHARACTERS.concat(LEGACY_CHARACTERS);
      · icon.png(선택 UI) · projectile.png(발사체) · held_*.png(드는 모습) · effect_hit.png(적중)
    - spreadCount: 한 번에 나가는 발사 수 / spreadAngleDeg: 퍼지는 각도(도)
    ======================================================================= */
+/* 확정 Z 무기 밸런스: 배율은 기준값(피해18/간격0.42/탄속520/사거리470/크기9) 대비 정확한 분수.
+   magazineSize/reloadTime = 무기별 탄창. 다중탄도 공격 1회당 탄약 1개만 소비.
+   slowPct/slowTime = 명중 시 둔화(중첩 없음, 시간만 갱신) / knockback = 밀치기(0.4초 면역)
+   boomerang = 왕복탄(나갈 때/돌아올 때 각 1회 타격) */
 const STUDENT_WEAPONS = [
-  // 도구1 · 별조각 발사기 (럭키)  — 이름/매칭은 reference 고정, 능력치(수치)는 슬롯값 유지(밸런스 불변)
+  // 도구1 · 별조각 발사기 (럭키) — 18dmg · 0.42s · 470rng · 520spd · r9 · 탄창7/1.3s
   { id:"tool_01", name:"별조각 발사기", desc:"반짝이는 별조각을 쏜다", color:"#ffe066",
     damageMul:1.0, cooldownMul:1.0, bulletSpeedMul:1.0, rangeMul:1.0, bulletRadiusMul:1.0, spreadCount:1, spreadAngleDeg:0,
+    magazineSize:7, reloadTime:1.3,
     assetId:"tool_01", unlockCost:0, unlockedByDefault:true },
-  // 도구2 · 종이비행기 런처 (달이)
-  { id:"tool_02", name:"종이비행기 런처", desc:"종이비행기를 날린다", color:"#d6d6d6",
-    damageMul:1.9, cooldownMul:1.6, bulletSpeedMul:0.7, rangeMul:0.9, bulletRadiusMul:2.0, spreadCount:1, spreadAngleDeg:0,
+  // 도구2 · 종이비행기 런처 (달이) — 29dmg · 0.65s · 680rng · 430spd · r14 · 탄창5/1.5s
+  { id:"tool_02", name:"종이비행기 런처", desc:"크고 느린 초장거리 비행기", color:"#d6d6d6",
+    damageMul:29/18, cooldownMul:0.65/0.42, bulletSpeedMul:430/520, rangeMul:680/470, bulletRadiusMul:14/9, spreadCount:1, spreadAngleDeg:0,
+    magazineSize:5, reloadTime:1.5,
     assetId:"tool_02", unlockCost:0, unlockedByDefault:true },
-  // 도구3 · 반짝 부메랑 (시고니)
-  { id:"tool_03", name:"반짝 부메랑", desc:"빠르게 도는 부메랑", color:"#ff7ad9",
-    damageMul:1.1, cooldownMul:1.3, bulletSpeedMul:1.4, rangeMul:1.4, bulletRadiusMul:0.9, spreadCount:1, spreadAngleDeg:0,
+  // 도구3 · 반짝 부메랑 (시고니) — 왕복 11+11 · 0.50s · 진행500 · 650spd · r10 · 탄창7/1.2s
+  { id:"tool_03", name:"반짝 부메랑", desc:"날아갔다 돌아오는 부메랑", color:"#ff7ad9",
+    damageMul:11/18, cooldownMul:0.50/0.42, bulletSpeedMul:650/520, rangeMul:500/470, bulletRadiusMul:10/9, spreadCount:1, spreadAngleDeg:0,
+    magazineSize:7, reloadTime:1.2, boomerang:true,
     assetId:"tool_03", unlockCost:0, unlockedByDefault:true },
-  // 도구4 · 비눗방울 부채 (눈꽃)
-  { id:"tool_04", name:"비눗방울 부채", desc:"시원한 비눗방울", color:"#7ad0ff",
-    damageMul:0.45, cooldownMul:0.45, bulletSpeedMul:1.1, rangeMul:0.9, bulletRadiusMul:0.7, spreadCount:1, spreadAngleDeg:0,
+  // 도구4 · 비눗방울 부채 (눈꽃) — 5.2dmg×3 · 0.32s · 260rng · 440spd · r7 · 탄창12/1.0s · 12%둔화 0.6s
+  { id:"tool_04", name:"비눗방울 부채", desc:"퍼지고 둔하게 하는 비눗방울", color:"#7ad0ff",
+    damageMul:5.2/18, cooldownMul:0.32/0.42, bulletSpeedMul:440/520, rangeMul:260/470, bulletRadiusMul:7/9, spreadCount:3, spreadAngleDeg:32,
+    magazineSize:12, reloadTime:1.0, slowPct:0.12, slowTime:0.6,
     assetId:"tool_04", unlockCost:0, unlockedByDefault:true },
-  // 도구5 · 쿠션 방패 (모아)
-  { id:"tool_05", name:"쿠션 방패", desc:"폭신한 쿠션 파편", color:"#ff9ec2",
-    damageMul:0.5, cooldownMul:1.1, bulletSpeedMul:0.95, rangeMul:0.6, bulletRadiusMul:0.8, spreadCount:5, spreadAngleDeg:42,
+  // 도구5 · 쿠션 방패 (모아) — 14.3dmg · 0.48s · 363rng · 420spd · r12 · 탄창7/1.2s · 밀치기35(0.4s 면역)
+  //  (PVE 시뮬 조정 2026-07-02: 피해 13→14.3(+10%), 사거리 330→363(+10%) — 원거리 적 아웃레인지 완화)
+  { id:"tool_05", name:"쿠션 방패", desc:"밀어내는 쿠션 파동", color:"#ff9ec2",
+    damageMul:14.3/18, cooldownMul:0.48/0.42, bulletSpeedMul:420/520, rangeMul:363/470, bulletRadiusMul:12/9, spreadCount:1, spreadAngleDeg:0,
+    magazineSize:7, reloadTime:1.2, knockback:35, knockImmuneTime:0.4,
     assetId:"tool_05", unlockCost:0, unlockedByDefault:true },
-  // 도구6 · 젤리 캡슐 (별골렘)
-  { id:"tool_06", name:"젤리 캡슐", desc:"말랑한 젤리 방울", color:"#7affd0",
-    damageMul:0.8, cooldownMul:1.1, bulletSpeedMul:1.0, rangeMul:1.0, bulletRadiusMul:1.0, spreadCount:3, spreadAngleDeg:24,
+  // 도구6 · 젤리 캡슐 (별골렘) — 6dmg×3 · 0.55s · 310rng · 390spd · r10 · 탄창8/1.4s · 10%둔화 0.7s
+  //  (PVE 시뮬 조정 2026-07-02: 확산각 28→24° — 원거리 명중률 개선, 총피해 불변)
+  { id:"tool_06", name:"젤리 캡슐", desc:"짧게 퍼지는 말랑 젤리", color:"#7affd0",
+    damageMul:6/18, cooldownMul:0.55/0.42, bulletSpeedMul:390/520, rangeMul:310/470, bulletRadiusMul:10/9, spreadCount:3, spreadAngleDeg:24,
+    magazineSize:8, reloadTime:1.4, slowPct:0.10, slowTime:0.7,
     assetId:"tool_06", unlockCost:0, unlockedByDefault:true }
 ];
 
@@ -241,6 +262,45 @@ const LEGACY_WEAPONS = [
 
 // 최종 무기(도구) 목록 = 학생 6슬롯 + 보존 무기. getWeapon(id)는 양쪽 모두에서 찾습니다.
 const WEAPONS = STUDENT_WEAPONS.concat(LEGACY_WEAPONS);
+
+/* ── 학생 6종 전용 활성화 + 무기 완전 고정 ──
+   LEGACY_* 는 데이터만 보존(복구 가능)하고 로스터/로비/봇/온라인에서는 학생 6종만 사용.
+   무기는 독립 선택값이 아니라 캐릭터의 defaultWeaponId에서 계산한다. */
+const SHOP_ENABLED = false;   // 상점 임시 비활성화(코드는 보존, 골드/구매 데이터 유지)
+function isStudentCharacter(id){ return STUDENT_CHARACTERS.some(c=>c.id===id); }
+function getWeaponForCharacter(charId){
+  const ch=getCharacter(charId);
+  return (ch && ch.defaultWeaponId) ? ch.defaultWeaponId : "tool_01";
+}
+// 외부(저장값/네트워크)에서 온 캐릭터/무기 id 교정: 학생 6종 + 고정 무기만 허용
+function sanitizeCharacterId(id){ return isStudentCharacter(id) ? id : "student_01"; }
+function sanitizeLoadout(charId, weaponId){
+  const cid=sanitizeCharacterId(charId);
+  return { characterId:cid, weaponId:getWeaponForCharacter(cid) };   // weaponId 인자는 무시하고 고정 무기로 교정
+}
+
+/* ── X 특수기술 / C 궁극기 확정 수치(설계 문서 그대로) ── */
+const ABILITY = {
+  student_01: { // 럭키 (PVE 시뮬 조정 2026-07-02: C 발당 10→11(+10%), 대상당 상한 40→44)
+    x:{ cd:6,  dist:220, warn:0.45, radius:70, dmg:22 },
+    c:{ count:7, spreadDeg:52, dmg:11, maxPerTarget:44, range:520, speed:600, radius:9 } },
+  student_02: { // 달이
+    x:{ cd:8,  dmg:38, range:950, speed:480, radius:16 },
+    c:{ dmg:45, speed:700, radius:18, life:6, maxBounce:6, sameWallCd:0.12 } },
+  student_03: { // 시고니
+    x:{ cd:8,  trailTime:3, gapDist:40, maxThorns:10, thornLife:4, thornR:24, dmg:8, slowPct:0.15, slowTime:0.8 },
+    c:{ dur:3, speedUp:0.45, invuln:1, reduceMul:0.5 } },
+  student_04: { // 눈꽃
+    x:{ cd:7,  dist:150, radius:80, life:4, slowPct:0.30, enterDmg:4 },
+    c:{ radius:150, freeze:1, dmg:30, bossSlowPct:0.40, bossSlowTime:2 } },
+  student_05: { // 모아
+    x:{ cd:10, life:8, pickupR:32, heal:30 },
+    c:{ heal:100 } },
+  student_06: { // 별골렘
+    x:{ cd:9,  dur:2.5, reduceMul:0.4, slowMul:0.8, knockMul:0.3 },
+    c:{ dist:220, radius:170, life:3, pullEnemy:150, pullPlayer:110, dps:6, maxTotal:18, tick:1, bossPullMul:0.25, bossSlowPct:0.20 } }
+};
+function getAbility(charId){ return ABILITY[charId]||ABILITY.student_01; }
 
 /* 6) 맵 3종 -----------------------------------------------------------
    장애물(obstacles)·풀숲(bushes)은 {x,y,w,h}. 좌표는 1280x720 기준. */
@@ -425,7 +485,20 @@ function loadGameAssets(){
   if(!ASSETS_ENABLED) return;
   for(const c of STUDENT_CHARACTERS){ if(!c.assetId) continue; for(const k of CHAR_ASSET_KEYS) _loadImage(charAssetPath(c.assetId,k)); }
   for(const w of STUDENT_WEAPONS){ if(!w.assetId) continue; for(const k of WEAPON_ASSET_KEYS) _loadImage(weaponAssetPath(w.assetId,k)); }
+  // PVE 몬스터/보스 본체 1장(assets/monsters/<type>.png) — 없으면 도형 fallback(PRD 17.4~17.6)
+  try{ for(const t in PVE_ENEMY_TYPES) _loadImage(ASSET_BASE+"monsters/"+t+".png"); }catch(e){}
+  // 월드(지형/구조물/함정/아이템/타일) — 코덱스 제작본. 없으면 도형 fallback.
+  try{ for(const k in WORLD_ASSETS) _loadImage(ASSET_BASE+WORLD_ASSETS[k]); }catch(e){}
 }
+function getMonsterImage(type){ return _readyImage(ASSET_BASE+"monsters/"+type+".png"); }
+const WORLD_ASSETS={
+  ob_crystal:"obstacles/crystal_01.png", ob_box:"obstacles/block_01.png", ob_rock:"obstacles/rock_01.png",
+  bush:"bushes/bush_01.png",
+  trap_damage:"traps/spike.png", trap_slow:"traps/slow.png", ice_field:"traps/ice_field.png",
+  heal_pickup:"pickups/heal.png",
+  tile_floor:"tiles/ground_basic.png"
+};
+function worldImage(key){ return ASSETS_ENABLED ? _readyImage(ASSET_BASE+WORLD_ASSETS[key]) : null; }
 
 // 상태 → 프레임 키. 우선순위: 리턴 > 피격 > 공격 > 이동 > 대기
 function frameKeyFor(opts){
@@ -570,8 +643,15 @@ function mergeProfile(saved){
   // 배열/선택값 무결성 보정
   if(!Array.isArray(p.unlockedCharacters) || p.unlockedCharacters.length===0) p.unlockedCharacters = DEFAULT_UNLOCKED_CHARACTERS.slice();
   if(!Array.isArray(p.unlockedWeapons) || p.unlockedWeapons.length===0) p.unlockedWeapons = DEFAULT_UNLOCKED_WEAPONS.slice();
+  // 학생 6종 전용 마이그레이션: 레거시 캐릭터/무기가 선택·해금돼 있으면 학생 세트로 교정
+  //  (골드·전적·레벨 등 진행도는 건드리지 않음. 레거시 해금 기록은 목록에서 제외만 — 파괴적 삭제 아님)
+  p.unlockedCharacters = p.unlockedCharacters.filter(isStudentCharacter);
+  for(const id of DEFAULT_UNLOCKED_CHARACTERS) if(p.unlockedCharacters.indexOf(id)<0) p.unlockedCharacters.push(id);
+  p.unlockedWeapons = p.unlockedWeapons.filter(id=>STUDENT_WEAPONS.some(w=>w.id===id));
+  for(const id of DEFAULT_UNLOCKED_WEAPONS) if(p.unlockedWeapons.indexOf(id)<0) p.unlockedWeapons.push(id);
+  p.selectedCharacterId = sanitizeCharacterId(p.selectedCharacterId);
+  p.selectedWeaponId = getWeaponForCharacter(p.selectedCharacterId);   // 무기는 항상 캐릭터 고정 무기
   if(p.unlockedCharacters.indexOf(p.selectedCharacterId) < 0) p.selectedCharacterId = p.unlockedCharacters[0];
-  if(p.unlockedWeapons.indexOf(p.selectedWeaponId) < 0) p.selectedWeaponId = p.unlockedWeapons[0];
   if(getDifficulty(p.selectedDifficultyId).id !== p.selectedDifficultyId) p.selectedDifficultyId = "normal";
   if(getMap(p.selectedMapId).id !== p.selectedMapId) p.selectedMapId = "training";
   if(getMode(p.selectedModeId).id !== p.selectedModeId) p.selectedModeId = "solo";
@@ -888,7 +968,7 @@ function loadScriptsSequential(urls, done){
   }
   next();
 }
-function emptyInput(){ return { up:false, down:false, left:false, right:false, attack:false, super:false, reload:false }; }
+function emptyInput(){ return { up:false, down:false, left:false, right:false, attack:false, special:false, ultimate:false, super:false, reload:false, pick:-1 }; }
 
 const OnlineManager = {
   available:false, status:"오프라인",
@@ -1228,9 +1308,10 @@ let MATCH = null;
 
 // 메뉴
 let menuIndex = 0;
-// 로비 메뉴: 0바로시작 1온라인센터 2캐릭터 3무기 4난이도 5맵 6모드 7상점 8내정보/로그인 9교사용
-const MENU_ROWS = 10;
-const VALUE_ROWS = { "2":1, "3":1, "4":1, "5":1, "6":1 }; // ←→로 값 바꾸는 행
+// 로비 메뉴(v1.18): 0바로시작 1온라인센터 2캐릭터 3난이도 4맵 5모드 6로그아웃 7교사용
+//  - 무기 행 제거(무기는 캐릭터 고정) · 상점 행 숨김(SHOP_ENABLED=false, 준비 중)
+const MENU_ROWS = 8;
+const VALUE_ROWS = { "2":1, "3":1, "4":1, "5":1 }; // ←→로 값 바꾸는 행
 let shopIndex = 0;
 let shopItems = [];
 let resultButtonIndex = 0;
@@ -1312,7 +1393,10 @@ function handleKeyPress(code){
     return;
   }
   if(gameState === STATE.PLAYING){
-    if(code==="KeyX" || code==="Space"){ useCharacterSuper(); return; }
+    // Z=기본공격(연사: updatePlayer) · X=특수기술 · C=궁극기 — X/C는 눌림 순간 1회(keydown !repeat = edge)
+    // (기존 X/Space 궁극기 → C로 이동. Space 별칭은 제거 — 조작 통일: 방향키·Z·X·C·R)
+    if(code==="KeyX"){ useCharacterSpecial(); return; }
+    if(code==="KeyC"){ useCharacterSuper(); return; }
     if(code==="KeyP"){ setPaused(true); return; }
     if(code==="KeyR"){ reloadWeaponManual(); return; }   // 장전(결과화면 R 재시작과 분리: PLAYING에서만 장전)
     if(code==="Escape"){ confirmLeave=true; return; }
@@ -1343,12 +1427,11 @@ function handleStartKey(code){
   if(code==="ArrowRight"){ changeMenuValue(menuIndex,+1); return; }
   if(code==="Enter"||code==="NumpadEnter"){ activateMenuRow(menuIndex); return; }
   if(code==="KeyC"){ cycleCharacter(+1); return; }
-  if(code==="KeyW"){ cycleWeapon(+1); return; }
+  // W(무기 변경) 제거: 무기는 캐릭터 고정. S(상점) 제거: 상점 준비 중(SHOP_ENABLED=false).
   if(code==="KeyD"){ cycleDifficulty(+1); return; }
   if(code==="KeyM"){ cycleMap(+1); return; }
   if(code==="KeyT"){ cycleMode(+1); return; }
   if(code==="KeyN"){ changeNickname(); return; }
-  if(code==="KeyS"){ openShop(); return; }
   if(code==="KeyO"){ openOnlineMenu(); return; }
   if(code==="KeyU"){ gameState=STATE.PROFILE; return; }       // 개인창(내 정보)
   if(code==="KeyI"){ collectionIndex=0; gameState=STATE.COLLECTION; return; } // 수집창
@@ -1470,18 +1553,16 @@ function adminDeleteStudent(){
   else if(c!==null) showToast("ID가 일치하지 않아 취소");
 }
 function changeMenuValue(row, dir){
-  if(row===2) cycleCharacter(dir);
-  else if(row===3) cycleWeapon(dir);
-  else if(row===4) cycleDifficulty(dir);
-  else if(row===5) cycleMap(dir);
-  else if(row===6) cycleMode(dir);
+  if(row===2) cycleCharacter(dir);          // 무기 행 없음: 캐릭터 변경 시 고정 무기 자동 적용
+  else if(row===3) cycleDifficulty(dir);
+  else if(row===4) cycleMap(dir);
+  else if(row===5) cycleMode(dir);
 }
 function activateMenuRow(row){
   if(row===0) startGame();                 // 바로 시작(오프라인)
   else if(row===1) openOnlineMenu();        // 온라인 센터
-  else if(row===7) openShop();              // 상점/수집
-  else if(row===8) doLogout();              // 로그아웃 → 로그인 화면
-  else if(row===9) gameState=STATE.ADMIN_LOGIN;  // 교사용(별도 로그인)
+  else if(row===6) doLogout();              // 로그아웃 → 로그인 화면
+  else if(row===7) gameState=STATE.ADMIN_LOGIN;  // 교사용(별도 로그인)
   else if(VALUE_ROWS[row]) changeMenuValue(row, +1);        // 값 행 Enter → 다음 값
 }
 function doLogout(){ logout(); gameState=STATE.LOGIN; loginIndex=0; loginMsg=""; showToast("로그아웃 되었습니다"); }
@@ -1495,8 +1576,19 @@ function cycleInList(list, currentId, dir){
   idx=(idx+dir+list.length)%list.length;
   return list[idx];
 }
-function cycleCharacter(dir){ selectedCharacterId=cycleInList(profile.unlockedCharacters,selectedCharacterId,dir); profile.selectedCharacterId=selectedCharacterId; saveProfile(); }
-function cycleWeapon(dir){ selectedWeaponId=cycleInList(profile.unlockedWeapons,selectedWeaponId,dir); profile.selectedWeaponId=selectedWeaponId; saveProfile(); }
+function cycleCharacter(dir){
+  selectedCharacterId=cycleInList(profile.unlockedCharacters,selectedCharacterId,dir);
+  profile.selectedCharacterId=selectedCharacterId;
+  // 무기 완전 고정: 캐릭터 변경 즉시 그 캐릭터의 고정 무기로 자동 변경
+  selectedWeaponId=getWeaponForCharacter(selectedCharacterId);
+  profile.selectedWeaponId=selectedWeaponId;
+  saveProfile();
+}
+// 무기 선택 제거: 무기는 캐릭터에서 계산. (하위호환용으로 함수는 남기되 항상 고정 무기로 재교정)
+function cycleWeapon(dir){
+  selectedWeaponId=getWeaponForCharacter(selectedCharacterId);
+  profile.selectedWeaponId=selectedWeaponId;
+}
 function cycleDifficulty(dir){ selectedDifficultyId=cycleInList(DIFFICULTIES.map(d=>d.id),selectedDifficultyId,dir); profile.selectedDifficultyId=selectedDifficultyId; saveProfile(); }
 function cycleMap(dir){ selectedMapId=cycleInList(MAPS.map(m=>m.id),selectedMapId,dir); profile.selectedMapId=selectedMapId; saveProfile(); }
 function cycleMode(dir){ selectedModeId=cycleInList(MODES.map(m=>m.id),selectedModeId,dir); profile.selectedModeId=selectedModeId; saveProfile(); }
@@ -1511,11 +1603,15 @@ function changeNickname(){
   profile.nickname=name; saveProfile(); showToast("닉네임: "+name);
 }
 
-function openShop(){ rebuildShopItems(); shopIndex=0; gameState=STATE.SHOP; }
+function openShop(){
+  if(!SHOP_ENABLED){ showToast("상점은 준비 중이에요 (곧 다시 열려요!)"); return; }   // 임시 비활성(코드/골드 보존)
+  rebuildShopItems(); shopIndex=0; gameState=STATE.SHOP;
+}
 function rebuildShopItems(){
   shopItems=[];
-  for(const c of CHARACTERS){ if(profile.unlockedCharacters.indexOf(c.id)<0) shopItems.push({kind:"character",id:c.id,name:c.name,cost:c.unlockCost,desc:c.desc}); }
-  for(const w of WEAPONS){ if(profile.unlockedWeapons.indexOf(w.id)<0) shopItems.push({kind:"weapon",id:w.id,name:w.name,cost:w.unlockCost,desc:w.desc}); }
+  // 학생 6종 체제: 상점 목록도 학생 세트로 제한(레거시 잠정 비활성 — 복구하려면 STUDENT_* 를 CHARACTERS/WEAPONS 로 되돌리면 됨)
+  for(const c of STUDENT_CHARACTERS){ if(profile.unlockedCharacters.indexOf(c.id)<0) shopItems.push({kind:"character",id:c.id,name:c.name,cost:c.unlockCost,desc:c.desc}); }
+  for(const w of STUDENT_WEAPONS){ if(profile.unlockedWeapons.indexOf(w.id)<0) shopItems.push({kind:"weapon",id:w.id,name:w.name,cost:w.unlockCost,desc:w.desc}); }
 }
 function handleShopKey(code){
   if(code==="Escape"){ gameState=STATE.START; return; }
@@ -1579,6 +1675,8 @@ function makeFighter(opts){
     id:++fighterIdCounter,
     team:team, isPlayer:isPlayer, isBoss:!!opts.isBoss,
     characterId: charData?charData.id:null,
+    weaponId: charData?getWeaponForCharacter(charData.id):null,   // 무기 완전 고정(캐릭터에서 계산)
+    specialCd:0,
     name: opts.name || (charData?charData.name:"크롬"),
     char: charData,
     baseX:opts.x, baseY:opts.y,
@@ -1629,8 +1727,9 @@ function allFighters(){ return [player].concat(allies, enemies); }
 function targetsOf(team){ return team==="player" ? enemies : playerTeam(); }
 
 function applyProfileSelections(){
-  selectedCharacterId=profile.selectedCharacterId;
-  selectedWeaponId=profile.selectedWeaponId;
+  selectedCharacterId=sanitizeCharacterId(profile.selectedCharacterId);
+  selectedWeaponId=getWeaponForCharacter(selectedCharacterId);   // 무기는 항상 캐릭터 고정
+  profile.selectedCharacterId=selectedCharacterId; profile.selectedWeaponId=selectedWeaponId;
   selectedDifficultyId=profile.selectedDifficultyId;
   selectedMapId=profile.selectedMapId;
   selectedModeId=profile.selectedModeId;
@@ -1644,6 +1743,7 @@ function resetMatch(){
   bullets=[]; effects=[]; damageNumbers=[];
   playerTeamScore=0; enemyTeamScore=0;
   matchElapsed=0; superGauge=0;
+  resetSkillZones(); resetAttackLog();          // X/C 장판·게이지 충전 기록 초기화
   stats=freshStats();
   enemiesDowned=0; bossPending=false; bossSpawned=false;
   bossActive=false; bossDefeated=false;
@@ -1715,15 +1815,42 @@ function currentMap(){
 }
 function currentTraps(){ const m=currentMap(); return (m&&m.traps)||[]; }
 // 둔화/버프 반영 이동속도
-function effSpeed(f){ let s=f.moveSpeed||0; if(f.slowTimer>0) s*=GAME_CONFIG.trapSlowMul; if(f.speedBuffTimer>0) s*=GAME_CONFIG.speedBuffMul; return s; }
-function tickStatus(f,dt){ if(f.slowTimer>0)f.slowTimer-=dt; if(f.speedBuffTimer>0)f.speedBuffTimer-=dt; if(f.trapTimer>0)f.trapTimer-=dt; if(f.fireRevealTimer>0)f.fireRevealTimer-=dt; }
+function effSpeed(f){
+  let s=f.moveSpeed||0;
+  if(f.freezeTimer>0) return 0;                                       // 빙결: 이동 불가
+  if(f.slowTimer>0) s*=GAME_CONFIG.trapSlowMul;
+  if(f.speedBuffTimer>0) s*=GAME_CONFIG.speedBuffMul;
+  if(f.wSlowTimer>0) s*=(1-(f.wSlowPct||0));                          // 무기/기술 둔화(중첩 없음)
+  if(f.cSpeedTimer>0) s*=(1+getAbility("student_03").c.speedUp);       // 시고니 C 질주 +45%
+  if(f.shieldTimer>0) s*=getAbility("student_06").x.slowMul;           // 별골렘 X 방패 −20%
+  if(f.upg && f.upg.mspd) s*=(1+0.05*f.upg.mspd);                       // PVE 강화: 빠른 발
+  return s;
+}
+function tickStatus(f,dt){
+  if(f.slowTimer>0)f.slowTimer-=dt; if(f.speedBuffTimer>0)f.speedBuffTimer-=dt;
+  if(f.trapTimer>0)f.trapTimer-=dt; if(f.fireRevealTimer>0)f.fireRevealTimer-=dt;
+  if(f.wSlowTimer>0)f.wSlowTimer-=dt;
+  if(f.knockImmuneTimer>0)f.knockImmuneTimer-=dt;
+  if(f.freezeTimer>0)f.freezeTimer-=dt;
+  if(f.cSpeedTimer>0)f.cSpeedTimer-=dt;
+  if(f.dmgReduceTimer>0)f.dmgReduceTimer-=dt;
+  if(f.shieldTimer>0)f.shieldTimer-=dt;
+  if(f.specialCd>0)f.specialCd-=dt;                                    // X 쿨타임
+  if(f.contactImmuneT>0)f.contactImmuneT-=dt;                          // 접촉 피해 면역(PRD 15.4)
+  if(f.shieldItemTimer>0)f.shieldItemTimer-=dt;                        // 방패 젤리 아이템
+  if(f.thornTrail && (f.thornTrail.timer-=dt)<=0) f.thornTrail=null;   // 시고니 X 가시 길 생성 종료
+}
+function isFrozen(f){ return !!(f && f.freezeTimer>0); }               // 빙결: 이동·공격 불가
 // 함정 효과(밟으면): damage=약한 피해(비살상, 쿨타임), slow=잠시 둔화. 리스폰 무적 중엔 무시.
 function applyTrapTo(f){
   if(!f || f.dead || f.inactive || f.invincibleTimer>0) return;
   for(const t of currentTraps()){
     if(circleRectOverlap(f.x,f.y,f.r,t)){
       if(t.type==="slow"){ f.slowTimer=GAME_CONFIG.trapSlowTime; }
-      else { if(!(f.trapTimer>0)){ f.hp=Math.max(1, f.hp-GAME_CONFIG.trapDamage); f.hitFlash=0.12; f.trapTimer=GAME_CONFIG.trapCooldown; spawnHit?spawnHit(f.x,f.y,"#ff9a9a"):0; } }
+      else { if(!(f.trapTimer>0)){
+        let td=GAME_CONFIG.trapDamage;
+        if(f.dmgReduceTimer>0) td*=getAbility("student_03").c.reduceMul;   // 시고니 C 후반: 함정 피해 절반
+        f.hp=Math.max(1, f.hp-td); f.hitFlash=0.12; f.trapTimer=GAME_CONFIG.trapCooldown; spawnHit?spawnHit(f.x,f.y,"#ff9a9a"):0; } }
     }
   }
 }
@@ -1738,11 +1865,15 @@ function spawnPowerupHost(map){
     if(!bad) for(const t of (map.traps||[])){ if(circleRectOverlap(x,y,20,t)){ bad=true; break; } }
     if(!bad){ const sp=map.playerSpawn, ep=map.enemySpawn;
       if(sp && dist(x,y,sp.x,sp.y)<120) bad=true; else if(ep && dist(x,y,ep.x,ep.y)<120) bad=true; }
-    if(!bad){ POWERUPS.push({ id:++powerupId, x:Math.round(x), y:Math.round(y), type: Math.random()<0.5?"heal":"speed" }); return; }
+    if(!bad){ const types=["heal","speed","shield","ammo","clock"];   // PRD 13.1 전투 아이템 5종
+      POWERUPS.push({ id:++powerupId, x:Math.round(x), y:Math.round(y), type: types[Math.floor(Math.random()*types.length)] }); return; }
   }
 }
 function applyPowerup(f, type){
   if(type==="heal"){ f.hp=Math.min(f.maxHp, f.hp+GAME_CONFIG.healPowerupAmount); effects.push({kind:"respawn",x:f.x,y:f.y,t:0,life:0.4,color:"#4bd86b"}); }
+  else if(type==="shield"){ f.shieldItemTimer=5; effects.push({kind:"respawn",x:f.x,y:f.y,t:0,life:0.4,color:"#9fd0ff"}); }        // 방패 젤리: 5초 받는 피해 25%↓
+  else if(type==="ammo"){ if(usesAmmo(f)){ f.ammo=magSizeOf(f); f.reloading=false; f.reloadTimer=0; } effects.push({kind:"respawn",x:f.x,y:f.y,t:0,life:0.4,color:"#ffd9a0"}); }  // 별빛 탄약: 탄창 즉시 완충
+  else if(type==="clock"){ f.specialCd=Math.max(0,(f.specialCd||0)-3); effects.push({kind:"respawn",x:f.x,y:f.y,t:0,life:0.4,color:"#d9b3ff"}); }   // 시계 젤리: X 쿨 3초 감소
   else { f.speedBuffTimer=GAME_CONFIG.speedBuffTime; effects.push({kind:"respawn",x:f.x,y:f.y,t:0,life:0.4,color:"#ffe066"}); }
 }
 // host/로컬: 아이템 주기 생성 + 픽업 판정. fighters=플레이어가 조종하는 파이터 배열.
@@ -1756,6 +1887,15 @@ function tickPowerupsHost(dt, fighters){
 function drawTraps(){
   for(const t of currentTraps()){
     ctx.save();
+    // 코덱스 함정 이미지(가시판/끈끈이) — 없으면 도형 fallback
+    const timg=worldImage(t.type==="slow"?"trap_slow":"trap_damage");
+    if(timg){
+      const iw=timg.naturalWidth||1, ih=timg.naturalHeight||1;
+      const s=Math.min(t.w/iw, t.h/ih)*1.02, dw=iw*s, dh=ih*s;
+      ctx.globalAlpha=0.95;
+      ctx.drawImage(timg, t.x+t.w/2-dw/2, t.y+t.h/2-dh/2, dw, dh);
+      ctx.restore(); continue;
+    }
     if(t.type==="slow"){ // 끈끈이 젤리판
       ctx.fillStyle="rgba(120,230,180,0.35)"; roundRect(t.x,t.y,t.w,t.h,10); ctx.fill();
       ctx.strokeStyle="rgba(90,210,150,0.7)"; ctx.lineWidth=2; roundRect(t.x,t.y,t.w,t.h,10); ctx.stroke();
@@ -1776,20 +1916,38 @@ function powerupsView(){
   }
   return POWERUPS;
 }
+// 전투 아이템 5종(PRD 13.1): 하트♥ 번개⚡ 방패🛡 탄약✚ 시계⏱ — 로컬은 type, 게스트는 패킷 t(0~4)로 렌더
+const POWERUP_STYLE=[
+  {key:"heal",  glow:"#7dffa8", box:"#39d36b", icon:"♥"},
+  {key:"speed", glow:"#fff0a0", box:"#ffd23f", icon:"⚡"},
+  {key:"shield",glow:"#bfe0ff", box:"#5fa0e8", icon:"🛡"},
+  {key:"ammo",  glow:"#ffe2b8", box:"#e89a3f", icon:"✚"},
+  {key:"clock", glow:"#e8ccff", box:"#9a5fe8", icon:"⏱"}
+];
+function powerupStyleOf(p){
+  if(p.t!==undefined) return POWERUP_STYLE[p.t]||POWERUP_STYLE[0];
+  const i=POWERUP_STYLE.findIndex(s=>s.key===p.type);
+  return POWERUP_STYLE[i<0?0:i];
+}
 function drawPowerups(list){
   for(const p of (list||[])){
     ctx.save(); ctx.translate(p.x,p.y);
     const bob=Math.sin(uiTime*4+p.id)*3; ctx.translate(0,bob);
-    const heal=(p.type==="heal"||p.t===0);
-    const g=ctx.createRadialGradient(0,0,2,0,0,18); g.addColorStop(0,heal?"#7dffa8":"#fff0a0"); g.addColorStop(1,"rgba(0,0,0,0)");
+    const st=powerupStyleOf(p);
+    const g=ctx.createRadialGradient(0,0,2,0,0,18); g.addColorStop(0,st.glow); g.addColorStop(1,"rgba(0,0,0,0)");
     ctx.fillStyle=g; ctx.beginPath(); ctx.arc(0,0,18,0,Math.PI*2); ctx.fill();
-    ctx.fillStyle=heal?"#39d36b":"#ffd23f"; roundRect(-11,-11,22,22,7); ctx.fill();
+    if(st.key==="heal"){                                   // 하트 젤리: 코덱스 이미지(없으면 도형)
+      const himg=worldImage("heal_pickup");
+      if(himg){ ctx.drawImage(himg,-16,-17,32,34); ctx.restore(); continue; }
+    }
+    ctx.fillStyle=st.box; roundRect(-11,-11,22,22,7); ctx.fill();
     ctx.strokeStyle="#fff"; ctx.lineWidth=2; roundRect(-11,-11,22,22,7); ctx.stroke();
-    ctx.fillStyle="#fff"; ctx.font="bold 15px 'Malgun Gothic',sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
-    ctx.fillText(heal?"♥":"⚡",0,1);
+    ctx.fillStyle="#fff"; ctx.font="bold 14px 'Malgun Gothic',sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText(st.icon,0,1);
     ctx.restore();
   }
 }
+function powerupPacketT(p){ const i=POWERUP_STYLE.findIndex(s=>s.key===p.type); return i<0?0:i; }
 function hasLineOfSight(ax,ay,bx,by){
   const d=dist(ax,ay,bx,by), steps=Math.max(1,Math.ceil(d/16));
   for(let i=1;i<steps;i++){
@@ -1821,12 +1979,15 @@ function spawnBullets(fighter, baseAngle, opt){
     if(count>1) a=baseAngle - spread/2 + spread*(i/(count-1));
     const muzzle=fighter.r+6;
     const bx=fighter.x+Math.cos(a)*muzzle, by=fighter.y+Math.sin(a)*muzzle;
-    bullets.push({
+    const b={
       x:bx, y:by, vx:Math.cos(a)*opt.speed, vy:Math.sin(a)*opt.speed,
       r:opt.radius, damage:opt.damage, team:fighter.team, ownerId:fighter.id,
       isSuper:!!opt.isSuper, countsForPlayer:(fighter.id===player.id && !opt.isSuper),
-      color:opt.color, alive:true, traveled:0, maxRange:opt.range
-    });
+      color:opt.color, alive:true, traveled:0, maxRange:opt.range,
+      aid:opt.aid, wid:opt.wid, wref:opt.wref||null, age:0
+    };
+    if(opt.boomerang){ b.boomerang=true; b.phase="out"; b.spd=opt.speed; b.ownerRef=fighter; b.hitO={}; b.hitB={}; }
+    bullets.push(b);
     spawnMuzzle(bx,by,Math.cos(a),Math.sin(a),opt.color);
   }
   fighter.facing=baseAngle;
@@ -1835,16 +1996,29 @@ function spawnBullets(fighter, baseAngle, opt){
   if(fighter.invincibleTimer>0) fighter.invincibleTimer=0;
 }
 
-function firePlayerWeapon(){
-  const w=getWeapon(selectedWeaponId), c=player.char;
-  spawnBullets(player, player.facing, {
+// 캐릭터 고정 무기 발사 스펙(모든 모드 공통 수치). PVE 개인 강화(f.upg)가 있으면 배율 적용.
+function weaponFireSpec(f, w){
+  const c=f.char, u=f.upg;
+  const spec={
     count:w.spreadCount, spreadDeg:w.spreadAngleDeg,
     damage: GAME_CONFIG.playerDamage*c.damageMul*w.damageMul,
     speed: GAME_CONFIG.playerBulletSpeed*c.bulletSpeedMul*w.bulletSpeedMul,
     range: GAME_CONFIG.playerRange*w.rangeMul,
     radius: GAME_CONFIG.playerBulletRadius*w.bulletRadiusMul,
-    color:w.color
-  });
+    color:w.color, wid:w.id, wref:w, boomerang:!!w.boomerang
+  };
+  if(u){
+    spec.damage*=(1+0.08*(u.atk||0)); spec.speed*=(1+0.08*(u.bspd||0));
+    spec.range*=(1+0.08*(u.range||0)); spec.radius*=(1+0.08*(u.bsize||0));
+  }
+  return spec;
+}
+
+function firePlayerWeapon(){
+  const w=getWeapon(player.weaponId||selectedWeaponId);
+  const spec=weaponFireSpec(player, w);
+  spec.aid=newAttackId();                      // 공격 1회 = attackId 1개(게이지 충전 상한 20)
+  spawnBullets(player, player.facing, spec);
   player.lastFireTime=matchElapsed;
   stats.shotsFired+=w.spreadCount;
 }
@@ -1860,14 +2034,18 @@ function fireAiShot(fighter, angle){
       spawnBullets(fighter, angle, { count:1, spreadDeg:0, damage:damage, speed:MATCH.enemyBulletSpeed, range:MATCH.enemyRange, radius:radius, color:"#c98bff" });
     }
   } else {
-    const c=fighter.char;
-    spawnBullets(fighter, angle, { count:1, spreadDeg:0, damage:GAME_CONFIG.playerDamage*c.damageMul*0.8, speed:GAME_CONFIG.playerBulletSpeed*c.bulletSpeedMul, range:GAME_CONFIG.playerRange, radius:GAME_CONFIG.playerBulletRadius, color:c.subColor });
+    // 아군 봇도 자기 캐릭터의 고정 무기 패턴(발수/속도/사거리/부메랑/이펙트)을 사용. 피해만 봇 보정(0.8배).
+    const w=getWeapon(fighter.weaponId||getWeaponForCharacter(fighter.characterId));
+    const spec=weaponFireSpec(fighter, w);
+    spec.damage*=0.8;
+    spawnBullets(fighter, angle, spec);
   }
 }
 
 function applyDamage(target, dmg, fromTeam, fromId, hx, hy){
   if(!canBeHit(target)) return 0;
   if(target.team===fromTeam) return 0; // 아군 오사 방지
+  dmg=incomingDamage(target, dmg);     // 방패(별골렘X)/질주 후반(시고니C) 피해 감소, 최소 1
   target.hp-=dmg;
   target.lastCombatTime=matchElapsed;
   target.hitFlash=0.15;
@@ -1930,61 +2108,281 @@ function respawn(f){
 }
 
 /* =======================================================================
-   궁극기 (X) — 캐릭터별 3종
+   X 특수기술 / C 궁극기 — 학생 설계 6종 (코드 이펙트, 전용 에셋은 다음 회차)
+   -----------------------------------------------------------------------
+   모든 모드(로컬/1v1/3v3/PVE)가 같은 시전 함수(castSpecialFor/castUltimateFor)와
+   장판(skillZones)을 쓰고, 모드 차이는 env 어댑터(대상 나열/피해/회복/탄환 생성)로 흡수한다.
+   호스트만 판정(온라인). X/C 피해로는 C 게이지가 충전되지 않는다(noCharge).
    ======================================================================= */
-function useCharacterSuper(){
-  if(player.dead) return;
-  if(superGauge<GAME_CONFIG.superCharge){ spawnSuperFail(player.x,player.y); return; }
-  superGauge=0; stats.superUsed++;
-  player.lastCombatTime=matchElapsed;
-  if(player.invincibleTimer>0) player.invincibleTimer=0;
-  const type=player.char.superType;
-  if(type==="burst") useBurstSuper();
-  else if(type==="dash") useDashSuper();
-  else useTripleSuper();
-}
-function useBurstSuper(){
-  spawnSuperWave(player.x,player.y,GAME_CONFIG.superRadius);
-  for(const t of enemies){
-    if(canBeHit(t) && dist(player.x,player.y,t.x,t.y)<=GAME_CONFIG.superRadius+t.r){
-      applyDamage(t, GAME_CONFIG.superDamage, "player", player.id, t.x, t.y);
-      pushFighter(t, Math.atan2(t.y-player.y,t.x-player.x), GAME_CONFIG.superKnockback);
-    }
-  }
-}
-function useDashSuper(){
-  const a=player.facing, steps=16, stepLen=GAME_CONFIG.superDashDistance/steps;
-  const alreadyHit={};
-  spawnSuperWave(player.x,player.y,60);
-  for(let i=0;i<steps;i++){
-    moveEntity(player, Math.cos(a)*stepLen, Math.sin(a)*stepLen);
-    effects.push({kind:"dashTrail",x:player.x,y:player.y,t:0,life:0.35,color:player.color});
-    for(const t of enemies){
-      if(canBeHit(t) && !alreadyHit[t.id] && dist(player.x,player.y,t.x,t.y)<player.r+t.r+8){
-        applyDamage(t, GAME_CONFIG.superDamage, "player", player.id, t.x, t.y);
-        alreadyHit[t.id]=true;
-      }
-    }
-  }
-}
-function useTripleSuper(){
-  spawnBullets(player, player.facing, {
-    count:5, spreadDeg:48, damage:GAME_CONFIG.superDamage, speed:GAME_CONFIG.playerBulletSpeed*1.1,
-    range:GAME_CONFIG.playerRange*1.2, radius:GAME_CONFIG.playerBulletRadius*1.3, color:"#fff0a0", isSuper:true
-  });
-}
 function pushFighter(f, angle, distance){
   const steps=8;
   for(let i=0;i<steps;i++) moveEntity(f, Math.cos(angle)*distance/steps, Math.sin(angle)*distance/steps);
 }
 
-/* ── 장전(탄창) 공통 유틸 — 플레이어가 조종하는 파이터에만 ammo를 둔다(AI/봇/적은 무한) ── */
-function initAmmo(f){ f.ammo=GAME_CONFIG.magazineSize; f.reloading=false; f.reloadTimer=0; }
+let skillZones=[];                 // 진행 중 장판(별똥별/가시/얼음/구급상자/블랙홀/빙결폭발)
+function resetSkillZones(){ skillZones=[]; }
+
+// ── env 어댑터: 로컬 ──
+function envLocal(){
+  return {
+    foes(f){ return targetsOf(f.team).filter(canBeHit).map(t=>({e:t,key:t.id,isBoss:!!t.isBoss,isFighter:true})); },
+    allies(f){ const list=(f.team==="player")?playerTeam():enemies; return list.filter(t=>!t.dead); },
+    damage(f,o,dmg){ return applyDamage(o.e,dmg,f.team,f.id,o.e.x,o.e.y); },
+    heal(t,amt){ t.hp=Math.min(t.maxHp,t.hp+amt); effects.push({kind:"respawn",x:t.x,y:t.y,t:0,life:0.4,color:"#4bd86b"}); },
+    spawnBullet(f,spec){
+      const b=makeSkillBullet(f,spec);
+      b.team=f.team; b.ownerId=f.id; b.countsForPlayer=false;
+      bullets.push(b);
+    }
+  };
+}
+// 스킬 탄환 공통 필드(X 비행기/C 7발/C 통통비행기). isSuper=true → 게이지 미충전.
+function makeSkillBullet(f,spec){
+  const a=(spec.angle!==undefined)?spec.angle:f.facing, mz=f.r+6;
+  return { x:f.x+Math.cos(a)*mz, y:f.y+Math.sin(a)*mz, vx:Math.cos(a)*spec.speed, vy:Math.sin(a)*spec.speed,
+    r:spec.radius, damage:spec.damage, color:spec.color, alive:true, traveled:0, maxRange:spec.range,
+    isSuper:true, wid:spec.wid||null, age:0, life:spec.life,
+    bounce:!!spec.bounce, maxBounce:spec.maxBounce||0, ultCid:spec.ultCid, ultMaxHits:spec.ultMaxHits };
+}
+
+// ── X 특수기술(쿨타임) — 시전 성공 시 true ──
+function castSpecialFor(f, env){
+  if(!f || f.dead || f.inactive || isFrozen(f)) return false;
+  if(f.specialCd>0) return false;
+  const cid=f.char.id, A=getAbility(cid);
+  if(cid==="student_01"){                      // 럭키 X — 별똥별 콩! (예고 후 폭발, 벽 너머 지정 가능·피해는 LOS)
+    let tx=f.x+Math.cos(f.facing)*A.x.dist, ty=f.y+Math.sin(f.facing)*A.x.dist;
+    tx=clamp(tx, ARENA.x+24, ARENA.x+ARENA.w-24); ty=clamp(ty, ARENA.y+24, ARENA.y+ARENA.h-24);  // 맵 밖 → 유효 위치 보정
+    skillZones.push({type:"meteor", owner:f, x:tx, y:ty, timer:A.x.warn, radius:A.x.radius, dmg:A.x.dmg});
+  } else if(cid==="student_02"){               // 달이 X — 초장거리 종이비행기(관통 없음, 벽에 소멸)
+    env.spawnBullet(f,{ speed:A.x.speed, radius:A.x.radius, damage:A.x.dmg, range:A.x.range, color:"#eef2f6", wid:"tool_02" });
+  } else if(cid==="student_03"){               // 시고니 X — 반짝 가시 길(3초간 이동 경로에 가시)
+    f.thornTrail={ timer:A.x.trailTime, lastX:f.x, lastY:f.y, acc:0, count:0 };
+  } else if(cid==="student_04"){               // 눈꽃 X — 미끄러운 얼음 바닥
+    let tx=f.x+Math.cos(f.facing)*A.x.dist, ty=f.y+Math.sin(f.facing)*A.x.dist;
+    tx=clamp(tx, ARENA.x+24, ARENA.x+ARENA.w-24); ty=clamp(ty, ARENA.y+24, ARENA.y+ARENA.h-24);
+    skillZones.push({type:"ice", owner:f, x:tx, y:ty, timer:A.x.life, radius:A.x.radius, slowPct:A.x.slowPct, enterDmg:A.x.enterDmg, entered:{}});
+  } else if(cid==="student_05"){               // 모아 X — 폭신 구급상자(1인 1개)
+    skillZones=skillZones.filter(z=>!(z.type==="medkit" && z.owner===f));
+    skillZones.push({type:"medkit", owner:f, x:f.x, y:f.y, timer:A.x.life, pickupR:A.x.pickupR, heal:A.x.heal});
+  } else if(cid==="student_06"){               // 별골렘 X — 젤리 철벽 방패
+    f.shieldTimer=A.x.dur;
+  }
+  f.specialCd=A.x.cd*(f.upg&&f.upg.xcd?Math.max(0.7,1-0.06*f.upg.xcd):1);   // PVE 강화: 반짝 시계
+  f.lastCombatTime=matchElapsed;
+  if(f.invincibleTimer>0 && cid!=="student_06") f.invincibleTimer=0;   // 공격 행동 → 리스폰 무적 해제(방패는 방어라 유지)
+  spawnSuperWave(f.x,f.y,34);
+  return true;
+}
+
+// ── C 궁극기(게이지 100) — 시전 성공 시 true ──
+function castUltimateFor(f, env, getGauge, setGauge){
+  if(!f || f.dead || f.inactive || isFrozen(f)) return false;
+  if(getGauge()<GAME_CONFIG.superCharge) return false;
+  setGauge(0);
+  const cid=f.char.id, A=getAbility(cid);
+  if(cid==="student_01"){                      // 럭키 C — 별빛 일곱 발(탄창/장전 불변, 같은 대상 최대 40)
+    const ucid=newUltCastId(), spread=deg2rad(A.c.spreadDeg), n=A.c.count;
+    for(let i=0;i<n;i++){
+      const ang=f.facing-spread/2+spread*(i/(n-1));
+      env.spawnBullet(f,{ angle:ang, speed:A.c.speed, radius:A.c.radius, damage:A.c.dmg, range:A.c.range,
+        color:"#ffe066", wid:"tool_01", ultCid:ucid, ultMaxHits:Math.round(A.c.maxPerTarget/A.c.dmg) });
+    }
+  } else if(cid==="student_02"){               // 달이 C — 통통 거대 비행기(벽 반사 6회·6초·1명 적중 시 소멸)
+    env.spawnBullet(f,{ speed:A.c.speed, radius:A.c.radius, damage:A.c.dmg, range:1e9, life:A.c.life,
+      color:"#f5f7fa", wid:"tool_02", bounce:true, maxBounce:A.c.maxBounce });
+  } else if(cid==="student_03"){               // 시고니 C — 초고속 반짝 질주(1초 무적+3초 가속+후반 50% 감소)
+    f.cSpeedTimer=A.c.dur;
+    f.dmgReduceTimer=A.c.dur;                  // 처음 1초는 무적이 우선 적용됨
+    f.invincibleTimer=Math.max(f.invincibleTimer||0, A.c.invuln);
+    effects.push({kind:"dashTrail",x:f.x,y:f.y,t:0,life:0.5,color:f.color});
+  } else if(cid==="student_04"){               // 눈꽃 C — 꽁꽁 얼음 깨기(반경150·LOS·1초 빙결 후 30, 보스는 둔화+30)
+    spawnSuperWave(f.x,f.y,A.c.radius);
+    const bombTargets={};
+    for(const o of env.foes(f)){
+      if(dist(f.x,f.y,o.e.x,o.e.y)>A.c.radius+o.e.r) continue;
+      if(!hasLineOfSight(f.x,f.y,o.e.x,o.e.y)) continue;         // 벽 너머 금지
+      if(o.isBoss){ applySlowTo(o.e, A.c.bossSlowPct, A.c.bossSlowTime); env.damage(f,o,A.c.dmg); }
+      else { o.e.freezeTimer=A.c.freeze*(o.e.eliteResist?0.5:1); bombTargets[o.key]=true; }   // 정예: 빙결 50%(PRD 15.4)
+    }
+    skillZones.push({type:"freezeBomb", owner:f, x:f.x, y:f.y, timer:A.c.freeze, dmg:A.c.dmg, targets:bombTargets});
+  } else if(cid==="student_05"){               // 모아 C — 모두 건강해져라!(살아있는 자기 팀만 +100, 부활 없음)
+    for(const a of env.allies(f)){ if(a.dead||a.inactive) continue; env.heal(a, A.c.heal); }
+    spawnSuperWave(f.x,f.y,120);
+  } else if(cid==="student_06"){               // 별골렘 C — 젤리 블랙홀(앞 220, 반경170, 3초)
+    let tx=f.x+Math.cos(f.facing)*A.c.dist, ty=f.y+Math.sin(f.facing)*A.c.dist;
+    tx=clamp(tx, ARENA.x+24, ARENA.x+ARENA.w-24); ty=clamp(ty, ARENA.y+24, ARENA.y+ARENA.h-24);
+    skillZones.push({type:"blackhole", owner:f, x:tx, y:ty, timer:A.c.life, radius:A.c.radius,
+      pullEnemy:A.c.pullEnemy, pullPlayer:A.c.pullPlayer, dps:A.c.dps, tickAcc:0, dmgCount:{},
+      maxTicks:Math.round(A.c.maxTotal/A.c.dps), bossPullMul:A.c.bossPullMul, bossSlowPct:A.c.bossSlowPct});
+  }
+  f.lastCombatTime=matchElapsed;
+  return true;
+}
+
+// 시고니 X: 이동 경로에 가시 생성(모든 모드의 파이터 업데이트에서 호출)
+function tickThornTrail(f){
+  const tr=f.thornTrail; if(!tr) return;
+  const A=getAbility("student_03").x;
+  const moved=Math.hypot(f.x-tr.lastX, f.y-tr.lastY);
+  tr.acc+=moved; tr.lastX=f.x; tr.lastY=f.y;
+  if(tr.acc>=A.gapDist && tr.count<A.maxThorns){
+    tr.acc=0; tr.count++;
+    skillZones.push({type:"thorn", owner:f, x:f.x, y:f.y, timer:A.thornLife, radius:A.thornR, dmg:A.dmg,
+      slowPct:A.slowPct, slowTime:A.slowTime, hit:{}});
+  }
+}
+
+// 장판 진행(호스트/로컬 공용). env는 현재 모드의 어댑터.
+function tickSkillZones(dt, env){
+  if(!skillZones.length) return;
+  for(const z of skillZones){
+    z.timer-=dt;
+    if(z.type==="meteor"){
+      if(z.enemyWarn){ if(z.timer<=0) z.done=true; }        // 보스 내려찍기 '예고 표시 전용'(피해는 tEnemyUpdate가 판정)
+      else if(z.timer<=0 && !z.done){ z.done=true;
+        spawnSuperWave(z.x,z.y,z.radius);
+        for(const o of env.foes(z.owner)){
+          if(dist(z.x,z.y,o.e.x,o.e.y)<=z.radius+o.e.r && hasLineOfSight(z.x,z.y,o.e.x,o.e.y)) env.damage(z.owner,o,z.dmg);
+        }
+      }
+    } else if(z.type==="thorn"){
+      for(const o of env.foes(z.owner)){
+        if(z.hit[o.key]) continue;                                  // 같은 가시는 같은 적에게 1회만
+        if(dist(z.x,z.y,o.e.x,o.e.y)<=z.radius+o.e.r){ z.hit[o.key]=1; env.damage(z.owner,o,z.dmg); applySlowTo(o.e,z.slowPct,z.slowTime); }
+      }
+    } else if(z.type==="ice"){
+      for(const o of env.foes(z.owner)){
+        if(dist(z.x,z.y,o.e.x,o.e.y)<=z.radius+o.e.r){
+          applySlowTo(o.e, z.slowPct, 0.2);                          // 안에 있는 동안 지속 갱신(중첩 없음)
+          if(!z.entered[o.key]){ z.entered[o.key]=1; env.damage(z.owner,o,z.enterDmg); }   // 첫 진입만 피해
+        }
+      }
+    } else if(z.type==="freezeBomb"){
+      if(z.timer<=0 && !z.done){ z.done=true;
+        for(const o of env.foes(z.owner)){ if(z.targets[o.key]) env.damage(z.owner,o,z.dmg); }   // 빙결 종료 시 파괴 피해
+      }
+    } else if(z.type==="medkit"){
+      for(const a of env.allies(z.owner)){
+        if(a.dead||a.inactive) continue;
+        if(dist(z.x,z.y,a.x,a.y)<=z.pickupR+a.r && a.hp<a.maxHp-0.5){ env.heal(a,z.heal); z.done=true; break; }  // 처음 닿은 아군 1회
+      }
+    } else if(z.type==="blackhole"){
+      for(const o of env.foes(z.owner)){
+        const d=dist(z.x,z.y,o.e.x,o.e.y);
+        if(d>z.radius+o.e.r) continue;
+        if(!hasLineOfSight(z.x,z.y,o.e.x,o.e.y)) continue;           // 벽 통과로 끌지 않음
+        let pull=o.isFighter?z.pullPlayer:z.pullEnemy;
+        if(o.isBoss){ pull*=z.bossPullMul; applySlowTo(o.e, z.bossSlowPct, 0.2); }
+        else if(o.e.eliteResist) pull*=0.7;                 // 정예: 블랙홀 70%(PRD 15.4)
+        if(d>6){ const ang=Math.atan2(z.y-o.e.y, z.x-o.e.x); moveEntity(o.e, Math.cos(ang)*pull*dt, Math.sin(ang)*pull*dt); }
+      }
+      z.tickAcc+=dt;
+      if(z.tickAcc>=1){ z.tickAcc-=1;
+        for(const o of env.foes(z.owner)){
+          if(dist(z.x,z.y,o.e.x,o.e.y)>z.radius+o.e.r) continue;
+          if(!hasLineOfSight(z.x,z.y,o.e.x,o.e.y)) continue;
+          const n=z.dmgCount[o.key]||0;
+          if(n<z.maxTicks){ z.dmgCount[o.key]=n+1; env.damage(z.owner,o,z.dps); }   // 총 피해 상한 18
+        }
+      }
+    }
+  }
+  skillZones=skillZones.filter(z=>!z.done && z.timer>-0.01);
+  if(skillZones.length>40) skillZones=skillZones.slice(skillZones.length-40);   // 성능 안전장치
+}
+
+// 네트워크 전송용 장판 요약(숫자·타입만 — 게스트 렌더용)
+const ZONE_CODES={meteor:0,thorn:1,ice:2,medkit:3,blackhole:4,freezeBomb:5};
+function packZones(){
+  const out=[];
+  for(const z of skillZones){ if(z.type==="freezeBomb") continue;
+    out.push({t:ZONE_CODES[z.type], x:Math.round(z.x), y:Math.round(z.y), r:Math.round(z.radius||z.pickupR||0), tm:Math.round(z.timer*10)/10}); }
+  return out;
+}
+
+// ── 로컬 시전 래퍼(플레이어 전용) ──
+function useCharacterSpecial(){
+  if(gameState!==STATE.PLAYING || !player || player.dead) return;
+  if(player.specialCd>0){ spawnSuperFail(player.x,player.y); return; }
+  castSpecialFor(player, envLocal());
+}
+function useCharacterSuper(){
+  if(!player || player.dead) return;
+  if(superGauge<GAME_CONFIG.superCharge){ spawnSuperFail(player.x,player.y); return; }
+  const ok=castUltimateFor(player, envLocal(), ()=>superGauge, v=>{ superGauge=v; });
+  if(ok) stats.superUsed++;
+}
+
+/* ── 장전(탄창) 공통 유틸 — 플레이어가 조종하는 파이터에만 ammo를 둔다(AI/봇/적은 무한)
+   v1.18: 무기별 탄창/장전(magazineSize/reloadTime). 다중탄도 공격 1회당 탄약 1개만 소비. ── */
+function weaponOf(f){ return getWeapon((f && f.weaponId) || selectedWeaponId); }
+function magSizeOf(f){ const w=weaponOf(f); return (w && w.magazineSize) || GAME_CONFIG.magazineSize; }
+function reloadTimeOf(f){ const w=weaponOf(f); let t=(w && w.reloadTime) || GAME_CONFIG.reloadTime; const u=upgStacks(f,"reload"); if(u) t*=Math.max(0.6,1-0.10*u); return t; }
+function initAmmo(f){ f.ammo=magSizeOf(f); f.reloading=false; f.reloadTimer=0; }
 function usesAmmo(f){ return f && f.ammo!==undefined; }
-function tickReload(f, dt){ if(usesAmmo(f) && f.reloading){ f.reloadTimer-=dt; if(f.reloadTimer<=0){ f.ammo=GAME_CONFIG.magazineSize; f.reloading=false; f.reloadTimer=0; } } }
-function startReload(f){ if(usesAmmo(f) && !f.reloading && f.ammo<GAME_CONFIG.magazineSize){ f.reloading=true; f.reloadTimer=GAME_CONFIG.reloadTime; } }
+function tickReload(f, dt){ if(usesAmmo(f) && f.reloading){ f.reloadTimer-=dt; if(f.reloadTimer<=0){ f.ammo=magSizeOf(f); f.reloading=false; f.reloadTimer=0; } } }
+function startReload(f){ if(usesAmmo(f) && !f.reloading && f.ammo<magSizeOf(f)){ f.reloading=true; f.reloadTimer=reloadTimeOf(f); } }
 function canFireAmmo(f){ return !usesAmmo(f) || (!f.reloading && f.ammo>0); }   // ammo 없는 파이터는 항상 발사 가능
-function consumeAmmo(f){ if(!usesAmmo(f)) return; f.ammo--; if(f.ammo<=0){ f.ammo=0; f.reloading=true; f.reloadTimer=GAME_CONFIG.reloadTime; } }
+function consumeAmmo(f){ if(!usesAmmo(f)) return; f.ammo--; if(f.ammo<=0){ f.ammo=0; f.reloading=true; f.reloadTimer=reloadTimeOf(f); } }
+
+/* ── attackId 기반 궁극기(C) 게이지 충전 제한 ──
+   Z 공격 1회(다중탄·부메랑 왕복 포함)가 같은 대상에게 여러 번 맞아도 충전은 최대 20(=1회분). */
+let attackSeq=0;
+let attackChargeLog=new Map();   // attackId -> Set("targetKey")
+function newAttackId(){ return ++attackSeq; }
+function resetAttackLog(){ attackChargeLog=new Map(); }
+function tryChargeGauge(aid, targetKey, addFn){
+  if(aid==null){ addFn(); return; }
+  let set=attackChargeLog.get(aid);
+  if(!set){ set=new Set(); attackChargeLog.set(aid,set);
+    if(attackChargeLog.size>300){ const k=attackChargeLog.keys().next().value; attackChargeLog.delete(k); } }
+  const key=String(targetKey);
+  if(set.has(key)) return;   // 같은 공격 → 같은 대상 추가 충전 없음(최대 20 유지)
+  set.add(key); addFn();
+}
+// C 궁극기(다중탄)의 '같은 대상 최대 피해' 상한 — cast(cid)별 대상당 명중 횟수 제한
+let ultSeq=0; let ultHitLog=new Map();   // cid -> Map(targetKey -> count)
+function newUltCastId(){ return ++ultSeq; }
+function canUltDamage(cid, targetKey, maxHits){
+  let m=ultHitLog.get(cid);
+  if(!m){ m=new Map(); ultHitLog.set(cid,m);
+    if(ultHitLog.size>60){ const k=ultHitLog.keys().next().value; ultHitLog.delete(k); } }
+  const key=String(targetKey), n=m.get(key)||0;
+  if(n>=maxHits) return false;
+  m.set(key,n+1); return true;
+}
+
+/* ── 무기 부가효과(둔화/밀치기) — 아군 오사 없음(피해 적용된 대상에게만 호출) ── */
+function applySlowTo(t, pct, time){
+  if(!t) return;
+  if(!(t.wSlowTimer>0) || pct >= (t.wSlowPct||0)) t.wSlowPct=pct;   // 중첩 없음: 더 강한 값만 교체
+  t.wSlowTimer=Math.max(t.wSlowTimer||0, time);                     // 지속시간은 갱신(연장)
+}
+function applyKnockbackTo(t, fromX, fromY, distPx, immuneTime){
+  if(!t) return;
+  if(t.knockImmuneTimer>0) return;                                  // 연속 밀치기 면역
+  let d=distPx;
+  if(t.shieldTimer>0) d*=getAbility("student_06").x.knockMul;        // 별골렘 방패: 밀치기 70% 감소
+  pushFighter(t, Math.atan2(t.y-fromY, t.x-fromX), d);               // 벽 통과 없음(moveEntity가 충돌 처리)
+  t.knockImmuneTimer=immuneTime||0.4;
+}
+function applyWeaponHitEffects(w, target, bx, by){
+  if(!w || !target) return;
+  if(w.slowPct) applySlowTo(target, w.slowPct, w.slowTime||0.6);
+  if(w.knockback) applyKnockbackTo(target, bx, by, w.knockback, w.knockImmuneTime||0.4);
+}
+
+/* ── 받는 피해 보정(별골렘 X 방패 60%↓ · 시고니 C 후반 50%↓) — 최소 1 보장 ── */
+function incomingDamage(f, dmg){
+  let m=1;
+  if(f && f.shieldTimer>0) m*=getAbility("student_06").x.reduceMul;
+  if(f && f.dmgReduceTimer>0) m*=getAbility("student_03").c.reduceMul;
+  if(f && f.shieldItemTimer>0) m*=0.75;                    // 방패 젤리 아이템: 받는 피해 25%↓(5초)
+  if(f && f.upg && f.upg.def) m*=Math.max(0.7,1-0.06*f.upg.def);   // PVE 강화: 방어 물약(상한 30%)
+  if(m>=1) return dmg;
+  return Math.max(1, dmg*m);
+}
 
 // 로컬 수동 장전(R). 온라인은 input.reload로 host가 처리.
 function doReloadManual(){ if(gameState===STATE.PLAYING && player && !player.dead) startReload(player); }
@@ -1994,6 +2392,12 @@ function doReloadManual(){ if(gameState===STATE.PLAYING && player && !player.dea
    ======================================================================= */
 function updatePlayer(dt){
   if(player.dead){ player.respawnTimer-=dt; if(player.respawnTimer<=0) respawn(player); return; }
+  player.cooldown-=dt;
+  tickReload(player, dt);
+  if(player.hitFlash>0) player.hitFlash-=dt;
+  if(player.invincibleTimer>0) player.invincibleTimer-=dt;
+  tickThornTrail(player);                     // 시고니 X: 이동 경로 가시 생성
+  if(isFrozen(player)){ regen(player, dt); return; }   // 빙결: 이동·공격 불가(타이머는 tickStatus에서 진행)
   let mx=0,my=0;
   if(keysDown.has("ArrowUp")) my-=1;
   if(keysDown.has("ArrowDown")) my+=1;
@@ -2005,15 +2409,11 @@ function updatePlayer(dt){
     moveEntity(player, mx*effSpeed(player)*dt, my*effSpeed(player)*dt);
     player.facing=Math.atan2(my,mx);          // 이동 방향을 바라봄
   }
-  player.cooldown-=dt;
-  tickReload(player, dt);
   if(keysDown.has("KeyZ") && player.cooldown<=0 && canFireAmmo(player)){
     firePlayerWeapon();
     consumeAmmo(player);
-    player.cooldown=GAME_CONFIG.playerAttackCooldown*getWeapon(selectedWeaponId).cooldownMul;
+    player.cooldown=zCooldownOf(player, getWeapon(player.weaponId||selectedWeaponId));
   }
-  if(player.hitFlash>0) player.hitFlash-=dt;
-  if(player.invincibleTimer>0) player.invincibleTimer-=dt;
   regen(player, dt);
 }
 
@@ -2021,6 +2421,7 @@ function updateAI(f, dt){
   if(f.dead){ f.respawnTimer-=dt; if(f.respawnTimer<=0) respawn(f); return; }
   if(f.hitFlash>0) f.hitFlash-=dt;
   if(f.invincibleTimer>0) f.invincibleTimer-=dt;
+  if(isFrozen(f)){ return; }                 // 빙결: 이동·공격 불가
 
   const ai=f.ai, isEnemy=(f.team==="enemy");
   const target=nearestTarget(f, isEnemy);
@@ -2085,35 +2486,107 @@ function regen(f, dt){
   }
 }
 
+/* 부메랑 조향(공통): 나갈 때 사거리/벽에서 복귀 전환, 복귀 중엔 주인 현재 위치로 유도.
+   복귀 중엔 벽을 넘어 돌아온다(벽에 막혀 무한 진동하지 않게 — 일관 규칙).
+   반환값 false = 주인에게 도착(소멸). */
+function steerBoomerang(b, ox, oy){
+  if(b.phase==="out" && b.traveled>=b.maxRange) b.phase="back";
+  if(b.phase==="back"){
+    const dx=ox-b.x, dy=oy-b.y, d=Math.hypot(dx,dy)||1;
+    if(d<26) return false;
+    b.vx=dx/d*b.spd; b.vy=dy/d*b.spd;
+  }
+  return true;
+}
+// 적중 효과(무기별 effect_hit 스프라이트, 없으면 기존 원형 반짝임 fallback)
+function spawnHitFx(x,y,wid,color){
+  if(wid && ASSETS_ENABLED && getWeaponImage(getWeapon(wid).assetId||wid,"effect_hit")){
+    effects.push({kind:"hitfx", x:x, y:y, wid:wid, t:0, life:0.25});
+  } else spawnHit(x,y,color);
+}
+
 function updateBullets(dt){
   for(const b of bullets){
     if(!b.alive) continue;
+    b.age=(b.age||0)+dt;
+    if(b.age>5){ b.alive=false; continue; }                    // 안전장치(부메랑 등 잔류 방지)
+    if(b.boomerang){
+      const o=b.ownerRef;
+      const ox=o&&!o.dead?o.x:b.x, oy=o&&!o.dead?o.y:b.y;
+      if(!o || o.dead){ if(b.phase==="back"){ b.alive=false; continue; } }
+      else if(!steerBoomerang(b, ox, oy)){ b.alive=false; continue; }
+    }
     const speed=Math.hypot(b.vx,b.vy);
     const steps=Math.max(1, Math.ceil(speed*dt/(b.r*0.9)));
     const sx=b.vx*dt/steps, sy=b.vy*dt/steps, stepLen=Math.hypot(sx,sy);
     for(let s=0;s<steps && b.alive;s++){
       b.x+=sx; b.y+=sy; b.traveled+=stepLen;
-      if(b.x<ARENA.x||b.x>ARENA.x+ARENA.w||b.y<ARENA.y||b.y>ARENA.y+ARENA.h){ b.alive=false; break; }
-      let hitWall=false;
-      for(const o of OBSTACLES){ if(circleRectOverlap(b.x,b.y,b.r,o)){ hitWall=true; break; } }
-      if(hitWall){ spawnHit(b.x,b.y,"#aab0d0"); b.alive=false; break; }
+      if(b.x<ARENA.x||b.x>ARENA.x+ARENA.w||b.y<ARENA.y||b.y>ARENA.y+ARENA.h){
+        if(b.boomerang && b.phase==="out"){ b.phase="back"; b.x=clamp(b.x,ARENA.x,ARENA.x+ARENA.w); b.y=clamp(b.y,ARENA.y,ARENA.y+ARENA.h); break; }
+        if(b.bounce){                                   // 통통비행기: 경기장 가장자리에서도 반사
+          if((b.bounces||0)>=b.maxBounce){ b.alive=false; break; }
+          if(b.x<ARENA.x||b.x>ARENA.x+ARENA.w) b.vx=-b.vx; else b.vy=-b.vy;
+          b.x=clamp(b.x,ARENA.x,ARENA.x+ARENA.w); b.y=clamp(b.y,ARENA.y,ARENA.y+ARENA.h);
+          b.bounces=(b.bounces||0)+1; b.lastWall=null; b.lastBounceAt=b.age||0;
+          spawnHit(b.x,b.y,b.color); break;
+        }
+        b.alive=false; break;
+      }
+      // 벽: 부메랑은 나갈 때 복귀 전환, 복귀 중엔 통과. 통통비행기(bounce)는 반사. 일반탄은 소멸.
+      let hitWall=false, wallRef=null;
+      for(const o of OBSTACLES){ if(circleRectOverlap(b.x,b.y,b.r,o)){ hitWall=true; wallRef=o; break; } }
+      if(hitWall){
+        if(b.boomerang){ if(b.phase==="out"){ b.phase="back"; b.x-=sx; b.y-=sy; break; } }
+        else if(b.bounce){ if(!bounceBullet(b, wallRef, sx, sy)){ b.alive=false; } break; }
+        else { spawnHitFx(b.x,b.y,b.wid,"#aab0d0"); b.alive=false; break; }
+      }
       const list=targetsOf(b.team);
       for(const t of list){
         if(canBeHit(t) && dist(b.x,b.y,t.x,t.y)<b.r+t.r){
+          if(b.boomerang){
+            const hm=(b.phase==="out")?b.hitO:b.hitB;
+            if(hm[t.id]) continue;                              // 같은 적: 방향별 1회만
+            hm[t.id]=true;
+            const applied=applyDamage(t, b.damage, b.team, b.ownerId, b.x, b.y);
+            if(applied>0){
+              if(b.wref) applyWeaponHitEffects(b.wref, t, b.x, b.y);
+              if(b.countsForPlayer){ stats.shotsHit++;
+                tryChargeGauge(b.aid, t.id, ()=>{ superGauge=Math.min(GAME_CONFIG.superCharge, superGauge+GAME_CONFIG.superChargePerHit); }); }
+              spawnHitFx(b.x,b.y,b.wid,b.color);
+            }
+            continue;                                           // 부메랑은 적을 관통(복귀 타격을 위해 유지)
+          }
+          if(b.ultCid && !canUltDamage(b.ultCid, t.id, b.ultMaxHits||4)){ b.alive=false; break; }  // 럭키 C: 같은 대상 최대 피해 40 상한
           const applied=applyDamage(t, b.damage, b.team, b.ownerId, b.x, b.y);
+          if(applied>0 && b.wref) applyWeaponHitEffects(b.wref, t, b.x, b.y);
           if(applied>0 && b.countsForPlayer){
             stats.shotsHit++;
-            superGauge=Math.min(GAME_CONFIG.superCharge, superGauge+GAME_CONFIG.superChargePerHit);
+            tryChargeGauge(b.aid, t.id, ()=>{ superGauge=Math.min(GAME_CONFIG.superCharge, superGauge+GAME_CONFIG.superChargePerHit); });
           }
-          spawnHit(b.x,b.y,b.color);
+          spawnHitFx(b.x,b.y,b.wid,b.color);
           b.alive=false; break;
         }
       }
       if(!b.alive) break;
-      if(b.traveled>b.maxRange){ b.alive=false; break; }
+      if(!b.boomerang && b.traveled>b.maxRange){ b.alive=false; break; }
     }
   }
   bullets=bullets.filter(b=>b.alive);
+}
+// 통통 거대 비행기(달이 C): 벽/외곽 반사. 같은 벽 0.12초 내 재반사 금지. 반사 6회/6초 초과 시 소멸.
+function bounceBullet(b, wall, sx, sy){
+  b.x-=sx; b.y-=sy;                                             // 벽 안에서 빼내기
+  const now=b.age||0;
+  if(b.lastWall===wall && now-(b.lastBounceAt||-1)<0.12) return true;  // 같은 벽 재반사 금지(모서리 떨림 방지)
+  if((b.bounces||0)>=b.maxBounce) return false;
+  // 어느 축으로 반사할지: 벽 사각형 기준 침투 방향 판단
+  if(wall){
+    const cx=clamp(b.x, wall.x, wall.x+wall.w), cy=clamp(b.y, wall.y, wall.y+wall.h);
+    if(Math.abs(b.x-cx)>Math.abs(b.y-cy)) b.vx=-b.vx; else b.vy=-b.vy;
+  } else { b.vx=-b.vx; }
+  b.bounces=(b.bounces||0)+1; b.lastWall=wall; b.lastBounceAt=now;
+  spawnHit(b.x,b.y,b.color);
+  return true;
 }
 
 function updateEffects(dt){
@@ -2137,6 +2610,7 @@ function update(dt){
   for(const a of allies) updateAI(a, dt);
   for(const e of enemies) updateAI(e, dt);
   updateBullets(dt);
+  tickSkillZones(dt, envLocal());                                     // X/C 장판(별똥별·가시·얼음·구급상자·블랙홀)
   tickPowerupsHost(dt, [player]);                                     // 아이템: 로컬은 플레이어만 획득
   updateEffects(dt);
   if(matchElapsed>=GAME_CONFIG.gameTime){ matchElapsed=GAME_CONFIG.gameTime; endGame(); }
@@ -2173,7 +2647,8 @@ function grantMatchReward(){
   else profile.draws+=1;
 
   matchDropName="";
-  const locked=WEAPONS.filter(w=>profile.unlockedWeapons.indexOf(w.id)<0);
+  // 무기 드랍: 학생 6종 고정 체제에서는 해금 개념이 없어 잠금(상점 재개편 때 함께 복구)
+  const locked = SHOP_ENABLED ? WEAPONS.filter(w=>profile.unlockedWeapons.indexOf(w.id)<0) : [];
   if((r.result==="win"||stats.bossKilled) && locked.length>0 && Math.random()<REWARD_CONFIG.weaponDropChance){
     const drop=locked[Math.floor(Math.random()*locked.length)];
     unlockWeapon(drop.id); matchDropName=drop.name;
@@ -2235,6 +2710,7 @@ function render(){
   if(gameState===STATE.PLAYING||gameState===STATE.PAUSED||gameState===STATE.OVER||gameState===STATE.ONLINE_PLAYING) drawPowerups(powerupsView());
 
   if(gameState===STATE.PLAYING || gameState===STATE.PAUSED || gameState===STATE.OVER){
+    drawSkillZonesPacked(packZones());     // X/C 장판(별똥별 예고·가시·얼음·구급상자·블랙홀)
     drawBullets();
     for(const e of enemies) drawFighter(e);
     for(const a of allies) drawFighter(a);
@@ -2531,6 +3007,13 @@ function drawArenaFloor(){
   ctx.save();
   ctx.fillStyle=map.floorColor; roundRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h,18); ctx.fill();
   ctx.beginPath(); ctx.rect(ARENA.x,ARENA.y,ARENA.w,ARENA.h); ctx.clip();
+  // 코덱스 바닥 타일(훈련장 테마 — training/lane3에 적용, 톤다운 오버레이로 게임 색감 유지)
+  const fimg=worldImage("tile_floor");
+  if(fimg && (map.id==="training"||map.id==="lane3")){
+    for(let tx=ARENA.x; tx<ARENA.x+ARENA.w; tx+=256)
+      for(let ty=ARENA.y; ty<ARENA.y+ARENA.h; ty+=256) ctx.drawImage(fimg, tx, ty, 256, 256);
+    ctx.fillStyle="rgba(10,14,40,0.42)"; ctx.fillRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h);
+  }
   ctx.strokeStyle="rgba(150,180,255,0.10)"; ctx.lineWidth=2;
   for(let gx=ARENA.x;gx<=ARENA.x+ARENA.w;gx+=64){ ctx.beginPath(); ctx.moveTo(gx,ARENA.y); ctx.lineTo(gx,ARENA.y+ARENA.h); ctx.stroke(); }
   for(let gy=ARENA.y;gy<=ARENA.y+ARENA.h;gy+=64){ ctx.beginPath(); ctx.moveTo(ARENA.x,gy); ctx.lineTo(ARENA.x+ARENA.w,gy); ctx.stroke(); }
@@ -2546,8 +3029,20 @@ function drawSpawnMark(x,y,color){
   ctx.beginPath(); ctx.arc(x,y,18,0,Math.PI*2); ctx.stroke(); ctx.restore();
 }
 function drawBushes(){
+  const bimg=worldImage("bush");
   for(const b of BUSHES){
     ctx.save();
+    if(bimg){
+      // 은신 영역 표시(연녹 바닥) + 수풀 이미지를 격자로 채움
+      ctx.fillStyle="rgba(46,150,86,0.35)"; roundRect(b.x,b.y,b.w,b.h,16); ctx.fill();
+      const cell=96, cols=Math.max(1,Math.round(b.w/cell)), rows=Math.max(1,Math.round(b.h/cell));
+      const cw=b.w/cols, chh=b.h/rows;
+      for(let i=0;i<cols;i++) for(let j=0;j<rows;j++){
+        const s=Math.min(cw,chh)*1.25;
+        ctx.drawImage(bimg, b.x+i*cw+cw/2-s/2, b.y+j*chh+chh/2-s/2, s, s*(bimg.naturalHeight||1)/(bimg.naturalWidth||1));
+      }
+      ctx.restore(); continue;
+    }
     ctx.fillStyle="rgba(46,150,86,0.78)"; roundRect(b.x,b.y,b.w,b.h,16); ctx.fill();
     ctx.fillStyle="rgba(28,110,60,0.6)";
     for(let i=0;i<10;i++){ const px=b.x+((i*53.7)%b.w), py=b.y+((i*37.3)%b.h); ctx.beginPath(); ctx.arc(px+8,py+8,9,0,Math.PI*2); ctx.fill(); }
@@ -2558,6 +3053,34 @@ function drawBushes(){
 function drawObstacles(){
   for(const o of OBSTACLES){
     ctx.save();
+    // 코덱스 지형 이미지(수정/별상자/바위) — 충돌 사각형 위에 바닥 정렬로 그림. 없으면 아래 도형 fallback.
+    const oimg=worldImage(o.kind==="crystal"?"ob_crystal":(o.kind==="box"?"ob_box":"ob_rock"));
+    if(oimg){
+      const iw=oimg.naturalWidth||1, ih=oimg.naturalHeight||1;
+      const oAsp=o.w/o.h, iAsp=iw/ih;
+      const mism=Math.max(oAsp/iAsp, iAsp/oAsp);
+      if(mism>1.75){
+        // 가늘고 긴 벽(3라인 구분벽 등): 이미지를 폭 기준으로 확대하면 거대해짐 → 작은 조각을 줄지어 타일링
+        ctx.fillStyle="rgba(0,0,0,0.20)";
+        ctx.beginPath(); ctx.ellipse(o.x+o.w/2, o.y+o.h*0.9, o.w*0.52, Math.max(8,o.h*0.3), 0, 0, Math.PI*2); ctx.fill();
+        const horiz=o.w>=o.h;
+        const len=horiz?o.w:o.h;
+        const s=Math.min(Math.min(o.w,o.h)*2.2, Math.max(o.w,o.h)*0.45);
+        const n=Math.max(2, Math.round(len/(s*0.62)));
+        const dh2=s*(ih/iw);
+        for(let i=0;i<n;i++){
+          const t=(i+0.5)/n;
+          if(horiz) ctx.drawImage(oimg, o.x+o.w*t-s/2, o.y+o.h-dh2+o.h*0.3, s, dh2);
+          else      ctx.drawImage(oimg, o.x+o.w/2-s/2, o.y+o.h*t-dh2/2, s, dh2);
+        }
+        ctx.restore(); continue;
+      }
+      ctx.fillStyle="rgba(0,0,0,0.20)";
+      ctx.beginPath(); ctx.ellipse(o.x+o.w/2, o.y+o.h*0.86, o.w*0.55, o.h*0.22, 0, 0, Math.PI*2); ctx.fill();
+      const dw=o.w*1.12, dh=dw*(ih/iw);
+      ctx.drawImage(oimg, o.x+o.w/2-dw/2, o.y+o.h-dh+o.h*0.06, dw, dh);
+      ctx.restore(); continue;
+    }
     if(o.kind==="crystal"){
       ctx.fillStyle="#3aa0c8"; roundRect(o.x,o.y,o.w,o.h,10); ctx.fill();
       ctx.fillStyle="rgba(190,240,255,0.5)";
@@ -2653,8 +3176,8 @@ function drawFighterInfo(f, alpha){
 }
 function drawBullets(){
   for(const b of bullets){
-    // 도구 발사체 이미지가 있으면 사용, 없으면 기존 원형 탄환.
-    if(b.team==="player" && drawProjectileSprite(selectedWeaponId, b.x, b.y, b.r, Math.atan2(b.vy||0,b.vx||0))) continue;
+    // 도구 발사체 이미지: 탄환에 기록된 무기 id(wid)로 그린다(아군 봇 포함). 없으면 기존 원형 탄환.
+    if(b.wid && drawProjectileSprite(b.wid, b.x, b.y, b.r, Math.atan2(b.vy||0,b.vx||0))) continue;
     ctx.save();
     const color=b.color||"#ffe066";
     const glow=ctx.createRadialGradient(b.x,b.y,1,b.x,b.y,b.r*2.2);
@@ -2677,6 +3200,52 @@ function drawEffects(){
     else if(e.kind==="superwave"){ ctx.globalAlpha=(1-k)*0.85; const r=e.radius*k; ctx.strokeStyle="#ffe066"; ctx.lineWidth=8*(1-k)+2; ctx.beginPath(); ctx.arc(e.x,e.y,r,0,Math.PI*2); ctx.stroke(); ctx.strokeStyle="rgba(255,255,255,0.7)"; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(e.x,e.y,r*0.7,0,Math.PI*2); ctx.stroke(); }
     else if(e.kind==="superfail"){ ctx.globalAlpha=1-k; ctx.fillStyle="#ffffff"; ctx.font="bold 16px 'Malgun Gothic',sans-serif"; ctx.textAlign="center"; ctx.fillText("게이지 부족!",e.x,e.y-50-20*k); }
     else if(e.kind==="bossArrival"){ ctx.globalAlpha=Math.sin(Math.min(1,k*2)*Math.PI)*0.9; ctx.fillStyle="#ff4d6d"; ctx.font="bold 70px 'Malgun Gothic',sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.shadowColor="rgba(255,80,110,0.9)"; ctx.shadowBlur=30; ctx.fillText("보스 등장!",e.x,e.y); ctx.shadowBlur=0; }
+    else if(e.kind==="hitfx"){   // 무기별 적중 효과(effect_hit.png). 파일 없으면 생성 시점에 fallback 처리됨.
+      const w=getWeapon(e.wid), img=w?getWeaponImage(w.assetId||e.wid,"effect_hit"):null;
+      if(img){ const s=(0.7+0.6*k)*34; ctx.globalAlpha=1-k; ctx.drawImage(img, e.x-s/2, e.y-s/2, s, s); }
+      else { ctx.globalAlpha=1-k; ctx.strokeStyle="#fff0a0"; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(e.x,e.y,6+18*k,0,Math.PI*2); ctx.stroke(); }
+    }
+    ctx.restore();
+  }
+}
+// X/C 장판 그리기(로컬=packZones(), 게스트=state.zones 공용 — 숫자만으로 렌더)
+function drawSkillZonesPacked(list){
+  if(!list || !list.length) return;
+  for(const z of list){
+    ctx.save();
+    if(z.t===0){        // 별똥별 예고(경고 원 + 줄어드는 링)
+      ctx.globalAlpha=0.55; ctx.strokeStyle="#ffd23f"; ctx.lineWidth=3;
+      ctx.setLineDash([8,6]); ctx.beginPath(); ctx.arc(z.x,z.y,z.r,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+      const p=0.5+0.5*Math.sin(uiTime*10); ctx.globalAlpha=0.25+0.2*p; ctx.fillStyle="#ffcf4d";
+      ctx.beginPath(); ctx.arc(z.x,z.y,z.r*clamp(1-(z.tm||0)/0.45,0.15,1),0,Math.PI*2); ctx.fill();
+      ctx.globalAlpha=0.9; ctx.fillStyle="#fff3b0"; ctx.font="bold 16px 'Malgun Gothic',sans-serif"; ctx.textAlign="center"; ctx.fillText("★",z.x,z.y+5);
+    } else if(z.t===1){ // 가시
+      ctx.globalAlpha=0.85; ctx.fillStyle="rgba(198,232,74,0.35)";
+      ctx.beginPath(); ctx.arc(z.x,z.y,z.r,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle="#c6e84a"; ctx.lineWidth=2;
+      for(let i=0;i<5;i++){ const a=uiTime*0.6+i*Math.PI*2/5; ctx.beginPath(); ctx.moveTo(z.x+Math.cos(a)*4,z.y+Math.sin(a)*4); ctx.lineTo(z.x+Math.cos(a)*(z.r-4),z.y+Math.sin(a)*(z.r-4)); ctx.stroke(); }
+    } else if(z.t===2){ // 얼음 바닥 — 코덱스 ice_field 이미지(없으면 도형)
+      const iimg=worldImage("ice_field");
+      if(iimg){
+        const iw=iimg.naturalWidth||1, ih=iimg.naturalHeight||1;
+        const dw=z.r*2.1, dh=dw*(ih/iw);
+        ctx.globalAlpha=0.9; ctx.drawImage(iimg, z.x-dw/2, z.y-dh/2, dw, dh);
+      } else {
+        ctx.globalAlpha=0.4; ctx.fillStyle="#9fdcff"; ctx.beginPath(); ctx.arc(z.x,z.y,z.r,0,Math.PI*2); ctx.fill();
+        ctx.globalAlpha=0.8; ctx.strokeStyle="#dff4ff"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(z.x,z.y,z.r,0,Math.PI*2); ctx.stroke();
+        ctx.fillStyle="#eef9ff"; ctx.font="bold 14px 'Malgun Gothic',sans-serif"; ctx.textAlign="center"; ctx.fillText("❄",z.x,z.y+5);
+      }
+    } else if(z.t===3){ // 구급상자
+      ctx.globalAlpha=0.95; ctx.fillStyle="#ffffff"; roundRect(z.x-14,z.y-11,28,22,5); ctx.fill();
+      ctx.strokeStyle="#e05a5a"; ctx.lineWidth=2; roundRect(z.x-14,z.y-11,28,22,5); ctx.stroke();
+      ctx.fillStyle="#e05a5a"; ctx.fillRect(z.x-3,z.y-7,6,14); ctx.fillRect(z.x-9,z.y-3,18,6);
+    } else if(z.t===4){ // 블랙홀
+      const g=ctx.createRadialGradient(z.x,z.y,4,z.x,z.y,z.r);
+      g.addColorStop(0,"rgba(60,20,120,0.85)"); g.addColorStop(0.6,"rgba(122,92,255,0.35)"); g.addColorStop(1,"rgba(122,92,255,0)");
+      ctx.fillStyle=g; ctx.beginPath(); ctx.arc(z.x,z.y,z.r,0,Math.PI*2); ctx.fill();
+      ctx.globalAlpha=0.9; ctx.strokeStyle="#c3b6ff"; ctx.lineWidth=2;
+      for(let i=0;i<3;i++){ const a=uiTime*2.2+i*Math.PI*2/3; ctx.beginPath(); ctx.arc(z.x,z.y,z.r*(0.35+0.2*i),a,a+1.6); ctx.stroke(); }
+    }
     ctx.restore();
   }
 }
@@ -2722,24 +3291,36 @@ function drawHUD(){
 
   for(const f of allFighters()) drawRespawnCountdown(f);
 
+  // 하단 전투 HUD: Z 탄창 · X 쿨타임 · C 게이지 동시 표시(1280 기준 겹침 없음)
   ctx.save();
   ctx.fillStyle="rgba(10,12,32,0.72)"; ctx.fillRect(0,656,LOGW,64);
-  const barX=24,barY=676,barW=320,barH=22, ready=superGauge>=GAME_CONFIG.superCharge;
-  ctx.fillStyle="#cfd6f0"; ctx.font="bold 14px 'Malgun Gothic',sans-serif"; ctx.textAlign="left"; ctx.textBaseline="middle";
-  ctx.fillText("궁극기("+player.char.superName+")",barX,666);
-  ctx.fillStyle="rgba(0,0,0,0.5)"; roundRect(barX,barY,barW,barH,8); ctx.fill();
+  const barY=676, barH=22;
+  // ── C 궁극기 게이지(왼쪽) ──
+  const cX=24, cW=210, ready=superGauge>=GAME_CONFIG.superCharge;
+  ctx.fillStyle="#cfd6f0"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.textAlign="left"; ctx.textBaseline="middle";
+  ctx.fillText("C 궁극기 · "+(player.char.ultName||player.char.superName||""), cX, 665);
+  ctx.fillStyle="rgba(0,0,0,0.5)"; roundRect(cX,barY,cW,barH,8); ctx.fill();
   const ratio=clamp(superGauge/GAME_CONFIG.superCharge,0,1);
   if(ready){ const p=0.5+0.5*Math.sin(uiTime*8); ctx.fillStyle="rgba(255,225,80,"+(0.7+p*0.3)+")"; } else ctx.fillStyle="#5fa0ff";
-  roundRect(barX,barY,barW*ratio,barH,8); ctx.fill();
-  ctx.strokeStyle=ready?"#fff3b0":"#7088c0"; ctx.lineWidth=ready?3:2; roundRect(barX,barY,barW,barH,8); ctx.stroke();
-  ctx.fillStyle="#ffffff"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.textAlign="left"; ctx.fillText(Math.floor(superGauge)+"%",barX+barW+10,barY+barH/2);
-  ctx.fillStyle=ready?"#ffe066":"#8893bb"; ctx.fillText(ready?"사용 가능! (X)":"충전 중",barX+barW+60,barY+barH/2);
-  // 탄창(장전) 표시
+  roundRect(cX,barY,cW*ratio,barH,8); ctx.fill();
+  ctx.strokeStyle=ready?"#fff3b0":"#7088c0"; ctx.lineWidth=ready?3:2; roundRect(cX,barY,cW,barH,8); ctx.stroke();
+  ctx.fillStyle=ready?"#ffe066":"#ffffff"; ctx.font="bold 12px 'Malgun Gothic',sans-serif";
+  ctx.fillText(ready?"C 사용 가능!":Math.floor(superGauge)+"%", cX+cW+8, barY+barH/2);
+  // ── X 특수기술 쿨타임 ──
+  const xX=340;
+  const xcd=Math.max(0,player.specialCd||0), xReady=xcd<=0;
+  ctx.fillStyle="#9fdc9f"; ctx.font="bold 13px 'Malgun Gothic',sans-serif";
+  ctx.fillText("X · "+(player.char.specialName||""), xX, 665);
+  ctx.font="bold 15px 'Malgun Gothic',sans-serif";
+  if(xReady){ const p=0.5+0.5*Math.sin(uiTime*6); ctx.fillStyle="rgba(160,255,160,"+(0.7+p*0.3)+")"; ctx.fillText("준비 완료", xX, barY+barH/2); }
+  else { ctx.fillStyle="#8893bb"; ctx.fillText("쿨타임 "+xcd.toFixed(1)+"초", xX, barY+barH/2); }
+  // ── Z 탄창(중앙) ──
   ctx.textAlign="center"; ctx.font="bold 16px 'Malgun Gothic',sans-serif";
-  if(player.reloading){ const p=0.5+0.5*Math.sin(uiTime*10); ctx.fillStyle="rgba(255,210,77,"+(0.6+p*0.4)+")"; ctx.fillText("장전 중…",LOGW/2,barY+barH/2); }
-  else { ctx.fillStyle=(player.ammo<=2)?"#ff9a9a":"#cfeaff"; ctx.fillText("탄창 "+player.ammo+" / "+GAME_CONFIG.magazineSize+"  (R 장전)",LOGW/2,barY+barH/2); }
-  ctx.textAlign="right"; ctx.fillStyle="#aab4e0"; ctx.font="bold 14px 'Malgun Gothic',sans-serif";
-  ctx.fillText("방향키 이동 · Z 공격 · X 궁극기 · R 장전 · P 일시정지",LOGW-24,barY+barH/2);
+  if(player.reloading){ const p=0.5+0.5*Math.sin(uiTime*10); ctx.fillStyle="rgba(255,210,77,"+(0.6+p*0.4)+")"; ctx.fillText("Z 장전 중…",640,barY+barH/2); }
+  else { ctx.fillStyle=(player.ammo<=2)?"#ff9a9a":"#cfeaff"; ctx.fillText("Z 탄창 "+player.ammo+" / "+magSizeOf(player)+"  (R 장전)",640,barY+barH/2); }
+  // ── 조작 안내(오른쪽) ──
+  ctx.textAlign="right"; ctx.fillStyle="#aab4e0"; ctx.font="bold 13px 'Malgun Gothic',sans-serif";
+  ctx.fillText("방향키 이동 · Z 기본공격 · X 특수기술 · C 궁극기 · R 장전 · P 일시정지",LOGW-20,barY+barH/2);
   ctx.restore();
 }
 function drawRespawnCountdown(f){
@@ -2822,15 +3403,12 @@ function drawCharacterCard(x,y,w,h,ch,wpn){
   drawStatBar("공격", norm01(dmg,0.4,2.6), sx, sy, cardW); sy+=22;
   drawStatBar("사거리", norm01(rng,0.5,1.7), sx, sy, cardW); sy+=22;
   drawStatBar("다루기쉬움", ease, sx, sy, cardW); sy+=30;
-  // 도구
+  // Z 고정 도구 / X 특수기술 / C 궁극기 (역할·기술 이름 표시)
   ctx.textAlign="left"; ctx.textBaseline="alphabetic";
-  ctx.fillStyle="#9fe0ff"; ctx.font="bold 14px 'Malgun Gothic',sans-serif"; ctx.fillText("도구: "+(wpn?wpn.name:"-"), sx, sy); sy+=20;
-  ctx.fillStyle="#aab4e0"; ctx.font="12px 'Malgun Gothic',sans-serif"; ctx.fillText(wpn?(wpn.desc||"").slice(0,26):"", sx, sy); sy+=26;
-  // 궁극기
-  ctx.fillStyle="#ffd23f"; ctx.font="bold 14px 'Malgun Gothic',sans-serif"; ctx.fillText("특별기술: "+(ch.superName||""), sx, sy); sy+=20;
-  ctx.fillStyle="#dfe6ff"; ctx.font="12px 'Malgun Gothic',sans-serif";
-  const desc=superDescOf(ch); const line1=desc.slice(0,20), line2=desc.slice(20,42);
-  ctx.fillText(line1, sx, sy); if(line2){ sy+=17; ctx.fillText(line2, sx, sy); }
+  ctx.fillStyle="#9fe0ff"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.fillText("Z 도구: "+(wpn?wpn.name:"-")+" (고정)", sx, sy); sy+=20;
+  ctx.fillStyle="#8fe08f"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.fillText("X 특수기술: "+(ch.specialName||"-"), sx, sy); sy+=20;
+  ctx.fillStyle="#ffd23f"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.fillText("C 궁극기: "+(ch.ultName||ch.superName||"-"), sx, sy); sy+=20;
+  ctx.fillStyle="#aab4e0"; ctx.font="12px 'Malgun Gothic',sans-serif"; ctx.fillText((wpn?(wpn.desc||""):"").slice(0,26), sx, sy);
   ctx.restore();
 }
 // ── 시작 화면 = 게임 로비형 대시보드 ──
@@ -2854,7 +3432,7 @@ function drawStartScreen(){
   ctx.fillStyle="#bfffad"; ctx.font="bold 15px 'Malgun Gothic',sans-serif"; ctx.fillText("⭐ 내 캐릭터", 800, 122); ctx.restore();
   drawCharacterCard(800, 128, 286, 388, ch, w);
   ctx.save(); ctx.textAlign="center"; ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
-  ctx.fillText("C 캐릭터 변경 · W 무기 변경", 800+143, 536); ctx.restore();
+  ctx.fillText("C 캐릭터 변경 (도구·기술 자동 변경)", 800+143, 536); ctx.restore();
   // 하단 안내(짧게)
   ctx.save(); ctx.textAlign="center"; ctx.fillStyle="#aab4e0"; ctx.font="14px 'Malgun Gothic',sans-serif";
   ctx.fillText("방향키 선택 · Enter 실행 · Esc 뒤로", LOGW/2, LOGH-20); ctx.restore();
@@ -2887,17 +3465,15 @@ function drawLobbyMenu(ch, w){
     {type:"h", t:"게임"},
     {type:"i", i:0, label:"▶ 바로 시작 (오프라인)", color:"#5fd0ff", big:true},
     {type:"i", i:1, label:"온라인 센터 (방 만들기·참가)", color:"#c79bff"},
-    {type:"h", t:"내 캐릭터 / 무기"},
-    {type:"i", i:2, label:"캐릭터", val:ch.name},
-    {type:"i", i:3, label:"무기", val:w.name},
-    {type:"h", t:"오프라인 설정"},
-    {type:"i", i:4, label:"난이도", val:getDifficulty(selectedDifficultyId).name},
-    {type:"i", i:5, label:"맵", val:getMap(selectedMapId).name},
-    {type:"i", i:6, label:"모드(AI 대전)", val:getMode(selectedModeId).name},
-    {type:"h", t:"더보기"},
-    {type:"i", i:7, label:"상점 / 수집"},
-    {type:"i", i:8, label:"로그아웃"},
-    {type:"i", i:9, label:"교사용 모드 ⚙", teacher:true}
+    {type:"h", t:"내 캐릭터 (도구는 캐릭터 고정)"},
+    {type:"i", i:2, label:"캐릭터", val:ch.name+" · "+w.name},
+    {type:"h", t:"혼자 도전 (AI 연습 대전 · 스테이지 캠페인 준비 중)"},
+    {type:"i", i:3, label:"난이도", val:getDifficulty(selectedDifficultyId).name},
+    {type:"i", i:4, label:"맵", val:getMap(selectedMapId).name},
+    {type:"i", i:5, label:"대전 방식", val:getMode(selectedModeId).name},
+    {type:"h", t:"더보기 · 상점 준비 중"},
+    {type:"i", i:6, label:"로그아웃"},
+    {type:"i", i:7, label:"교사용 모드 ⚙", teacher:true}
   ];
   let y=124;
   for(const e of entries){
@@ -3030,7 +3606,7 @@ function handleOnlineLobbyKey(code){
 function handleOnlinePlayKey(code){
   if(code==="Escape"){ confirmLeave=true; return; }
   if(code==="KeyR"){ reloadWeaponManual(); return; }   // 온라인에서도 R 수동 장전
-  // 궁극기(X)는 온라인에서도 활성(아래 super 입력 경로로 처리). 여기선 토스트 제거.
+  // X 특수기술/C 궁극기는 온라인에서도 입력 필드(special/ultimate)로 host가 판정한다.
 }
 
 // 나가기 확정 시 실제 퇴장 처리(온라인이면 방 정리 후 시작화면)
@@ -3104,33 +3680,43 @@ function resetOnlineMatchFromRoom(){
   OBSTACLES=getMap(onlineMapId()).obstacles; BUSHES=getMap(onlineMapId()).bushes;
   const map=getMap(onlineMapId());
   onlineFighters.host  = makeOnlineFighter("host",  { x:map.playerSpawn.x, y:map.playerSpawn.y, facing:0,
-                          characterId:meta.characterHost||"lumi", weaponId:meta.weaponHost||"star_blaster" });
+                          characterId:meta.characterHost||"student_01", weaponId:null });
   onlineFighters.guest = makeOnlineFighter("guest", { x:map.enemySpawn.x, y:map.enemySpawn.y, facing:Math.PI,
-                          characterId:meta.characterGuest||"lumi", weaponId:meta.weaponGuest||"star_blaster" });
+                          characterId:meta.characterGuest||"student_01", weaponId:null });
   onlineBullets=[]; onlineTimeLeft=GAME_CONFIG.gameTime; onlineWinner=null;
+  resetSkillZones(); resetAttackLog();
   POWERUPS=[]; powerupAcc=0; powerupId=0;
   onlineWriteAcc=0; onlineInputAcc=0; onlineLastInputStr="";
   onlineRender={ host:null, guest:null }; onlineBulletsView=[]; onlineLastStateRef=null; onlinePredict=null;
   onlinePredictBullets=[]; onlinePredictCd=0;
 }
 function makeOnlineFighter(slot, d){
-  const ch=getCharacter(d.characterId);
+  const lo=sanitizeLoadout(d.characterId, d.weaponId);   // 잘못된/레거시 id → 학생 캐릭터 + 고정 무기 교정
+  const ch=getCharacter(lo.characterId);
   const maxHp=GAME_CONFIG.playerMaxHp*ch.hpMul;
-  return { slot:slot, x:d.x, y:d.y, r:22, facing:d.facing||0,
-    char:ch, weaponId:d.weaponId, color:ch.color, subColor:ch.subColor, name:ch.name,
+  const f={ slot:slot, x:d.x, y:d.y, r:22, facing:d.facing||0,
+    char:ch, weaponId:lo.weaponId, color:ch.color, subColor:ch.subColor, name:ch.name,
     maxHp:maxHp, hp:maxHp, displayHp:maxHp, moveSpeed:GAME_CONFIG.playerMoveSpeed*ch.speedMul,
     cooldown:0, score:0, dead:false, respawnTimer:0, invincibleTimer:0, hitFlash:0,
     spawnX:d.x, spawnY:d.y,
-    ammo:GAME_CONFIG.magazineSize, reloading:false, reloadTimer:0, superGauge:0 };
+    reloading:false, reloadTimer:0, superGauge:0, specialCd:0 };
+  f.ammo=magSizeOf(f);
+  return f;
 }
 
 /* ---- 입력 송신(throttle + 변화 시 즉시) ---- */
 function readLocalInput(){
-  if(confirmLeave) return emptyInput();   // 나가기 확인 중에는 이동/공격/궁극기 입력 무시
+  if(confirmLeave) return emptyInput();   // 나가기 확인 중에는 이동/공격/기술 입력 무시
   return { up:keysDown.has("ArrowUp"), down:keysDown.has("ArrowDown"),
            left:keysDown.has("ArrowLeft"), right:keysDown.has("ArrowRight"),
-           attack:keysDown.has("KeyZ"), super:keysDown.has("KeyX")||keysDown.has("Space"),
-           reload:keysDown.has("KeyR") };   // 온라인 장전: host가 input.reload로 처리
+           attack:keysDown.has("KeyZ"),
+           special:keysDown.has("KeyX"),                    // X 특수기술(host가 edge 판정)
+           ultimate:keysDown.has("KeyC"),                   // C 궁극기(host가 edge 판정)
+           super:false,                                     // 구버전 필드(하위호환: host가 ultimate||super로 해석)
+           reload:keysDown.has("KeyR"),
+           pick: (keysDown.has("Digit1")||keysDown.has("Numpad1"))?0
+               : (keysDown.has("Digit2")||keysDown.has("Numpad2"))?1
+               : (keysDown.has("Digit3")||keysDown.has("Numpad3"))?2 : -1 };   // PVE 강화 3택1(host 판정)
 }
 function sendMyInput(dt){
   const inp=readLocalInput(), str=JSON.stringify(inp);
@@ -3160,6 +3746,7 @@ function updateOnlineHost(dt){
   updateOnlineFighter(H, hi, dt);
   updateOnlineFighter(G, gi, dt);
   updateOnlineBullets(dt);
+  tickSkillZones(dt, envOnline1v1());
   tickPowerupsHost(dt, [H, G]);
   onlineTimeLeft-=dt;
   H.displayHp=lerp(H.displayHp,H.hp,Math.min(1,dt*8)); G.displayHp=lerp(G.displayHp,G.hp,Math.min(1,dt*8));
@@ -3174,7 +3761,7 @@ function updateOnlineGuest(dt){
   // 새 스냅샷이 도착하면 탄환 뷰를 받은 값으로 갱신(권한값 기준 보정)
   if(s !== onlineLastStateRef){
     onlineLastStateRef=s;
-    onlineBulletsView=(s.bullets||[]).map(b=>({ x:b.x, y:b.y, vx:b.vx||0, vy:b.vy||0, r:b.r, c:b.c, o:b.o }));
+    onlineBulletsView=(s.bullets||[]).map(b=>({ x:b.x, y:b.y, vx:b.vx||0, vy:b.vy||0, r:b.r, c:b.c, o:b.o, w:b.w||null }));
   }
   // 스냅샷 사이에는 탄환을 속도로 외삽해 부드럽게 진행
   for(const b of onlineBulletsView){ b.x+=b.vx*dt; b.y+=b.vy*dt; }
@@ -3221,7 +3808,7 @@ function updateOnlineGuest(dt){
       let a=onlinePredict.facing; if(count>1) a=onlinePredict.facing-spread/2+spread*(i/(count-1));
       const mz=onlinePredict.r+6;
       onlinePredictBullets.push({ x:onlinePredict.x+Math.cos(a)*mz, y:onlinePredict.y+Math.sin(a)*mz,
-        vx:Math.cos(a)*speed, vy:Math.sin(a)*speed, r:radius, c:w.color, traveled:0, maxRange:range, alive:true });
+        vx:Math.cos(a)*speed, vy:Math.sin(a)*speed, r:radius, c:w.color, w:w.id, traveled:0, maxRange:range, alive:true });
     }
     onlinePredictCd=GAME_CONFIG.playerAttackCooldown*w.cooldownMul;
   }
@@ -3242,82 +3829,106 @@ function updateOnlineFighter(f, input, dt){
   if(f.dead){ f.respawnTimer-=dt; if(f.respawnTimer<=0) respawnOnline(f); return; }
   if(f.hitFlash>0) f.hitFlash-=dt;
   if(f.invincibleTimer>0) f.invincibleTimer-=dt;
-  let mx=0,my=0;
-  if(input.up)my-=1; if(input.down)my+=1; if(input.left)mx-=1; if(input.right)mx+=1;
-  const ml=Math.hypot(mx,my);
-  tickStatus(f, dt); applyTrapTo(f);
-  if(ml>0){ mx/=ml; my/=ml; moveEntity(f, mx*effSpeed(f)*dt, my*effSpeed(f)*dt); f.facing=Math.atan2(my,mx); }
+  tickStatus(f, dt); applyTrapTo(f); tickThornTrail(f);
+  // X/C: 눌림 순간(edge)만 발동 — 키를 누르고 있어도 반복 발동하지 않음(host 판정)
+  const sp=!!input.special, ult=!!(input.ultimate||input.super);
+  if(sp && !f._pSp) castSpecialFor(f, envOnline1v1());
+  if(ult && !f._pUlt) castUltimateFor(f, envOnline1v1(), ()=>f.superGauge||0, v=>{ f.superGauge=v; });
+  f._pSp=sp; f._pUlt=ult;
   f.cooldown-=dt;
   tickReload(f, dt);
   if(input.reload) startReload(f);
-  if(input.super) tryOnlineSuper(f);
-  if(input.attack && f.cooldown<=0 && canFireAmmo(f)){ fireOnlineWeapon(f); consumeAmmo(f); f.cooldown=GAME_CONFIG.playerAttackCooldown*getWeapon(f.weaponId).cooldownMul; }
+  if(isFrozen(f)) return;                                  // 빙결: 이동·공격 불가
+  let mx=0,my=0;
+  if(input.up)my-=1; if(input.down)my+=1; if(input.left)mx-=1; if(input.right)mx+=1;
+  const ml=Math.hypot(mx,my);
+  if(ml>0){ mx/=ml; my/=ml; moveEntity(f, mx*effSpeed(f)*dt, my*effSpeed(f)*dt); f.facing=Math.atan2(my,mx); }
+  if(input.attack && f.cooldown<=0 && canFireAmmo(f)){ fireOnlineWeapon(f); consumeAmmo(f); f.cooldown=zCooldownOf(f, getWeapon(f.weaponId)); }
 }
-// 온라인 1v1 궁극기(host 판정). 게이지 가득 찼을 때만, 장전과 무관.
-function tryOnlineSuper(f){
-  if(f.dead || (f.superGauge||0) < GAME_CONFIG.superCharge) return;
-  f.superGauge=0; if(f.invincibleTimer>0) f.invincibleTimer=0;
-  const opp = f.slot==="host" ? onlineFighters.guest : onlineFighters.host;
-  const type=f.char.superType;
-  if(type==="dash"){
-    const a=f.facing, steps=16, stepLen=GAME_CONFIG.superDashDistance/steps; let hit=false;
-    spawnSuperWave(f.x,f.y,60);
-    for(let i=0;i<steps;i++){ moveEntity(f, Math.cos(a)*stepLen, Math.sin(a)*stepLen);
-      effects.push({kind:"dashTrail",x:f.x,y:f.y,t:0,life:0.35,color:f.color});
-      if(!hit && opp && !opp.dead && opp.invincibleTimer<=0 && dist(f.x,f.y,opp.x,opp.y)<f.r+opp.r+8){ applyOnlineDamage(opp,GAME_CONFIG.superDamage,f.slot,true); hit=true; } }
-  } else if(type==="triple"){
-    const count=5, spread=deg2rad(48), speed=GAME_CONFIG.playerBulletSpeed*1.1, range=GAME_CONFIG.playerRange*1.2, radius=GAME_CONFIG.playerBulletRadius*1.3;
-    for(let i=0;i<count;i++){ const ang=f.facing-spread/2+spread*(i/(count-1)); const mz=f.r+6;
-      onlineBullets.push({x:f.x+Math.cos(ang)*mz,y:f.y+Math.sin(ang)*mz,vx:Math.cos(ang)*speed,vy:Math.sin(ang)*speed,r:radius,damage:GAME_CONFIG.superDamage,owner:f.slot,color:"#fff0a0",alive:true,traveled:0,maxRange:range,isSuper:true}); }
-  } else { // burst
-    spawnSuperWave(f.x,f.y,GAME_CONFIG.superRadius);
-    if(opp && !opp.dead && opp.invincibleTimer<=0 && dist(f.x,f.y,opp.x,opp.y)<=GAME_CONFIG.superRadius+opp.r){
-      applyOnlineDamage(opp,GAME_CONFIG.superDamage,f.slot,true);
-      pushFighter(opp, Math.atan2(opp.y-f.y,opp.x-f.x), GAME_CONFIG.superKnockback);
-    }
-  }
+// ── env 어댑터: 온라인 1v1(host 판정) ──
+function envOnline1v1(){
+  return {
+    foes(f){ const opp=f.slot==="host"?onlineFighters.guest:onlineFighters.host;
+      return (opp && !opp.dead && opp.invincibleTimer<=0) ? [{e:opp,key:opp.slot,isBoss:false,isFighter:true}] : []; },
+    allies(f){ return (f && !f.dead) ? [f] : []; },        // 1v1은 자기 자신만(모아 C → 자신 회복)
+    damage(f,o,dmg){ applyOnlineDamage(o.e,dmg,f.slot,true); return dmg; },
+    heal(t,amt){ t.hp=Math.min(t.maxHp,t.hp+amt); effects.push({kind:"respawn",x:t.x,y:t.y,t:0,life:0.4,color:"#4bd86b"}); },
+    spawnBullet(f,spec){ const b=makeSkillBullet(f,spec); b.owner=f.slot; onlineBullets.push(b); }
+  };
 }
 function fireOnlineWeapon(f){
   f.fireRevealTimer=GAME_CONFIG.bushAttackRevealTime;   // 풀숲: 공격하면 잠시 드러남
-  const w=getWeapon(f.weaponId), c=f.char;
-  const count=w.spreadCount, spread=deg2rad(w.spreadAngleDeg||0);
-  const speed=GAME_CONFIG.playerBulletSpeed*c.bulletSpeedMul*w.bulletSpeedMul;
-  const dmg=GAME_CONFIG.playerDamage*c.damageMul*w.damageMul;
-  const range=GAME_CONFIG.playerRange*w.rangeMul;
-  const radius=GAME_CONFIG.playerBulletRadius*w.bulletRadiusMul;
+  const w=getWeapon(f.weaponId);
+  const spec=weaponFireSpec(f, w), aid=newAttackId();
+  const count=spec.count, spread=deg2rad(spec.spreadDeg||0);
   for(let i=0;i<count;i++){
     let a=f.facing; if(count>1) a=f.facing-spread/2+spread*(i/(count-1));
     const mz=f.r+6, bx=f.x+Math.cos(a)*mz, by=f.y+Math.sin(a)*mz;
-    onlineBullets.push({ x:bx,y:by,vx:Math.cos(a)*speed,vy:Math.sin(a)*speed,r:radius,damage:dmg,owner:f.slot,color:w.color,alive:true,traveled:0,maxRange:range });
+    const b={ x:bx,y:by,vx:Math.cos(a)*spec.speed,vy:Math.sin(a)*spec.speed,r:spec.radius,damage:spec.damage,
+      owner:f.slot,color:spec.color,alive:true,traveled:0,maxRange:spec.range,aid:aid,wid:spec.wid,wref:spec.wref,age:0 };
+    if(spec.boomerang){ b.boomerang=true; b.phase="out"; b.spd=spec.speed; b.hitO={}; b.hitB={}; }
+    onlineBullets.push(b);
   }
 }
 function updateOnlineBullets(dt){
   for(const b of onlineBullets){
     if(!b.alive) continue;
+    b.age=(b.age||0)+dt;
+    if(b.age>(b.life||5)){ b.alive=false; continue; }
+    if(b.boomerang){
+      const o=onlineFighters[b.owner];
+      if(!o || o.dead){ if(b.phase==="back"){ b.alive=false; continue; } }
+      else if(!steerBoomerang(b, o.x, o.y)){ b.alive=false; continue; }
+    }
     const speed=Math.hypot(b.vx,b.vy);
     const steps=Math.max(1,Math.ceil(speed*dt/(b.r*0.9)));
     const sx=b.vx*dt/steps, sy=b.vy*dt/steps, sl=Math.hypot(sx,sy);
     for(let s=0;s<steps&&b.alive;s++){
       b.x+=sx; b.y+=sy; b.traveled+=sl;
-      if(b.x<ARENA.x||b.x>ARENA.x+ARENA.w||b.y<ARENA.y||b.y>ARENA.y+ARENA.h){ b.alive=false; break; }
-      let wall=false; for(const o of OBSTACLES){ if(circleRectOverlap(b.x,b.y,b.r,o)){ wall=true; break; } }
-      if(wall){ b.alive=false; break; }
+      if(b.x<ARENA.x||b.x>ARENA.x+ARENA.w||b.y<ARENA.y||b.y>ARENA.y+ARENA.h){
+        if(b.boomerang && b.phase==="out"){ b.phase="back"; b.x=clamp(b.x,ARENA.x,ARENA.x+ARENA.w); b.y=clamp(b.y,ARENA.y,ARENA.y+ARENA.h); break; }
+        if(b.bounce){ if((b.bounces||0)>=b.maxBounce){ b.alive=false; break; }
+          if(b.x<ARENA.x||b.x>ARENA.x+ARENA.w) b.vx=-b.vx; else b.vy=-b.vy;
+          b.x=clamp(b.x,ARENA.x,ARENA.x+ARENA.w); b.y=clamp(b.y,ARENA.y,ARENA.y+ARENA.h);
+          b.bounces=(b.bounces||0)+1; b.lastWall=null; b.lastBounceAt=b.age; break; }
+        b.alive=false; break;
+      }
+      let wall=false, wref=null; for(const o of OBSTACLES){ if(circleRectOverlap(b.x,b.y,b.r,o)){ wall=true; wref=o; break; } }
+      if(wall){
+        if(b.boomerang){ if(b.phase==="out"){ b.phase="back"; b.x-=sx; b.y-=sy; } break; }
+        if(b.bounce){ if(!bounceBullet(b,wref,sx,sy)) b.alive=false; break; }
+        spawnHitFx(b.x,b.y,b.wid,"#aab0d0"); b.alive=false; break;
+      }
       const target = b.owner==="host" ? onlineFighters.guest : onlineFighters.host;
       if(target && !target.dead && target.invincibleTimer<=0 && dist(b.x,b.y,target.x,target.y)<b.r+target.r){
-        applyOnlineDamage(target, b.damage, b.owner, b.isSuper); b.alive=false; break;
+        if(b.boomerang){
+          const hm=(b.phase==="out")?b.hitO:b.hitB;
+          if(!hm[target.slot]){ hm[target.slot]=true;
+            applyOnlineDamage(target,b.damage,b.owner,b.isSuper,b.aid);
+            if(b.wref) applyWeaponHitEffects(b.wref,target,b.x,b.y);
+            spawnHitFx(b.x,b.y,b.wid,b.color); }
+          continue;                                        // 부메랑은 관통(복귀 타격)
+        }
+        applyOnlineDamage(target, b.damage, b.owner, b.isSuper, b.aid);
+        if(b.wref) applyWeaponHitEffects(b.wref,target,b.x,b.y);
+        spawnHitFx(b.x,b.y,b.wid,b.color);
+        b.alive=false; break;
       }
-      if(b.traveled>b.maxRange){ b.alive=false; break; }
+      if(!b.boomerang && b.traveled>b.maxRange){ b.alive=false; break; }
     }
   }
   onlineBullets=onlineBullets.filter(b=>b.alive);
   if(onlineBullets.length>40) onlineBullets=onlineBullets.slice(onlineBullets.length-40); // DB payload 제한
 }
-function applyOnlineDamage(target, dmg, fromSlot, isSuper){
+function applyOnlineDamage(target, dmg, fromSlot, isSuper, aid){
   if(target.dead || target.invincibleTimer>0) return;
+  dmg=incomingDamage(target, dmg);                        // 방패/질주 감소(최소 1)
   target.hp-=dmg; target.hitFlash=0.15;
-  // 기본 공격(비궁극기) 명중 시 공격자 궁극기 게이지 충전
+  // 기본 공격(Z)만 궁극기 게이지 충전 — attackId당 같은 대상 최대 1회(=20)
   const attacker = fromSlot==="host" ? onlineFighters.host : onlineFighters.guest;
-  if(attacker && !isSuper) attacker.superGauge=Math.min(GAME_CONFIG.superCharge,(attacker.superGauge||0)+GAME_CONFIG.superChargePerHit);
+  if(attacker && !isSuper){
+    tryChargeGauge(aid, target.slot, ()=>{ attacker.superGauge=Math.min(GAME_CONFIG.superCharge,(attacker.superGauge||0)+GAME_CONFIG.superChargePerHit); });
+  }
   if(target.hp<=0){
     target.hp=0; target.dead=true; target.respawnTimer=GAME_CONFIG.respawnDelay;
     const killer = fromSlot==="host" ? onlineFighters.host : onlineFighters.guest;
@@ -3332,15 +3943,16 @@ function respawnOnline(f){
 function packFighter(f){
   return { x:Math.round(f.x), y:Math.round(f.y), hp:Math.round(f.hp), maxHp:Math.round(f.maxHp),
     facing:Math.round(f.facing*100)/100, score:f.score, dead:!!f.dead, inv:f.invincibleTimer>0, charId:f.char.id,
-    am:f.ammo, rl:f.reloading?1:0, sg:Math.round(f.superGauge||0), fr:f.fireRevealTimer>0?1:0 };
+    am:f.ammo, rl:f.reloading?1:0, sg:Math.round(f.superGauge||0), fr:f.fireRevealTimer>0?1:0,
+    xc:Math.round(Math.max(0,f.specialCd||0)*10)/10 };   // X 쿨타임(HUD용, 숫자만)
 }
 function hostWriteOnlineState(){
   const H=onlineFighters.host, G=onlineFighters.guest;
   if(!H||!G) return;
   const bl=[];
-  for(const b of onlineBullets) bl.push({ x:Math.round(b.x), y:Math.round(b.y), r:Math.round(b.r), o:b.owner, c:b.color, vx:Math.round(b.vx), vy:Math.round(b.vy) });
-  const pw=POWERUPS.map(p=>({x:p.x,y:p.y,t:p.type==="heal"?0:1,id:p.id}));
-  OnlineManager.writeHostState({ timeLeft:Math.max(0,Math.round(onlineTimeLeft)), host:packFighter(H), guest:packFighter(G), bullets:bl, powerups:pw });
+  for(const b of onlineBullets) bl.push({ x:Math.round(b.x), y:Math.round(b.y), r:Math.round(b.r), o:b.owner, c:b.color, vx:Math.round(b.vx), vy:Math.round(b.vy), w:b.wid||null });
+  const pw=POWERUPS.map(p=>({x:p.x,y:p.y,t:powerupPacketT(p),id:p.id}));
+  OnlineManager.writeHostState({ timeLeft:Math.max(0,Math.round(onlineTimeLeft)), host:packFighter(H), guest:packFighter(G), bullets:bl, powerups:pw, zones:packZones() });
 }
 function hostEndOnlineMatch(){
   const H=onlineFighters.host, G=onlineFighters.guest;
@@ -3366,11 +3978,12 @@ function getOnlineDrawData(){
       timeLeft:Math.max(0,Math.ceil(onlineTimeLeft)),
       host: H?{ x:H.x,y:H.y,hp:H.hp,maxHp:H.maxHp,facing:H.facing,dead:H.dead,inv:H.invincibleTimer>0,charId:H.char.id,score:H.score,am:H.ammo,rl:H.reloading?1:0,sg:H.superGauge,fr:H.fireRevealTimer>0?1:0 }:null,
       guest:G?{ x:G.x,y:G.y,hp:G.hp,maxHp:G.maxHp,facing:G.facing,dead:G.dead,inv:G.invincibleTimer>0,charId:G.char.id,score:G.score,am:G.ammo,rl:G.reloading?1:0,sg:G.superGauge,fr:G.fireRevealTimer>0?1:0 }:null,
-      bullets: onlineBullets.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.color }))
+      bullets: onlineBullets.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.color,w:b.wid||null,vx:b.vx,vy:b.vy })),
+      zones: packZones()
     };
   } else {
     const s=OnlineManager.onlineState;
-    if(!s) return { timeLeft:GAME_CONFIG.gameTime, host:null, guest:null, bullets:[], waiting:true };
+    if(!s) return { timeLeft:GAME_CONFIG.gameTime, host:null, guest:null, bullets:[], zones:[], waiting:true };
     // 상대는 보간값, 내 캐릭터는 예측값으로 그린다(즉시 반응). 체력/점수 등은 권한값 그대로.
     const ownSlot=(OnlineManager.role==="host")?"host":"guest";
     const mkOpp=(p,slot)=>{ if(!p) return null; const r=onlineRender[slot]||p;
@@ -3381,12 +3994,14 @@ function getOnlineDrawData(){
     const guest = (ownSlot==="guest") ? mkOwn(s.guest) : mkOpp(s.guest,"guest");
     // 상대 총알은 권한값으로, 내 총알은 예측값으로 그린다(내 권한 총알은 가려 중복 방지)
     const oppSlot2=(ownSlot==="host")?"guest":"host";
-    const oppB=onlineBulletsView.filter(b=>b.o===oppSlot2).map(b=>({ x:b.x,y:b.y,r:b.r,c:b.c }));
-    const myB=onlinePredictBullets.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.c }));
-    return { timeLeft:s.timeLeft, host:host, guest:guest, bullets:oppB.concat(myB) };
+    const oppB=onlineBulletsView.filter(b=>b.o===oppSlot2).map(b=>({ x:b.x,y:b.y,r:b.r,c:b.c,w:b.w||null,vx:b.vx,vy:b.vy }));
+    const myB=onlinePredictBullets.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.c,w:b.w||null,vx:b.vx,vy:b.vy }));
+    return { timeLeft:s.timeLeft, host:host, guest:guest, bullets:oppB.concat(myB), zones:(s.zones||[]) };
   }
 }
 function drawOnlineBullet(b){
+  // 무기 발사체 스프라이트(wid) 우선 — 진행 방향으로 회전. 없으면 원형 fallback.
+  if(b.w && drawProjectileSprite(b.w, b.x, b.y, b.r, Math.atan2(b.vy||0,b.vx||0))) return;
   ctx.save();
   const color=b.c||"#ffe066";
   const glow=ctx.createRadialGradient(b.x,b.y,1,b.x,b.y,b.r*2.2);
@@ -3440,6 +4055,7 @@ function renderOnlineMatch(){
   const data=getOnlineDrawData();
   const me = OnlineManager.role==="host" ? data.host : data.guest;
   _viewer = me ? { x:me.x, y:me.y, team:"me" } : null;
+  drawSkillZonesPacked(data.zones);
   for(const b of data.bullets) drawOnlineBullet(b);
   drawOnlineFighter(data.host, OnlineManager.role==="host");
   drawOnlineFighter(data.guest, OnlineManager.role==="guest");
@@ -3451,46 +4067,53 @@ function renderOnlineMatch(){
 }
 // 내 전투 상태(탄창/장전/궁극기) — 온라인 모든 모드 공통. host는 직접, guest는 state에서.
 function myCombatStatus(){
-  const mag=GAME_CONFIG.magazineSize, sm=GAME_CONFIG.superCharge;
+  const sm=GAME_CONFIG.superCharge;
+  const pack=(ch,ammo,reloading,sg,xc,lives)=>({ ammo:ammo, mag:(getWeapon(getWeaponForCharacter(ch.id)).magazineSize||GAME_CONFIG.magazineSize),
+    reloading:reloading, sg:sg||0, superMax:sm, xc:Math.max(0,xc||0), lives:(lives===undefined||lives===null||lives<0)?null:lives,
+    superName:ch.ultName||ch.superName, specialName:ch.specialName||"", charName:ch.name, toolName:getWeapon(getWeaponForCharacter(ch.id)).name });
   if(isTeamOnline()){
     const slot=OnlineManager.mySlot;
     if(OnlineManager.role==="host"){ const f=tFighters[slot]; if(!f)return null;
-      return {ammo:f.ammo,mag:mag,reloading:!!f.reloading,sg:f.superGauge||0,superMax:sm,superName:f.char.superName,charName:f.char.name,toolName:getWeapon(f.weaponId).name}; }
+      return pack(f.char, f.ammo, !!f.reloading, f.superGauge, f.specialCd, f.lives); }
     const st=OnlineManager.onlineState, p=st&&st.fighters&&st.fighters[slot]; if(!p)return null;
-    const ch=getCharacter(tRosterCharId(slot)), pr=OnlineManager.players&&OnlineManager.players[slot];
-    return {ammo:p.am,mag:mag,reloading:!!p.rl,sg:p.sg||0,superMax:sm,superName:ch.superName,charName:ch.name,toolName:getWeapon((pr&&pr.weaponId)||"tool_01").name};
+    const ch=getCharacter(tRosterCharId(slot));
+    return pack(ch, p.am, !!p.rl, p.sg, p.xc, p.lv);
   } else {
     const role=OnlineManager.role, meta=OnlineManager.meta||{};
     if(role==="host"){ const f=onlineFighters.host; if(!f)return null;
-      return {ammo:f.ammo,mag:mag,reloading:!!f.reloading,sg:f.superGauge||0,superMax:sm,superName:f.char.superName,charName:f.char.name,toolName:getWeapon(f.weaponId).name}; }
+      return pack(f.char, f.ammo, !!f.reloading, f.superGauge, f.specialCd); }
     const st=OnlineManager.onlineState, p=st&&st[role]; if(!p)return null;
-    const cid=p.charId||meta.characterGuest||"student_01"; const ch=getCharacter(cid);
-    return {ammo:p.am,mag:mag,reloading:!!p.rl,sg:p.sg||0,superMax:sm,superName:ch.superName,charName:ch.name,toolName:getWeapon(meta.weaponGuest||"tool_01").name};
+    const cid=sanitizeCharacterId(p.charId||meta.characterGuest||"student_01"); const ch=getCharacter(cid);
+    return pack(ch, p.am, !!p.rl, p.sg, p.xc);
   }
 }
 // 바닥 왼쪽에 탄창 + 궁극기 게이지 표시(온라인용)
 function drawCombatStrip(){
   const s=myCombatStatus(); if(!s) return;
   ctx.save(); ctx.textBaseline="middle";
-  const barX=24, barY=678, barW=240, barH=18, ready=s.sg>=s.superMax;
-  // 내 캐릭터/도구 이름(상단)
-  ctx.textAlign="left"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#bfffad";
-  ctx.fillText("나: "+(s.charName||"")+" · "+(s.toolName||""), barX, 666);
-  // 궁극기
-  ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#cfd6f0";
-  ctx.fillText("궁극기("+(s.superName||"")+")", barX+230, 666);
+  const barX=24, barY=678, barW=190, barH=18, ready=s.sg>=s.superMax;
+  // 내 캐릭터/도구 이름(상단) + PVE 개인 목숨
+  ctx.textAlign="left"; ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#bfffad";
+  const livesTxt=(s.lives!==null&&s.lives!==undefined)?("  ♥ 내 목숨 "+s.lives):"";
+  ctx.fillText("나: "+(s.charName||"")+" · Z "+(s.toolName||"")+livesTxt, barX, 664);
+  // C 궁극기 게이지
   ctx.fillStyle="rgba(0,0,0,0.5)"; roundRect(barX,barY,barW,barH,7); ctx.fill();
   const ratio=clamp(s.sg/s.superMax,0,1);
   if(ready){ const p=0.5+0.5*Math.sin(uiTime*8); ctx.fillStyle="rgba(255,225,80,"+(0.7+p*0.3)+")"; } else ctx.fillStyle="#5fa0ff";
   roundRect(barX,barY,barW*ratio,barH,7); ctx.fill();
   ctx.strokeStyle=ready?"#fff3b0":"#7088c0"; ctx.lineWidth=ready?3:2; roundRect(barX,barY,barW,barH,7); ctx.stroke();
   ctx.fillStyle=ready?"#ffe066":"#8893bb"; ctx.font="bold 12px 'Malgun Gothic',sans-serif";
-  ctx.fillText(ready?"사용 가능!(X)":Math.floor(s.sg)+"%", barX+barW+8, barY+barH/2);
-  // 탄창
-  ctx.font="bold 15px 'Malgun Gothic',sans-serif";
+  ctx.fillText(ready?"C 사용 가능!":("C "+Math.floor(s.sg)+"%"), barX+barW+8, barY+barH/2);
+  // X 특수기술 쿨타임
+  const xX=barX+barW+92;
+  ctx.font="bold 12px 'Malgun Gothic',sans-serif";
+  if(s.xc<=0){ const p=0.5+0.5*Math.sin(uiTime*6); ctx.fillStyle="rgba(160,255,160,"+(0.7+p*0.3)+")"; ctx.fillText("X 준비 완료", xX, barY+barH/2); }
+  else { ctx.fillStyle="#8893bb"; ctx.fillText("X "+s.xc.toFixed(1)+"초", xX, barY+barH/2); }
+  // Z 탄창
+  ctx.font="bold 14px 'Malgun Gothic',sans-serif";
   if(s.ammo===undefined){ /* 봇/관전 */ }
-  else if(s.reloading){ const p=0.5+0.5*Math.sin(uiTime*10); ctx.fillStyle="rgba(255,210,77,"+(0.6+p*0.4)+")"; ctx.fillText("장전 중…", barX+barW+95, barY+barH/2); }
-  else { ctx.fillStyle=(s.ammo<=2)?"#ff9a9a":"#cfeaff"; ctx.fillText("탄창 "+s.ammo+"/"+s.mag+" (R)", barX+barW+95, barY+barH/2); }
+  else if(s.reloading){ const p=0.5+0.5*Math.sin(uiTime*10); ctx.fillStyle="rgba(255,210,77,"+(0.6+p*0.4)+")"; ctx.fillText("Z 장전 중…", xX+92, barY+barH/2); }
+  else { ctx.fillStyle=(s.ammo<=2)?"#ff9a9a":"#cfeaff"; ctx.fillText("Z 탄창 "+s.ammo+"/"+s.mag+" (R)", xX+92, barY+barH/2); }
   ctx.restore();
 }
 function drawOnlineHUD(data){
@@ -3510,7 +4133,7 @@ function drawOnlineHUD(data){
   ctx.fillStyle="#aab4e0"; ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.fillText("온라인 1대1 (베타) · 방 "+(OnlineManager.roomCode||""),LOGW/2,52);
   ctx.fillStyle="rgba(10,12,32,0.72)"; ctx.fillRect(0,656,LOGW,64);
   ctx.textAlign="right"; ctx.fillStyle="#aab4e0"; ctx.font="bold 14px 'Malgun Gothic',sans-serif";
-  ctx.fillText("방향키 이동 · Z 공격 · X 궁극기 · R 장전 · Esc 나가기",LOGW-24,688);
+  ctx.fillText("방향키 이동 · Z 기본공격 · X 특수기술 · C 궁극기 · R 장전 · Esc 나가기",LOGW-24,688);
   ctx.restore();
 }
 function drawCenterBanner(text, color){
@@ -3595,10 +4218,12 @@ function drawOnlineOver(){
    온라인 슬롯/팀 엔진 (3대3 PVP 등 다인 모드) — 1대1/로컬과 분리된 추가 엔진
    host가 모든 슬롯을 권한으로 계산하고, 각 클라이언트는 자기 slot input만 보낸다.
    ======================================================================= */
+/* 살리는 모드 4종(PRD 8장): 혼자 도전(로컬 AI 대전으로 우선 제공) · 온라인 1대1 · 온라인 3대3 · 1~6인 협동 PVE.
+   ruleType은 3v3 확장 여지(PRD 11.2 점령전): "tdm"(현재) → 추후 "capture" 추가 지점. */
 const ONLINE_MODES = [
-  { id:"online1v1", name:"온라인 1대1", desc:"친구와 1대1 대전",            maxPlayers:2, teams:["blue","red"], modeType:"pvp", ready:true },
-  { id:"online3v3", name:"온라인 3대3", desc:"최대 6명, 3명씩 팀 대전(빈자리 AI)", maxPlayers:6, teams:["blue","red"], modeType:"pvp", ready:true },
-  { id:"onlinePve6", name:"6인 협동 PVE", desc:"최대 6명 협동 스테이지(베타)", maxPlayers:6, teams:["pve"], modeType:"pve", ready:true }
+  { id:"online1v1", name:"온라인 1대1", desc:"친구와 1대1 대전 (90초)",      maxPlayers:2, teams:["blue","red"], modeType:"pvp", ruleType:"tdm", ready:true },
+  { id:"online3v3", name:"온라인 3대3", desc:"3명씩 팀 대전 · 빈자리 AI",     maxPlayers:6, teams:["blue","red"], modeType:"pvp", ruleType:"tdm", ready:true },
+  { id:"onlinePve6", name:"1~6인 협동 PVE", desc:"20스테이지 · 4구역 · 보스 4", maxPlayers:6, teams:["pve"], modeType:"pve", ruleType:"coop", ready:true }
 ];
 function getOnlineMode(id){ for(const m of ONLINE_MODES){ if(m.id===id) return m; } return ONLINE_MODES[0]; }
 function isTeamOnline(){ return OnlineManager.mode==="online3v3" || OnlineManager.mode==="onlinePve6"; }
@@ -3628,19 +4253,74 @@ let tEnemiesView = {};     // guest 적 보간용
 function tSpawnPos(base, idx){ const off=[[0,0],[64,-54],[-64,54],[64,54],[-64,-54],[0,78]]; const o=off[idx%off.length]; return { x:base.x+o[0], y:base.y+o[1] }; }
 
 function tMakeFighter(slot, team, characterId, weaponId, isBot, idx, map){
-  const ch=getCharacter(characterId);
+  const lo=sanitizeLoadout(characterId, weaponId);   // 네트워크/저장 값이 잘못돼도 학생 캐릭터 + 고정 무기로 교정
+  const ch=getCharacter(lo.characterId);
   const base = (team==="red") ? map.enemySpawn : map.playerSpawn;
   const p=tSpawnPos(base, idx), sp=findClearSpawn(p.x,p.y,22);
   const maxHp=GAME_CONFIG.playerMaxHp*ch.hpMul;
-  return { slot:slot, team:team, isBot:!!isBot, char:ch, weaponId:weaponId||"star_blaster",
+  const f={ slot:slot, team:team, isBot:!!isBot, char:ch, weaponId:lo.weaponId,
     name:ch.name, color:ch.color, subColor:ch.subColor,
     x:sp.x, y:sp.y, spawnX:base.x, spawnY:base.y, r:22, facing: team==="red"?Math.PI:0,
     maxHp:maxHp, hp:maxHp, displayHp:maxHp, moveSpeed:GAME_CONFIG.playerMoveSpeed*ch.speedMul,
     cooldown:0, score:0, dead:false, respawnTimer:0, invincibleTimer:0, hitFlash:0,
-    // 실제 플레이어만 탄창 사용(봇은 무한). 궁극기 게이지는 모두 보유(봇은 미사용).
-    ammo: isBot?undefined:GAME_CONFIG.magazineSize, reloading:false, reloadTimer:0, superGauge:0,
+    reloading:false, reloadTimer:0, superGauge:0, specialCd:0,
     ai:{ fireTimer:rand(0,0.5), strafeDir:1, strafeTimer:0, reTimer:0, stuckTimer:0, stuckDir:1 } };
+  // 실제 플레이어만 탄창 사용(봇은 무한). 궁극기 게이지는 모두 보유(봇은 미사용).
+  f.ammo = isBot?undefined:magSizeOf(f);
+  // PRD 12.2 협동 PVE 개인 목숨(보통 난이도 5개 기준 — PVE 방에 난이도 선택이 생기면 7/5/3 연동)
+  if(team==="pve") f.lives=PVE_LIVES_START;
+  return f;
 }
+const PVE_LIVES_START=5;   // PRD 12.2: 쉬움7/보통5/어려움3 — 현재 보통 고정
+
+/* ── PVE 개인 강화(PRD 13.2): 스테이지 종료 후 무작위 3개 중 1개 선택 ──
+   현재 런에서만 유지(계정 저장 없음). 상한은 max 스택으로 강제(감소류는 PRD 상한과 일치).
+   보스(5·10·15) 통과 후에는 '희귀 강화' = 같은 강화 2스택(상한 내) 1회 선택(PRD 15.6). */
+const PVE_UPGRADES=[
+  { id:"atk",    name:"공격 물약", desc:"Z 피해 +8%",              max:5 },
+  { id:"aspd",   name:"빠른 손",   desc:"공격 간격 6% 감소",        max:5 },
+  { id:"bspd",   name:"탄환 가속", desc:"탄속 +8%",                max:5 },
+  { id:"range",  name:"멀리멀리",  desc:"사거리 +8%",              max:4 },
+  { id:"hp",     name:"튼튼 물약", desc:"최대 체력 +10",           max:5 },
+  { id:"def",    name:"방어 물약", desc:"받는 피해 6% 감소",        max:5 },
+  { id:"mspd",   name:"빠른 발",   desc:"이동속도 +5%",            max:4 },
+  { id:"reload", name:"빠른 장전", desc:"장전시간 10% 감소",        max:4 },
+  { id:"xcd",    name:"반짝 시계", desc:"X 쿨타임 6% 감소",         max:5 },
+  { id:"bsize",  name:"큰 탄환",   desc:"탄환 크기 +8%",           max:4 },
+  { id:"regen",  name:"회복 별",   desc:"스테이지 시작 시 체력 15 회복", max:3 },
+  // 대체 후보(PRD 19.4: 세 후보가 모두 상한일 때) — 무작위 풀에서는 제외(max 0)
+  { id:"healnow", name:"체력 회복", desc:"즉시 최대 체력의 30% 회복", max:0 },
+  { id:"ammonow", name:"탄창 완충", desc:"즉시 탄창을 가득 채움",     max:0 }
+];
+function pveUpgradeDef(id){ for(const u of PVE_UPGRADES){ if(u.id===id) return u; } return PVE_UPGRADES[0]; }
+function upgStacks(f,id){ return (f && f.upg && f.upg[id])||0; }
+// 강화 적용(호스트 판정). rare=2스택(상한 내). 적용된 강화 이름 반환.
+function tPveApplyUpgrade(f, uid, rare){
+  const def=pveUpgradeDef(uid);
+  if(uid==="healnow"){ f.hp=Math.min(f.maxHp, f.hp+f.maxHp*0.3); return def.name; }
+  if(uid==="ammonow"){ if(usesAmmo(f)){ f.ammo=magSizeOf(f); f.reloading=false; f.reloadTimer=0; } return def.name; }
+  if(!f.upg) f.upg={};
+  const n=rare?2:1;
+  for(let i=0;i<n;i++){
+    if((f.upg[uid]||0)>=def.max) break;
+    f.upg[uid]=(f.upg[uid]||0)+1;
+    if(uid==="hp"){ f.maxHp+=10; f.hp=Math.min(f.maxHp, f.hp+10); }
+  }
+  return def.name;
+}
+// 스테이지 클리어 → 활성 플레이어별 후보 3개 생성(상한 도달 강화 제외, 부족하면 대체 후보)
+function tPveOfferUpgrades(rare){
+  tPve.upg={};
+  for(const s in tFighters){ const f=tFighters[s]; if(f.isBot||f.inactive) continue;
+    const pool=PVE_UPGRADES.filter(u=>u.max>0 && upgStacks(f,u.id)<u.max).map(u=>u.id);
+    for(let i=pool.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); const t=pool[i]; pool[i]=pool[j]; pool[j]=t; }
+    const c=pool.slice(0,3);
+    while(c.length<3) c.push(c.length%2===0?"healnow":"ammonow");
+    tPve.upg[s]={ c:c, r:rare?1:0, picked:false, pi:-1 };
+  }
+}
+// 전투 계산 훅(강화 없으면 1.0 — PVE 외 모드는 upg가 없어 영향 0)
+function zCooldownOf(f,w){ let c=GAME_CONFIG.playerAttackCooldown*w.cooldownMul; const u=upgStacks(f,"aspd"); if(u) c*=Math.max(0.7,1-0.06*u); return c; }
 
 function tBuildFighters(){
   const meta=OnlineManager.meta||{}, mode=getOnlineMode(meta.mode), map=getMap(tMapId);
@@ -3668,8 +4348,8 @@ function tBuildFighters(){
       else if(redCount<3) team="red";
       if(!team) continue;
       const idx = team==="red"?redIdx++:blueIdx++;
-      const botChar = CHARACTERS[i%3];
-      tFighters[slot]=tMakeFighter(slot, team, botChar.id, "star_blaster", true, idx, map);
+      const botChar = STUDENT_CHARACTERS[i%STUDENT_CHARACTERS.length];   // 봇도 학생 6종만 + 고정 무기
+      tFighters[slot]=tMakeFighter(slot, team, botChar.id, null, true, idx, map);
     }
   }
 }
@@ -3679,11 +4359,13 @@ function resetTeamMatchFromRoom(){
   tBullets=[]; tWriteAcc=0; tInputAcc=0; tLastInputStr=""; tWinner=null; tResultText="";
   tRenderFighters={}; tPredict=null; tBulletsView=[]; tLastStateRef=null;
   tEnemies={}; tEnemyId=0; tEnemiesView={};
+  resetSkillZones(); resetAttackLog();
   POWERUPS=[]; powerupAcc=0; powerupId=0;
   if(mode.modeType==="pve"){
     const stage=PVE_STAGES[0]; tMapId=stage.mapId;
     tPve={ stageIndex:0, waveIndex:0, teamLives:stage.teamLives, status:"playing", phase:"wave", phaseTimer:0, enemiesRemaining:0 };
     tBuildFighters();
+    tPve.teamLives=tPveLivesTotal();                       // 개인 목숨(PRD 12.2) 합계로 표시
     if(OnlineManager.role==="host") tPveStartWave();
   } else {
     tMapId=(OnlineManager.meta&&OnlineManager.meta.mapId)||"training";   // 3v3: host가 고른 맵(게스트도 meta로 동일)
@@ -3734,6 +4416,7 @@ function tUpdateHost(dt){
     tUpdateFighter(f, input, dt);
   }
   tUpdateBullets(dt);
+  tickSkillZones(dt, envTeam());
   tickPowerupsHost(dt, Object.keys(tFighters).map(s=>tFighters[s]).filter(f=>!f.isBot));
   for(const slot in tFighters){ const f=tFighters[slot]; f.displayHp=lerp(f.displayHp,f.hp,Math.min(1,dt*8)); }
   tTimeLeft-=dt;
@@ -3744,41 +4427,58 @@ function tUpdateHost(dt){
 function tUpdateFighter(f, input, dt){
   if(f.dead){ f.respawnTimer-=dt; if(f.respawnTimer<=0) tRespawn(f); return; }
   if(f.hitFlash>0) f.hitFlash-=dt; if(f.invincibleTimer>0) f.invincibleTimer-=dt;
-  let mx=0,my=0; if(input.up)my-=1; if(input.down)my+=1; if(input.left)mx-=1; if(input.right)mx+=1;
-  const ml=Math.hypot(mx,my);
-  tickStatus(f, dt); applyTrapTo(f);
-  if(ml>0){ mx/=ml; my/=ml; moveEntity(f, mx*effSpeed(f)*dt, my*effSpeed(f)*dt); f.facing=Math.atan2(my,mx); }
+  tickStatus(f, dt); applyTrapTo(f); tickThornTrail(f);
+  // X/C: 눌림 순간(edge)만 발동(host 판정)
+  const sp=!!input.special, ult=!!(input.ultimate||input.super);
+  if(sp && !f._pSp) castSpecialFor(f, envTeam());
+  if(ult && !f._pUlt) castUltimateFor(f, envTeam(), ()=>f.superGauge||0, v=>{ f.superGauge=v; });
+  f._pSp=sp; f._pUlt=ult;
   f.cooldown-=dt;
   tickReload(f, dt);
   if(input.reload) startReload(f);
-  if(input.super) tDoSuper(f);
-  if(input.attack && f.cooldown<=0 && canFireAmmo(f)){ tFire(f); consumeAmmo(f); f.cooldown=GAME_CONFIG.playerAttackCooldown*getWeapon(f.weaponId).cooldownMul; }
+  if(isFrozen(f)) return;                                  // 빙결: 이동·공격 불가
+  let mx=0,my=0; if(input.up)my-=1; if(input.down)my+=1; if(input.left)mx-=1; if(input.right)mx+=1;
+  const ml=Math.hypot(mx,my);
+  if(ml>0){ mx/=ml; my/=ml; moveEntity(f, mx*effSpeed(f)*dt, my*effSpeed(f)*dt); f.facing=Math.atan2(my,mx); }
+  if(input.attack && f.cooldown<=0 && canFireAmmo(f)){ tFire(f); consumeAmmo(f); f.cooldown=zCooldownOf(f, getWeapon(f.weaponId)); }
 }
 
-// 팀(3v3)/PVE 궁극기(host 판정). 아군/끊긴 대상엔 피해 없음.
-function tDamageEnemy(e, id, dmg, killer){ e.hp-=dmg; if(e.hp<=0){ if(killer) killer.score+=e.score; delete tEnemies[id]; } }
-function tDoSuper(f){
-  if(f.dead || f.inactive || (f.superGauge||0) < GAME_CONFIG.superCharge) return;
-  f.superGauge=0; if(f.invincibleTimer>0) f.invincibleTimer=0;
-  const isPve=getOnlineMode(OnlineManager.mode).modeType==="pve";
-  const type=f.char.superType;
-  if(type==="dash"){
-    const a=f.facing, steps=16, stepLen=GAME_CONFIG.superDashDistance/steps, hitset={};
-    spawnSuperWave(f.x,f.y,60);
-    for(let i=0;i<steps;i++){ moveEntity(f,Math.cos(a)*stepLen,Math.sin(a)*stepLen);
-      effects.push({kind:"dashTrail",x:f.x,y:f.y,t:0,life:0.35,color:f.color});
-      if(isPve){ for(const id in tEnemies){ const e=tEnemies[id]; if(e.dead||hitset[id])continue; if(dist(f.x,f.y,e.x,e.y)<f.r+e.r+8){ tDamageEnemy(e,id,GAME_CONFIG.superDamage,f); hitset[id]=true; } } }
-      else { for(const slot in tFighters){ const o=tFighters[slot]; if(o.team===f.team||o.dead||o.invincibleTimer>0||hitset[slot])continue; if(dist(f.x,f.y,o.x,o.y)<f.r+o.r+8){ tApplyDamage(o,GAME_CONFIG.superDamage,f.team,f.slot,true); hitset[slot]=true; } } }
-    }
-  } else if(type==="triple"){
-    const count=5, spread=deg2rad(48), speed=GAME_CONFIG.playerBulletSpeed*1.1, range=GAME_CONFIG.playerRange*1.2, radius=GAME_CONFIG.playerBulletRadius*1.3;
-    for(let i=0;i<count;i++){ const ang=f.facing-spread/2+spread*(i/(count-1)); const mz=f.r+6;
-      tBullets.push({x:f.x+Math.cos(ang)*mz,y:f.y+Math.sin(ang)*mz,vx:Math.cos(ang)*speed,vy:Math.sin(ang)*speed,r:radius,damage:GAME_CONFIG.superDamage,team:f.team,owner:f.slot,color:"#fff0a0",alive:true,traveled:0,maxRange:range,isSuper:true}); }
-  } else { // burst
-    spawnSuperWave(f.x,f.y,GAME_CONFIG.superRadius);
-    if(isPve){ for(const id in tEnemies){ const e=tEnemies[id]; if(e.dead)continue; if(dist(f.x,f.y,e.x,e.y)<=GAME_CONFIG.superRadius+e.r){ tDamageEnemy(e,id,GAME_CONFIG.superDamage,f); } } }
-    else { for(const slot in tFighters){ const o=tFighters[slot]; if(o.team===f.team||o.dead||o.invincibleTimer>0)continue; if(dist(f.x,f.y,o.x,o.y)<=GAME_CONFIG.superRadius+o.r){ tApplyDamage(o,GAME_CONFIG.superDamage,f.team,f.slot,true); pushFighter(o,Math.atan2(o.y-f.y,o.x-f.x),GAME_CONFIG.superKnockback); } } }
+// 팀(3v3)/PVE 피해·env(host 판정). 아군/끊긴 대상엔 피해·둔화·블랙홀 없음.
+// 방패 블록·수정 거북: 정면 각도 안에서 받는 피해 감소(내려찍기 후 노출 시간엔 해제) — PRD 15.3/15.5
+function tDamageEnemy(e, id, dmg, killer){
+  if(e.frontGuard && killer && !(e.guardDownT>0)){
+    const toAtk=Math.atan2(killer.y-e.y, killer.x-e.x);
+    let diff=Math.abs(toAtk-e.facing); while(diff>Math.PI) diff=Math.abs(diff-Math.PI*2);
+    if(diff<=deg2rad(e.frontGuard.deg)/2) dmg*=(1-e.frontGuard.reduce);
   }
+  e.hp-=dmg;
+  if(e.hp<=0){ if(killer) killer.score+=e.score; delete tEnemies[id]; }
+}
+// ── env 어댑터: 3v3(PVP)·협동 PVE 공용 ──
+function envTeam(){
+  const isPve=getOnlineMode(OnlineManager.mode).modeType==="pve";
+  return {
+    foes(f){
+      const out=[];
+      if(isPve){ for(const id in tEnemies){ const e=tEnemies[id]; if(e.dead) continue; out.push({e:e,key:id,isBoss:!!e.isBoss,isFighter:false,eid:id}); } }
+      else { for(const slot in tFighters){ const o=tFighters[slot]; if(o.team===f.team||o.dead||o.invincibleTimer>0||o.inactive) continue; out.push({e:o,key:slot,isBoss:false,isFighter:true}); } }
+      return out;
+    },
+    allies(f){
+      const out=[];
+      for(const slot in tFighters){ const o=tFighters[slot];
+        if(o.dead||o.inactive) continue;
+        if(isPve || o.team===f.team) out.push(o); }        // PVE=협동 전원, 3v3=자기 팀만
+      return out;
+    },
+    damage(f,o,dmg){
+      if(o.isFighter) tApplyDamage(o.e, dmg, f.team, f.slot, true);
+      else tDamageEnemy(o.e, o.eid, dmg, f);
+      return dmg;
+    },
+    heal(t,amt){ t.hp=Math.min(t.maxHp,t.hp+amt); effects.push({kind:"respawn",x:t.x,y:t.y,t:0,life:0.4,color:"#4bd86b"}); },
+    spawnBullet(f,spec){ const b=makeSkillBullet(f,spec); b.team=f.team; b.owner=f.slot; tBullets.push(b); }
+  };
 }
 
 function tBotUpdate(f, dt){
@@ -3802,51 +4502,93 @@ function tBotUpdate(f, dt){
     if(d<GAME_CONFIG.playerRange && f.cooldown<=0 && f.ai.reTimer<=0 && hasLineOfSight(f.x,f.y,t.x,t.y)){
       tFire(f); f.cooldown=GAME_CONFIG.playerAttackCooldown*1.3; f.ai.reTimer=rand(0.1,0.4);
     }
+    // 봇도 X/C 사용(3v3 빈자리 AI): 사람보다 낮은 빈도로 — 적이 사거리 안일 때만
+    const wRange=GAME_CONFIG.playerRange*getWeapon(f.weaponId).rangeMul;
+    if(f.specialCd<=0 && d<Math.max(wRange,260) && Math.random()<dt*0.5) castSpecialFor(f, envTeam());
+    if((f.superGauge||0)>=GAME_CONFIG.superCharge && d<wRange && Math.random()<dt*0.7)
+      castUltimateFor(f, envTeam(), ()=>f.superGauge||0, v=>{ f.superGauge=v; });
   }
 }
 
 function tFire(f){
   f.fireRevealTimer=GAME_CONFIG.bushAttackRevealTime;   // 풀숲: 공격하면 잠시 드러남
-  const w=getWeapon(f.weaponId), c=f.char;
-  const count=w.spreadCount, spread=deg2rad(w.spreadAngleDeg||0);
-  const speed=GAME_CONFIG.playerBulletSpeed*c.bulletSpeedMul*w.bulletSpeedMul;
-  const dmg=GAME_CONFIG.playerDamage*c.damageMul*w.damageMul;
-  const range=GAME_CONFIG.playerRange*w.rangeMul, radius=GAME_CONFIG.playerBulletRadius*w.bulletRadiusMul;
+  const w=getWeapon(f.weaponId);
+  const spec=weaponFireSpec(f, w), aid=newAttackId();
+  const count=spec.count, spread=deg2rad(spec.spreadDeg||0);
   for(let i=0;i<count;i++){
     let a=f.facing; if(count>1) a=f.facing-spread/2+spread*(i/(count-1));
     const mz=f.r+6;
-    tBullets.push({ x:f.x+Math.cos(a)*mz, y:f.y+Math.sin(a)*mz, vx:Math.cos(a)*speed, vy:Math.sin(a)*speed,
-      r:radius, damage:dmg, team:f.team, owner:f.slot, color:w.color, alive:true, traveled:0, maxRange:range });
+    const b={ x:f.x+Math.cos(a)*mz, y:f.y+Math.sin(a)*mz, vx:Math.cos(a)*spec.speed, vy:Math.sin(a)*spec.speed,
+      r:spec.radius, damage:spec.damage, team:f.team, owner:f.slot, color:spec.color, alive:true, traveled:0,
+      maxRange:spec.range, aid:aid, wid:spec.wid, wref:spec.wref, age:0 };
+    if(spec.boomerang){ b.boomerang=true; b.phase="out"; b.spd=spec.speed; b.hitO={}; b.hitB={}; }
+    tBullets.push(b);
   }
 }
 
+// 3v3 탄환(PVP): 부메랑 왕복·무기 효과·attackId 게이지·통통비행기 반사 지원
 function tUpdateBullets(dt){
   for(const b of tBullets){
     if(!b.alive) continue;
+    b.age=(b.age||0)+dt;
+    if(b.age>(b.life||5)){ b.alive=false; continue; }
+    if(b.boomerang){
+      const o=tFighters[b.owner];
+      if(!o || o.dead){ if(b.phase==="back"){ b.alive=false; continue; } }
+      else if(!steerBoomerang(b, o.x, o.y)){ b.alive=false; continue; }
+    }
     const speed=Math.hypot(b.vx,b.vy), steps=Math.max(1,Math.ceil(speed*dt/(b.r*0.9)));
     const sx=b.vx*dt/steps, sy=b.vy*dt/steps, sl=Math.hypot(sx,sy);
     for(let s=0;s<steps&&b.alive;s++){
       b.x+=sx; b.y+=sy; b.traveled+=sl;
-      if(b.x<ARENA.x||b.x>ARENA.x+ARENA.w||b.y<ARENA.y||b.y>ARENA.y+ARENA.h){ b.alive=false; break; }
-      let wall=false; for(const o of OBSTACLES){ if(circleRectOverlap(b.x,b.y,b.r,o)){ wall=true; break; } }
-      if(wall){ b.alive=false; break; }
+      if(b.x<ARENA.x||b.x>ARENA.x+ARENA.w||b.y<ARENA.y||b.y>ARENA.y+ARENA.h){
+        if(b.boomerang && b.phase==="out"){ b.phase="back"; b.x=clamp(b.x,ARENA.x,ARENA.x+ARENA.w); b.y=clamp(b.y,ARENA.y,ARENA.y+ARENA.h); break; }
+        if(b.bounce){ if((b.bounces||0)>=b.maxBounce){ b.alive=false; break; }
+          if(b.x<ARENA.x||b.x>ARENA.x+ARENA.w) b.vx=-b.vx; else b.vy=-b.vy;
+          b.x=clamp(b.x,ARENA.x,ARENA.x+ARENA.w); b.y=clamp(b.y,ARENA.y,ARENA.y+ARENA.h);
+          b.bounces=(b.bounces||0)+1; b.lastWall=null; b.lastBounceAt=b.age; break; }
+        b.alive=false; break;
+      }
+      let wall=false, wref=null; for(const o of OBSTACLES){ if(circleRectOverlap(b.x,b.y,b.r,o)){ wall=true; wref=o; break; } }
+      if(wall){
+        if(b.boomerang){ if(b.phase==="out"){ b.phase="back"; b.x-=sx; b.y-=sy; } break; }
+        if(b.bounce){ if(!bounceBullet(b,wref,sx,sy)) b.alive=false; break; }
+        spawnHitFx(b.x,b.y,b.wid,"#aab0d0"); b.alive=false; break;
+      }
       for(const slot in tFighters){ const t=tFighters[slot];
-        if(t.team===b.team || t.dead || t.invincibleTimer>0) continue;
-        if(dist(b.x,b.y,t.x,t.y) < b.r+t.r){ tApplyDamage(t, b.damage, b.team, b.owner, b.isSuper); b.alive=false; break; }
+        if(t.team===b.team || t.dead || t.invincibleTimer>0 || t.inactive) continue;
+        if(dist(b.x,b.y,t.x,t.y) < b.r+t.r){
+          if(b.boomerang){
+            const hm=(b.phase==="out")?b.hitO:b.hitB;
+            if(hm[slot]) continue;
+            hm[slot]=true;
+            tApplyDamage(t, b.damage, b.team, b.owner, b.isSuper, b.aid);
+            if(b.wref) applyWeaponHitEffects(b.wref, t, b.x, b.y);
+            spawnHitFx(b.x,b.y,b.wid,b.color);
+            continue;                                     // 부메랑은 관통(복귀 타격)
+          }
+          tApplyDamage(t, b.damage, b.team, b.owner, b.isSuper, b.aid);
+          if(b.wref) applyWeaponHitEffects(b.wref, t, b.x, b.y);
+          spawnHitFx(b.x,b.y,b.wid,b.color);
+          b.alive=false; break;
+        }
       }
       if(!b.alive) break;
-      if(b.traveled>b.maxRange){ b.alive=false; break; }
+      if(!b.boomerang && b.traveled>b.maxRange){ b.alive=false; break; }
     }
   }
   tBullets=tBullets.filter(b=>b.alive);
   if(tBullets.length>T_MAX_BULLETS) tBullets=tBullets.slice(tBullets.length-T_MAX_BULLETS);
 }
 
-function tApplyDamage(target, dmg, fromTeam, fromSlot, isSuper){
+function tApplyDamage(target, dmg, fromTeam, fromSlot, isSuper, aid){
   if(target.dead || target.invincibleTimer>0 || target.team===fromTeam) return;
+  dmg=incomingDamage(target, dmg);                        // 방패/질주 감소(최소 1)
   target.hp-=dmg; target.hitFlash=0.15;
   const attacker=tFighters[fromSlot];
-  if(attacker && !isSuper) attacker.superGauge=Math.min(GAME_CONFIG.superCharge,(attacker.superGauge||0)+GAME_CONFIG.superChargePerHit);
+  if(attacker && !isSuper){
+    tryChargeGauge(aid, target.slot, ()=>{ attacker.superGauge=Math.min(GAME_CONFIG.superCharge,(attacker.superGauge||0)+GAME_CONFIG.superChargePerHit); });
+  }
   if(target.hp<=0){
     target.hp=0; target.dead=true; target.respawnTimer=GAME_CONFIG.respawnDelay;
     if(TEAM_COLOR[fromTeam]!==undefined) tTeamScores[fromTeam]=(tTeamScores[fromTeam]||0)+1;
@@ -3866,10 +4608,12 @@ function tPackFighter(f){
   // am/rl/sg는 내 HUD(탄창/장전/궁극기)용 작은 숫자만 추가.
   return { x:Math.round(f.x), y:Math.round(f.y), hp:Math.round(f.hp),
     facing:Math.round(f.facing*100)/100, dead:!!f.dead, inv:f.invincibleTimer>0,
-    am:f.ammo, rl:f.reloading?1:0, sg:Math.round(f.superGauge||0), fr:f.fireRevealTimer>0?1:0 };
+    am:f.ammo, rl:f.reloading?1:0, sg:Math.round(f.superGauge||0), fr:f.fireRevealTimer>0?1:0,
+    xc:Math.round(Math.max(0,f.specialCd||0)*10)/10,     // X 쿨타임(HUD용)
+    lv:(f.lives===undefined?-1:f.lives) };               // PVE 개인 목숨(-1=해당 없음/3v3)
 }
 // 게스트가 정적 정보를 로스터(OnlineManager.players)에서 역산하는 도우미
-function tRosterCharId(slot){ const p=OnlineManager.players&&OnlineManager.players[slot]; return (p&&p.characterId)||"student_01"; }
+function tRosterCharId(slot){ const p=OnlineManager.players&&OnlineManager.players[slot]; return sanitizeCharacterId((p&&p.characterId)||"student_01"); }
 function tRosterTeam(slot){ const p=OnlineManager.players&&OnlineManager.players[slot]; return (p&&p.team)||"blue"; }
 function tRosterMaxHp(slot){ return GAME_CONFIG.playerMaxHp*getCharacter(tRosterCharId(slot)).hpMul; }
 function getEnemyDef(type){ return PVE_ENEMY_TYPES[type]||PVE_ENEMY_TYPES.grunt; }
@@ -3877,15 +4621,16 @@ function tHostWriteState(){
   const fighters={};
   for(const slot in tFighters) fighters[slot]=tPackFighter(tFighters[slot]);
   const bl=[];
-  // 게스트 렌더에 필요한 것만(x,y,r,c,vx,vy). owner/team은 게스트가 안 써서 제외(렉 최적화).
-  for(const b of tBullets) bl.push({ x:Math.round(b.x), y:Math.round(b.y), r:Math.round(b.r), c:b.color, vx:Math.round(b.vx), vy:Math.round(b.vy) });
+  // 게스트 렌더에 필요한 것만(x,y,r,c,vx,vy,w=무기 스프라이트 id). owner/team은 게스트가 안 써서 제외(렉 최적화).
+  for(const b of tBullets) bl.push({ x:Math.round(b.x), y:Math.round(b.y), r:Math.round(b.r), c:b.color, vx:Math.round(b.vx), vy:Math.round(b.vy), w:b.wid||null });
   const st={ timeLeft:Math.max(0,Math.round(tTimeLeft)), teamScores:tTeamScores, fighters:fighters, bullets:bl,
-    powerups:POWERUPS.map(p=>({x:p.x,y:p.y,t:p.type==="heal"?0:1,id:p.id})) };
+    powerups:POWERUPS.map(p=>({x:p.x,y:p.y,t:powerupPacketT(p),id:p.id})), zones:packZones() };
   // PVE면 적/스테이지 정보도 함께 보낸다. color/r/boss는 type으로 게스트가 역산(전송 제외).
   if(getOnlineMode(OnlineManager.mode).modeType==="pve"){
     const en={}; for(const id in tEnemies){ const e=tEnemies[id]; en[id]={ x:Math.round(e.x), y:Math.round(e.y), hp:Math.round(e.hp), maxHp:Math.round(e.maxHp), facing:Math.round(e.facing*100)/100, type:e.type, dead:!!e.dead }; }
     st.enemies=en;
     st.pve={ stageIndex:tPve.stageIndex, waveIndex:tPve.waveIndex, teamLives:tPve.teamLives, status:tPve.status, phase:tPve.phase, enemiesRemaining:Object.keys(tEnemies).length, mapId:tMapId };
+    if(tPve.upg){ const ug={}; for(const s in tPve.upg){ const o=tPve.upg[s]; ug[s]={c:o.c, r:o.r, p:o.picked?1:0, pi:o.pi}; } st.pve.upg=ug; }   // 강화 후보(문자 id 3개·숫자만)
   }
   OnlineManager.writeHostState(st);
 }
@@ -3918,7 +4663,7 @@ function tUpdateGuest(dt){
   const s=OnlineManager.onlineState; if(!s || !s.fighters) return;
   // PVE: host가 보낸 현재 스테이지 맵으로 장애물/풀숲을 맞춘다(보이는 벽=실제 충돌)
   if(s.pve && s.pve.mapId && s.pve.mapId!==tMapId){ tMapId=s.pve.mapId; const m=getMap(tMapId); OBSTACLES=m.obstacles; BUSHES=m.bushes; }
-  if(s!==tLastStateRef){ tLastStateRef=s; tBulletsView=(s.bullets||[]).map(b=>({ x:b.x,y:b.y,vx:b.vx||0,vy:b.vy||0,r:b.r,c:b.c })); }
+  if(s!==tLastStateRef){ tLastStateRef=s; tBulletsView=(s.bullets||[]).map(b=>({ x:b.x,y:b.y,vx:b.vx||0,vy:b.vy||0,r:b.r,c:b.c,w:b.w||null })); }
   for(const b of tBulletsView){ b.x+=b.vx*dt; b.y+=b.vy*dt; }
   const myslot=OnlineManager.mySlot, k=Math.min(1,dt*18);
   for(const slot in s.fighters){
@@ -3941,8 +4686,9 @@ function tGetDrawData(){
   if(OnlineManager.role==="host"){
     for(const slot in tFighters){ const f=tFighters[slot];
       out.fighters.push({ x:f.x,y:f.y,facing:f.facing,hp:f.hp,maxHp:f.maxHp,dead:f.dead,inv:f.invincibleTimer>0,charId:f.char.id,team:f.team,slot:slot,isMe:slot===OnlineManager.mySlot,fr:f.fireRevealTimer>0?1:0 }); }
-    out.bullets=tBullets.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.color }));
+    out.bullets=tBullets.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.color,w:b.wid||null,vx:b.vx,vy:b.vy }));
     out.teamScores=tTeamScores; out.timeLeft=Math.max(0,Math.ceil(tTimeLeft));
+    out.zones=packZones();
   } else {
     const s=OnlineManager.onlineState;
     if(!s || !s.fighters){ out.waiting=true; out.timeLeft=GAME_CONFIG.gameTime; return out; }
@@ -3951,8 +4697,9 @@ function tGetDrawData(){
       if(slot===myslot && tPredict && !p.dead){ rx=tPredict.x; ry=tPredict.y; rf=tPredict.facing; }
       else if(tRenderFighters[slot] && !p.dead){ rx=tRenderFighters[slot].x; ry=tRenderFighters[slot].y; rf=tRenderFighters[slot].facing; }
       out.fighters.push({ x:rx,y:ry,facing:rf,hp:p.hp,maxHp:p.maxHp||tRosterMaxHp(slot),dead:p.dead,inv:p.inv,charId:p.charId||tRosterCharId(slot),team:p.team||tRosterTeam(slot),slot:slot,isMe:slot===myslot,fr:p.fr }); }
-    out.bullets=tBulletsView.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.c }));
+    out.bullets=tBulletsView.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.c,w:b.w||null,vx:b.vx,vy:b.vy }));
     out.teamScores=s.teamScores||{blue:0,red:0}; out.timeLeft=s.timeLeft;
+    out.zones=(s.zones||[]);
   }
   return out;
 }
@@ -3984,6 +4731,7 @@ function tRender(){
   if(getOnlineMode(OnlineManager.mode).modeType==="pve"){ tPveRender(); return; }
   const data=tGetDrawData();
   const me=data.fighters.find(f=>f.isMe); _viewer = me ? { x:me.x, y:me.y, team:me.team } : null;
+  drawSkillZonesPacked(data.zones);
   for(const b of data.bullets) drawOnlineBullet(b);
   for(const f of data.fighters) tDrawFighter(f);
   drawEffects();
@@ -4001,7 +4749,7 @@ function tRender(){
   ctx.fillStyle="#aab4e0"; ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.fillText("온라인 3대3 (베타) · 방 "+(OnlineManager.roomCode||""),LOGW/2,52);
   ctx.fillStyle="rgba(10,12,32,0.72)"; ctx.fillRect(0,656,LOGW,64);
   ctx.textAlign="right"; ctx.fillStyle="#aab4e0"; ctx.font="bold 14px 'Malgun Gothic',sans-serif";
-  ctx.fillText("방향키 · Z 공격 · X 궁극기 · R 장전 · Esc 나가기",LOGW-24,688);
+  ctx.fillText("방향키 · Z 기본공격 · X 특수기술 · C 궁극기 · R 장전 · Esc 나가기",LOGW-24,688);
   ctx.restore();
   drawCombatStrip();
   if(!OnlineManager.connected) drawCenterBanner("네트워크 연결 확인 중…","#ff7a7a");
@@ -4055,25 +4803,84 @@ function tDrawOver(){
    온라인 6인 협동 PVE — 슬롯/팀 엔진 위에 스테이지/웨이브/적 AI를 추가
    ======================================================================= */
 const PVE_ENEMY_TYPES = {
+  // ── 구세대(호환 보존 — 새 20스테이지에서는 사용하지 않음) ──
   grunt:    { hp:60,  speed:120, dmg:10, r:20, color:"#8a3fd0", ranged:false, contactCd:0.8, score:1 },
   runner:   { hp:45,  speed:205, dmg:8,  r:18, color:"#ff8f4d", ranged:false, contactCd:0.6, score:1 },
   shooter:  { hp:55,  speed:110, dmg:12, r:20, color:"#46c0e0", ranged:true,  range:380, fireCd:1.4, bulletSpeed:360, score:2 },
   tank:     { hp:230, speed:78,  dmg:16, r:30, color:"#5a5f78", ranged:false, contactCd:1.0, score:3 },
   elite:    { hp:160, speed:130, dmg:14, r:24, color:"#b266ff", ranged:true,  range:420, fireCd:1.0, bulletSpeed:400, score:4 },
   miniBoss: { hp:380, speed:108, dmg:20, r:46, color:"#ff4d6d", ranged:true,  range:460, fireCd:0.85,bulletSpeed:420, score:8,  threeWay:true },
-  boss:     { hp:900, speed:92,  dmg:26, r:66, color:"#b3203a", ranged:true,  range:520, fireCd:0.78,bulletSpeed:430, score:30, threeWay:true }
+  boss:     { hp:900, speed:92,  dmg:26, r:66, color:"#b3203a", ranged:true,  range:520, fireCd:0.78,bulletSpeed:430, score:30, threeWay:true },
+  // ── PRD 15.3 고정 잡몹·정예 9종(보통 난이도·1인 기준) ──
+  soft_jelly:    { name:"말랑 젤리",   hp:55,  speed:120, dmg:8,  r:19, color:"#c58bff", ranged:false, contactCd:0.9, score:1 },
+  bounce_bubble: { name:"통통 방울",   hp:38,  speed:210, dmg:7,  r:15, color:"#7ad0ff", ranged:false, contactCd:0.7, score:1 },
+  paper_drone:   { name:"종이 드론",   hp:50,  speed:105, dmg:9,  r:17, color:"#d9dee6", ranged:true,  range:360, fireCd:1.5, bulletSpeed:340, score:2 },
+  cushion_block: { name:"쿠션 블록",   hp:180, speed:75,  dmg:12, r:28, color:"#ff9ec2", ranged:false, contactCd:1.2, score:3, knockResist:true },
+  star_bug:      { name:"반짝 별벌레", hp:90,  speed:145, dmg:16, r:20, color:"#ffe14d", ranged:false, contactCd:1.0, score:4, dash:{warn:0.7, speed:520, dist:300, cd:3, stun:1} },
+  cloud_ghost:   { name:"구름 유령",   hp:70,  speed:115, dmg:10, r:19, color:"#bfc9e8", ranged:false, contactCd:1.0, score:2, ghost:true },
+  heal_fairy:    { name:"회복 요정",   hp:65,  speed:100, dmg:0,  r:16, color:"#8fffb3", ranged:false, contactCd:9,   score:3, healer:{radius:150, amount:8, cd:1.5} },
+  shield_block:  { name:"방패 블록",   hp:140, speed:90,  dmg:11, r:24, color:"#9aa3b2", ranged:false, contactCd:1.0, score:3, frontGuard:{deg:120, reduce:0.6} },
+  ice_bubble:    { name:"얼음 방울",   hp:60,  speed:100, dmg:7,  r:17, color:"#9fdcff", ranged:true,  range:330, fireCd:1.8, bulletSpeed:330, score:2, slowShot:{pct:0.25, time:1.2} },
+  // ── PRD 15.5 보스 4종(보통·1인 기준 HP, 패턴은 코드 간이 구현) ──
+  boss_robot:  { name:"별빛 훈련 로봇", hp:600,  speed:105, dmg:9,  r:52, color:"#ffd23f", ranged:true, range:480, fireCd:2.0, bulletSpeed:380, score:20, isBossType:true,
+                 fan:{count:5, deg:50}, phase2:{at:0.5, count:7, dash:{warn:0.6, speed:480, dist:280, cd:5, dmg:16}}, summon:{type:"soft_jelly", count:3, cd:12} },
+  boss_turtle: { name:"별빛 수정 거북", hp:850,  speed:70,  dmg:10, r:58, color:"#54e8ff", ranged:true, range:460, fireCd:2.4, bulletSpeed:360, score:24, isBossType:true,
+                 ringShot:{count:6}, frontGuard:{deg:140, reduce:0.5}, slam:{warn:0.8, radius:110, dmg:18, cd:9, exposeTime:2} },
+  boss_plane:  { name:"종이비행기 대장", hp:780,  speed:135, dmg:18, r:50, color:"#eef2f6", ranged:true, range:520, fireCd:2.2, bulletSpeed:430, score:24, isBossType:true,
+                 bounceShot:{maxBounce:2, radius:16}, enrage:{at:0.35, speedMul:1.15, cdMul:0.85}, summon:{type:"paper_drone", count:4, atHp:[0.7,0.35]} },
+  boss_king:   { name:"거대 젤리킹",   hp:1250, speed:85,  dmg:11, r:66, color:"#7a5cff", ranged:true, range:420, fireCd:2.6, bulletSpeed:340, score:30, isBossType:true,
+                 slam:{warn:0.9, radius:100, dmg:16, cd:8}, ringShot:{count:8, atHp:0.7}, summon:{type:"soft_jelly", count:5, atHp:[0.35]}, enrage:{at:0.35, speedMul:1.0, cdMul:0.8} }
 };
+/* PRD 12.5 — 협동 PVE 20스테이지 고정 구성(4구역 × 5). 적 수는 1인 기준, 인원·스테이지 배율은 tPveStartWave에서 적용.
+   방어/호위/봉쇄/생존/거점형 목표는 이번 단계에서는 '고정 웨이브 전멸'로 대체 구현(적 구성·의도는 표 그대로 유지),
+   구조물(방어 수정·몬스터 문·웨이브 문)은 다음 단계 대상. 보스 5·10·15·20 = 체크포인트. */
 const PVE_STAGES = [
-  { id:"stage1", name:"1스테이지: 별빛 훈련장 침입", mapId:"training", teamLives:12,
-    waves:[ {enemies:[{type:"grunt",count:6}]}, {enemies:[{type:"grunt",count:8},{type:"shooter",count:2}]}, {enemies:[{type:"elite",count:2},{type:"grunt",count:8}]} ] },
-  { id:"stage2", name:"2스테이지: 수정 동굴 방어전", mapId:"crystal_cave", teamLives:12,
-    waves:[ {enemies:[{type:"grunt",count:8},{type:"shooter",count:3}]}, {enemies:[{type:"tank",count:2},{type:"grunt",count:8}]}, {enemies:[{type:"elite",count:3}]} ] },
-  { id:"stage3", name:"3스테이지: 은하 정원 습격", mapId:"galaxy_garden", teamLives:10,
-    waves:[ {enemies:[{type:"runner",count:8}]}, {enemies:[{type:"runner",count:10},{type:"shooter",count:4}]}, {enemies:[{type:"miniBoss",count:1},{type:"grunt",count:8}]} ] },
-  { id:"stage4", name:"4스테이지: 보스 전초전", mapId:"training", teamLives:10,
-    waves:[ {enemies:[{type:"tank",count:3},{type:"shooter",count:5}]}, {enemies:[{type:"elite",count:5}]}, {enemies:[{type:"miniBoss",count:2}]} ] },
-  { id:"stage5", name:"최종 스테이지: 보스 크롬 MK2", mapId:"crystal_cave", teamLives:8,
-    waves:[ {enemies:[{type:"grunt",count:8},{type:"shooter",count:4}]}, {enemies:[{type:"elite",count:4},{type:"tank",count:2}]}, {enemies:[{type:"boss",count:1}]} ] }
+  // ── 1구역: 별빛 훈련장 ──
+  { id:"c01", name:"1구역 1: 훈련장 입문",     mapId:"training", teamLives:12,
+    waves:[ {enemies:[{type:"soft_jelly",count:5}]}, {enemies:[{type:"soft_jelly",count:7}]} ] },
+  { id:"c02", name:"1구역 2: 통통 방울 습격",  mapId:"training", teamLives:12,
+    waves:[ {enemies:[{type:"bounce_bubble",count:4}]}, {enemies:[{type:"soft_jelly",count:6},{type:"bounce_bubble",count:3}]} ] },
+  { id:"c03", name:"1구역 3: 드론 혼성전",     mapId:"training", teamLives:12,
+    waves:[ {enemies:[{type:"paper_drone",count:2},{type:"soft_jelly",count:5}]}, {enemies:[{type:"paper_drone",count:3},{type:"soft_jelly",count:6}]}, {enemies:[{type:"bounce_bubble",count:4}]} ] },
+  { id:"c04", name:"1구역 4: 세 방향 파도",    mapId:"training", teamLives:12,
+    waves:[ {enemies:[{type:"soft_jelly",count:10}]}, {enemies:[{type:"bounce_bubble",count:6}]}, {enemies:[{type:"paper_drone",count:4}]} ] },
+  { id:"c05", name:"1구역 보스: 별빛 훈련 로봇", mapId:"training", teamLives:12, boss:true,
+    waves:[ {enemies:[{type:"boss_robot",count:1}]} ] },
+  // ── 2구역: 수정 동굴 ──
+  { id:"c06", name:"2구역 6: 좁은 통로 전투",  mapId:"crystal_cave", teamLives:12,
+    waves:[ {enemies:[{type:"cushion_block",count:2},{type:"soft_jelly",count:7}]}, {enemies:[{type:"cushion_block",count:3},{type:"paper_drone",count:3}]} ] },
+  { id:"c07", name:"2구역 7: 별벌레 정예",     mapId:"crystal_cave", teamLives:12,
+    waves:[ {enemies:[{type:"star_bug",count:2},{type:"bounce_bubble",count:6}]} ] },
+  { id:"c08", name:"2구역 8: 갈라진 두 방",    mapId:"crystal_cave", teamLives:12,
+    waves:[ {enemies:[{type:"paper_drone",count:5}]}, {enemies:[{type:"cushion_block",count:3},{type:"soft_jelly",count:6}]} ] },
+  { id:"c09", name:"2구역 9: 몬스터 문 봉쇄",  mapId:"crystal_cave", teamLives:12,
+    waves:[ {enemies:[{type:"soft_jelly",count:5},{type:"paper_drone",count:2}]}, {enemies:[{type:"soft_jelly",count:5},{type:"paper_drone",count:2}]}, {enemies:[{type:"star_bug",count:2}]} ] },
+  { id:"c10", name:"2구역 보스: 별빛 수정 거북", mapId:"crystal_cave", teamLives:12, boss:true,
+    waves:[ {enemies:[{type:"boss_turtle",count:1}]} ] },
+  // ── 3구역: 은하 정원 ──
+  { id:"c11", name:"3구역 11: 풀숲 기습",      mapId:"galaxy_garden", teamLives:10,
+    waves:[ {enemies:[{type:"cloud_ghost",count:5}]}, {enemies:[{type:"cloud_ghost",count:6},{type:"bounce_bubble",count:5}]} ] },
+  { id:"c12", name:"3구역 12: 회복 요정 사냥", mapId:"galaxy_garden", teamLives:10,
+    waves:[ {enemies:[{type:"heal_fairy",count:2},{type:"soft_jelly",count:8},{type:"cushion_block",count:2}]} ] },
+  { id:"c13", name:"3구역 13: 사방 생존전",    mapId:"galaxy_garden", teamLives:10,
+    waves:[ {enemies:[{type:"cloud_ghost",count:8}]}, {enemies:[{type:"paper_drone",count:6}]}, {enemies:[{type:"star_bug",count:4}]} ] },
+  { id:"c14", name:"3구역 14: 씨앗 호위길",    mapId:"galaxy_garden", teamLives:10,
+    waves:[ {enemies:[{type:"cushion_block",count:3},{type:"paper_drone",count:5}]}, {enemies:[{type:"cloud_ghost",count:5}]} ] },
+  { id:"c15", name:"3구역 보스: 종이비행기 대장", mapId:"galaxy_garden", teamLives:10, boss:true,
+    waves:[ {enemies:[{type:"boss_plane",count:1}]} ] },
+  // ── 4구역: 3라인 실험장 ──
+  { id:"c16", name:"4구역 16: 세 라인 전멸",   mapId:"lane3", teamLives:10,
+    waves:[ {enemies:[{type:"soft_jelly",count:5},{type:"bounce_bubble",count:3}]}, {enemies:[{type:"soft_jelly",count:5},{type:"bounce_bubble",count:3}]}, {enemies:[{type:"soft_jelly",count:5},{type:"bounce_bubble",count:3}]} ] },
+  { id:"c17", name:"4구역 17: 거점 수비",      mapId:"lane3", teamLives:10,
+    waves:[ {enemies:[{type:"paper_drone",count:6},{type:"cushion_block",count:4}]}, {enemies:[{type:"cloud_ghost",count:4}]} ] },
+  { id:"c18", name:"4구역 18: 정예 연속전",    mapId:"lane3", teamLives:10,
+    waves:[ {enemies:[{type:"shield_block",count:2}]}, {enemies:[{type:"ice_bubble",count:5}]}, {enemies:[{type:"star_bug",count:4}]} ] },
+  { id:"c19", name:"4구역 19: 최종 전초전",    mapId:"lane3", teamLives:10,
+    waves:[ {enemies:[{type:"soft_jelly",count:3},{type:"bounce_bubble",count:2},{type:"paper_drone",count:3}]},
+            {enemies:[{type:"soft_jelly",count:4},{type:"cloud_ghost",count:3},{type:"ice_bubble",count:3}]},
+            {enemies:[{type:"star_bug",count:2},{type:"shield_block",count:2},{type:"heal_fairy",count:2}]} ] },
+  { id:"c20", name:"최종 보스: 거대 젤리킹",   mapId:"lane3", teamLives:10, boss:true,
+    waves:[ {enemies:[{type:"boss_king",count:1}]} ] }
 ];
 
 function tActivePlayerCount(){
@@ -4089,23 +4896,44 @@ function tActivePlayerCount(){
   return Math.max(1,n);
 }
 
-function tSpawnEnemy(type, hpMul, map){
+function tSpawnEnemy(type, hpMul, map, dmgMul){
   const def=PVE_ENEMY_TYPES[type]||PVE_ENEMY_TYPES.grunt;
   const ex=clamp(map.enemySpawn.x+rand(-170,170), ARENA.x+def.r, ARENA.x+ARENA.w-def.r);
   const ey=clamp(map.enemySpawn.y+rand(-90,180), ARENA.y+def.r, ARENA.y+ARENA.h-def.r);
   const pos=findClearSpawn(ex,ey,def.r);
   const id="e"+(++tEnemyId), hp=def.hp*hpMul;
-  tEnemies[id]={ id:id, type:type, x:pos.x, y:pos.y, r:def.r, hp:hp, maxHp:hp, speed:def.speed, dmg:def.dmg,
+  const e={ id:id, type:type, x:pos.x, y:pos.y, r:def.r, hp:hp, maxHp:hp, speed:def.speed, dmg:def.dmg*(dmgMul||1),
     color:def.color, ranged:!!def.ranged, range:def.range||0, fireCd:def.fireCd||1.2, fireTimer:rand(0.2,1.2),
     bulletSpeed:def.bulletSpeed||360, contactCd:def.contactCd||0.8, contactTimer:0, threeWay:!!def.threeWay,
-    facing:Math.PI, dead:false, score:def.score||1, isBoss:(type==="boss"||type==="miniBoss") };
+    facing:Math.PI, dead:false, score:def.score||1,
+    isBoss:(type==="boss"||type==="miniBoss"||!!def.isBossType) };
+  // PRD 15.3/15.5 특수 능력 복사(코드 이펙트 우선 — 에셋 없이 도형/파티클로 검증)
+  if(def.dash) e.dash={...def.dash, timer:rand(1,def.dash.cd), state:"idle", warnT:0, dirX:0, dirY:0, stunT:0};
+  if(def.ghost) e.ghost={cycle:0};
+  if(def.healer) e.healer={...def.healer, timer:def.healer.cd};
+  if(def.frontGuard) e.frontGuard=def.frontGuard;
+  if(def.slowShot) e.slowShot=def.slowShot;
+  if(def.knockResist) e.knockImmuneTimer=1e9;                 // 쿠션 블록: 밀치기 거의 무시
+  if(def.dash||def.frontGuard||def.slowShot) e.eliteResist=true;   // 정예: 빙결 50%·블랙홀 70%(PRD 15.4)
+  if(def.isBossType){ e.fan=def.fan; e.ringShot=def.ringShot; e.bounceShot=def.bounceShot;
+    e.slam=def.slam?{...def.slam, timer:def.slam.cd*0.6, warnT:0}:null;
+    e.summon=def.summon?{...def.summon, timer:def.summon.cd||6, fired:[]}:null;
+    e.phase2=def.phase2; e.enrage=def.enrage; e.baseFireCd=e.fireCd; e.baseSpeed=e.speed; }
+  tEnemies[id]=e;
 }
 function tPveStartWave(){
   const stage=PVE_STAGES[tPve.stageIndex], wave=stage.waves[tPve.waveIndex];
-  const n=tActivePlayerCount(), hpMul=0.7+n*0.12, countMul=0.6+n*0.1, map=getMap(tMapId);
+  // PRD 19장 스케일링: 인원(N) + 스테이지 상승 배율. 보스는 stageHpMul 미적용·인원 보스 배율만(15.6/24.1).
+  const n=tActivePlayerCount(), st=tPve.stageIndex+1, map=getMap(tMapId);
+  const stageHpMul=1+0.025*(st-1), stageDmgMul=1+0.015*(st-1);
+  const nHpMul=1+0.12*(n-1), nCntMul=1+0.35*(n-1), nBossMul=1+0.60*(n-1);
   for(const grp of wave.enemies){
-    const cnt=Math.max(1,Math.round(grp.count*countMul));
-    for(let i=0;i<cnt;i++){ if(Object.keys(tEnemies).length>=40) break; tSpawnEnemy(grp.type, hpMul, map); }
+    const def=PVE_ENEMY_TYPES[grp.type]||{};
+    const isBossGrp=!!def.isBossType || grp.type==="boss";
+    const cnt=isBossGrp ? grp.count : Math.max(1,Math.round(grp.count*nCntMul));
+    const hpMul=isBossGrp ? nBossMul : nHpMul*stageHpMul;
+    const dmgMul=isBossGrp ? 1 : stageDmgMul;                 // 보스 피해는 인원·스테이지로 증가 없음
+    for(let i=0;i<cnt;i++){ if(Object.keys(tEnemies).length>=40) break; tSpawnEnemy(grp.type, hpMul, map, dmgMul); }
   }
   tPve.phase="wave"; tPve.enemiesRemaining=Object.keys(tEnemies).length;
 }
@@ -4123,73 +4951,290 @@ function tPveUpdateHost(dt){
     f.displayHp=lerp(f.displayHp,f.hp,Math.min(1,dt*8));
   }
   for(const id in tEnemies) tEnemyUpdate(tEnemies[id], dt);
+  tResolveCollisions();                                     // 몸싸움: 몹-플레이어/몹-몹 겹침 방지(근접 사격 가능)
   tPveUpdateBullets(dt);
+  tickSkillZones(dt, envTeam());
   tickPowerupsHost(dt, Object.keys(tFighters).map(s=>tFighters[s]).filter(f=>!f.inactive));
   tPveProgress(dt);
   tWriteAcc+=dt; if(tWriteAcc>=1/T_STATE_FPS){ tWriteAcc=0; tHostWriteState(); }
 }
 function tPveUpdatePlayer(f,input,dt){
-  if(f.dead){ f.respawnTimer-=dt; if(f.respawnTimer<=0 && tPve.teamLives>0) tRespawn(f); return; }
+  // 강화 선택(1/2/3) — 죽은/관전 플레이어도 선택 가능(host 판정, 1회만)
+  if(tPve.phase==="stageclear" && tPve.upg && tPve.upg[f.slot] && !tPve.upg[f.slot].picked){
+    const o=tPve.upg[f.slot], pk=(input.pick!==undefined && input.pick>=0)?input.pick:-1;
+    if(pk>=0 && pk<3){ o.picked=true; o.pi=pk; tPveApplyUpgrade(f, o.c[pk], o.r===1); }
+  }
+  if(f.dead){ f.respawnTimer-=dt; if(f.respawnTimer<=0 && (f.lives||0)>0) tRespawn(f); return; }   // 목숨 0 → 관전(체크포인트 복귀 대기)
   if(f.hitFlash>0)f.hitFlash-=dt; if(f.invincibleTimer>0)f.invincibleTimer-=dt;
-  let mx=0,my=0; if(input.up)my-=1; if(input.down)my+=1; if(input.left)mx-=1; if(input.right)mx+=1;
-  tickStatus(f, dt); applyTrapTo(f);
-  const ml=Math.hypot(mx,my); if(ml>0){mx/=ml;my/=ml; moveEntity(f,mx*effSpeed(f)*dt,my*effSpeed(f)*dt); f.facing=Math.atan2(my,mx);}
+  tickStatus(f, dt); applyTrapTo(f); tickThornTrail(f);
+  // X/C: 눌림 순간(edge)만 발동(host 판정)
+  const sp=!!input.special, ult=!!(input.ultimate||input.super);
+  if(sp && !f._pSp) castSpecialFor(f, envTeam());
+  if(ult && !f._pUlt) castUltimateFor(f, envTeam(), ()=>f.superGauge||0, v=>{ f.superGauge=v; });
+  f._pSp=sp; f._pUlt=ult;
   f.cooldown-=dt;
   tickReload(f, dt);
   if(input.reload) startReload(f);
-  if(input.super) tDoSuper(f);
-  if(input.attack && f.cooldown<=0 && canFireAmmo(f)){ tFire(f); consumeAmmo(f); f.cooldown=GAME_CONFIG.playerAttackCooldown*getWeapon(f.weaponId).cooldownMul; }
+  if(isFrozen(f)) return;                                  // 빙결: 이동·공격 불가
+  let mx=0,my=0; if(input.up)my-=1; if(input.down)my+=1; if(input.left)mx-=1; if(input.right)mx+=1;
+  const ml=Math.hypot(mx,my); if(ml>0){mx/=ml;my/=ml; moveEntity(f,mx*effSpeed(f)*dt,my*effSpeed(f)*dt); f.facing=Math.atan2(my,mx);}
+  if(input.attack && f.cooldown<=0 && canFireAmmo(f)){ tFire(f); consumeAmmo(f); f.cooldown=zCooldownOf(f, getWeapon(f.weaponId)); }
 }
 function tHurtPlayer(f,dmg){
   if(f.dead||f.inactive||f.invincibleTimer>0) return;
+  dmg=incomingDamage(f,dmg);                               // 방패/질주 감소(최소 1)
   f.hp-=dmg; f.hitFlash=0.15;
-  if(f.hp<=0){ f.hp=0; f.dead=true; f.respawnTimer=4; tPve.teamLives=Math.max(0, tPve.teamLives-1); }
+  if(f.hp<=0){ f.hp=0; f.dead=true; f.respawnTimer=4;
+    f.lives=Math.max(0,(f.lives||0)-1);                    // PRD 12.2: 자기 목숨만 소비(다른 학생 목숨과 무관)
+    tPve.teamLives=tPveLivesTotal(); }                     // 표시용 합계 갱신(하위호환 필드)
+}
+// 활성 실제 플레이어들의 남은 목숨 합계(HUD/패킷 표시용)
+function tPveLivesTotal(){
+  let n=0; for(const s in tFighters){ const f=tFighters[s]; if(f.isBot||f.inactive) continue; n+=(f.lives||0); }
+  return n;
+}
+/* 몸싸움(충돌 분리): 몹이 플레이어 몸 속으로 겹쳐 들어오지 않게 한다.
+   겹치면 총구(몸 밖 28px)보다 안쪽이라 근접 사격이 불가능해지는 문제 해결.
+   - 적↔플레이어: 적을 밖으로 밀어냄(플레이어 이동은 안 막아 포위 답답함 방지)
+   - 적↔적: 절반씩 밀어 무리 뭉침 완화(보스는 밀리지 않음) */
+function tResolveCollisions(){
+  const ids=Object.keys(tEnemies);
+  for(const id of ids){ const e=tEnemies[id]; if(!e||e.dead) continue;
+    for(const s in tFighters){ const f=tFighters[s]; if(f.dead||f.inactive) continue;
+      let dx=e.x-f.x, dy=e.y-f.y; let d=Math.hypot(dx,dy);
+      const min=e.r+f.r-2;
+      if(d<min){
+        let push=min-d;
+        if(d<1){ const a=Math.random()*Math.PI*2; dx=Math.cos(a); dy=Math.sin(a); d=1; push=min; }   // 완전 겹침: 임의 방향으로 전부 밀어냄
+        moveEntity(e, dx/d*push, dy/d*push); }
+    }
+  }
+  for(let i=0;i<ids.length;i++){ const a=tEnemies[ids[i]]; if(!a||a.dead) continue;
+    for(let j=i+1;j<ids.length;j++){ const b=tEnemies[ids[j]]; if(!b||b.dead) continue;
+      const dx=b.x-a.x, dy=b.y-a.y; let d=Math.hypot(dx,dy);
+      const min=(a.r+b.r)*0.85;
+      if(d<min){ if(d<1) d=1; const push=(min-d)/2;
+        if(!a.isBoss) moveEntity(a, -dx/d*push, -dy/d*push);
+        if(!b.isBoss) moveEntity(b, dx/d*push, dy/d*push); }
+    }
+  }
+}
+// 몹 이동 공통: 벽에 막혀 제자리걸음이면 0.55초 수직 우회(지형 바보 방지)
+function tEnemyMove(e, nx, ny, spd, dt){
+  if(e.detourT>0){ e.detourT-=dt;
+    moveEntity(e, -ny*e.detourDir*spd*dt, nx*e.detourDir*spd*dt);
+    return;
+  }
+  const ox=e.x, oy=e.y;
+  moveEntity(e, nx*spd*dt, ny*spd*dt);
+  if(spd>1 && Math.hypot(e.x-ox,e.y-oy) < spd*dt*0.35){
+    if(e.detourDir===undefined) e.detourDir=(Math.random()<0.5?1:-1);
+    else e.detourDir*=-1;                                   // 반복 끼임 → 반대쪽 우회
+    e.detourT=0.55;
+  }
+}
+// 접촉(몸통 박치기) 피해 전용 — PRD 15.4: 여러 몹이 겹쳐 붙어도 대상별 0.2초 면역으로
+// 접촉 피해가 한꺼번에 중첩되지 않는다(무리에게 둘러싸여도 초당 최대 5회).
+function tContactHurt(f,dmg){
+  if(f.contactImmuneT>0) return false;
+  tHurtPlayer(f,dmg);
+  f.contactImmuneT=0.2;
+  return true;
 }
 function tEnemyUpdate(e,dt){
   if(e.dead) return;
+  // 상태효과(빙결/둔화/밀치기 면역) — PVE 몬스터도 파이터와 같은 규칙
+  if(e.knockImmuneTimer>0 && e.knockImmuneTimer<1e8) e.knockImmuneTimer-=dt;
+  if(e.wSlowTimer>0) e.wSlowTimer-=dt;
+  if(e.freezeTimer>0){ e.freezeTimer-=dt; return; }        // 빙결: 이동·공격 불가
+  let spdMul=(e.wSlowTimer>0)?(1-(e.wSlowPct||0)):1;
+  // 보스 2페이즈/분노(PRD 15.5 간이): HP 비율로 공격 간격·속도 조정
+  if(e.baseFireCd){
+    let cdMul=1, spMul=1;
+    if(e.enrage && e.hp<=e.maxHp*e.enrage.at){ cdMul*=e.enrage.cdMul||1; spMul*=e.enrage.speedMul||1; }
+    e.fireCd=e.baseFireCd*cdMul; e.speed=e.baseSpeed*spMul;
+  }
+  // 별벌레/보스 돌진: 0.7초 직선 예고 후 대시, 벽 충돌 시 기절(PRD 15.3)
+  const dashDef = e.dash || (e.phase2 && e.hp<=e.maxHp*e.phase2.at ? e.phase2.dash : null);
+  if(dashDef){
+    if(e.dashStun>0){ e.dashStun-=dt; return; }              // 벽 충돌 기절
+    if(e.dashState==="warn"){
+      e.dashWarnT-=dt;
+      if(e.dashWarnT<=0){ e.dashState="go"; e.dashLeft=dashDef.dist; }
+      return;                                                 // 예고 중 정지(플레이어가 읽고 피함)
+    }
+    if(e.dashState==="go"){
+      const step=Math.min(dashDef.speed*dt, e.dashLeft), ox=e.x, oy=e.y;
+      moveEntity(e, e.dashDirX*step, e.dashDirY*step);
+      e.dashLeft-=step;
+      if(Math.hypot(e.x-ox,e.y-oy)<step*0.4){ e.dashState="idle"; e.dashStun=dashDef.stun||1; e.dashTimer=dashDef.cd; }  // 벽 → 기절
+      else {
+        for(const s in tFighters){ const f=tFighters[s];
+          if(f.dead||f.inactive||f.invincibleTimer>0) continue;
+          if(dist(e.x,e.y,f.x,f.y)<e.r+f.r+4){ tContactHurt(f, dashDef.dmg||e.dmg); e.dashState="idle"; e.dashTimer=dashDef.cd; break; } }
+        if(e.dashLeft<=0){ e.dashState="idle"; e.dashTimer=dashDef.cd; }
+      }
+      return;
+    }
+    e.dashTimer=(e.dashTimer===undefined?dashDef.cd*0.6:e.dashTimer)-dt;
+  }
+  // 회복 요정: 공격 없이 주변 아군 적 회복(PRD 15.3 — 자기 회복 없음, 초당 12 상한)
+  if(e.healer){
+    e.healer.timer-=dt;
+    const t0=tNearestPlayer(e);
+    if(t0){ const dd=dist(e.x,e.y,t0.x,t0.y); const dx0=e.x-t0.x, dy0=e.y-t0.y, l=Math.hypot(dx0,dy0)||1;
+      if(dd<260) tEnemyMove(e, dx0/l, dy0/l, e.speed*spdMul, dt); }   // 플레이어에게서 도망(벽 우회)
+    if(e.healer.timer<=0){ e.healer.timer=e.healer.cd;
+      for(const id2 in tEnemies){ const o=tEnemies[id2]; if(o===e||o.dead) continue;
+        if(dist(e.x,e.y,o.x,o.y)<=e.healer.radius){
+          o._healAcc=(o._healAcc||0);
+          const give=Math.min(e.healer.amount, 12*e.healer.cd - o._healAcc);          // 초당 12 상한
+          if(give>0){ o.hp=Math.min(o.maxHp, o.hp+give); o._healAcc+=give; }
+        } }
+      for(const id2 in tEnemies){ const o=tEnemies[id2]; if(o._healAcc) o._healAcc=Math.max(0, o._healAcc-12*e.healer.cd); }
+      effects.push({kind:"respawn",x:e.x,y:e.y,t:0,life:0.35,color:"#8fffb3"});
+    }
+    return;
+  }
   const t=tNearestPlayer(e); if(!t) return;
   const dx=t.x-e.x, dy=t.y-e.y, d=Math.hypot(dx,dy)||1;
   e.facing=Math.atan2(dy,dx);
+  // 돌진 개시 판정(별벌레·보스 2페이즈)
+  if(dashDef && e.dashTimer<=0 && d>90 && d<420 && hasLineOfSight(e.x,e.y,t.x,t.y)){
+    e.dashState="warn"; e.dashWarnT=dashDef.warn; e.dashDirX=dx/d; e.dashDirY=dy/d;
+    effects.push({kind:"dashTrail",x:e.x,y:e.y,t:0,life:dashDef.warn,color:"#ffe14d"});
+    return;
+  }
+  // 구름 유령: 주기적 반투명(시각) — 공격 직전엔 보임(렌더에서 처리)
+  if(e.ghost){ e.ghost.cycle=(e.ghost.cycle+dt)%2.8; }
+  // 보스 내려찍기(수정 거북·젤리킹): 예고 후 반경 피해(PRD 15.5)
+  if(e.slam){
+    if(e.slamWarnT>0){
+      e.slamWarnT-=dt;
+      if(e.slamWarnT<=0){
+        spawnSuperWave(e.x,e.y,e.slam.radius);
+        for(const s in tFighters){ const f=tFighters[s];
+          if(f.dead||f.inactive||f.invincibleTimer>0) continue;
+          if(dist(e.x,e.y,f.x,f.y)<=e.slam.radius+f.r) tHurtPlayer(f, e.slam.dmg); }
+        e.slam.timer=e.slam.cd;
+        if(e.slam.exposeTime) e.guardDownT=e.slam.exposeTime;   // 거북: 내려찍기 후 방어 해제
+      }
+      return;                                                   // 예고 중 정지
+    }
+    e.slam.timer-=dt;
+    if(e.slam.timer<=0 && d<e.slam.radius+120){ e.slamWarnT=e.slam.warn;
+      skillZones.push({type:"meteor", owner:null, x:e.x, y:e.y, timer:e.slam.warn, radius:e.slam.radius, dmg:0, done:false, enemyWarn:true}); }
+  }
+  if(e.guardDownT>0) e.guardDownT-=dt;
+  // 보스 소환(PRD: 주기 또는 HP 트리거)
+  if(e.summon){
+    const map=getMap(tMapId);
+    if(e.summon.cd){ e.summon.timer-=dt;
+      if(e.summon.timer<=0){ e.summon.timer=e.summon.cd;
+        for(let i=0;i<e.summon.count;i++){ if(Object.keys(tEnemies).length>=40) break; tSpawnEnemy(e.summon.type,1,map,1); } } }
+    if(e.summon.atHp){ for(const ratio of e.summon.atHp){
+      if(e.hp<=e.maxHp*ratio && e.summon.fired.indexOf(ratio)<0){ e.summon.fired.push(ratio);
+        for(let i=0;i<(e.summon.count||3);i++){ if(Object.keys(tEnemies).length>=40) break; tSpawnEnemy(e.summon.type,1,map,1); } } } }
+  }
   if(e.ranged){
     let mvx=0,mvy=0;
     if(d>e.range*0.75){ mvx=dx/d; mvy=dy/d; } else if(d<e.range*0.4){ mvx=-dx/d; mvy=-dy/d; }
-    if(mvx||mvy) moveEntity(e, mvx*e.speed*dt, mvy*e.speed*dt);
+    if(mvx||mvy) tEnemyMove(e, mvx, mvy, e.speed*spdMul, dt);   // 벽 우회 포함
+    else if(!hasLineOfSight(e.x,e.y,t.x,t.y)) tEnemyMove(e, dx/d, dy/d, e.speed*spdMul, dt);   // 사거리 안인데 벽 → 돌아가기
     e.fireTimer-=dt;
     if(d<e.range && e.fireTimer<=0 && hasLineOfSight(e.x,e.y,t.x,t.y)){ tEnemyFire(e); e.fireTimer=e.fireCd; }
   } else {
-    moveEntity(e, dx/d*e.speed*dt, dy/d*e.speed*dt);
+    tEnemyMove(e, dx/d, dy/d, e.speed*spdMul, dt);              // 벽 우회 포함
     e.contactTimer-=dt;
-    if(d < e.r+t.r+4 && e.contactTimer<=0){ tHurtPlayer(t, e.dmg); e.contactTimer=e.contactCd; }
+    if(d < e.r+t.r+6 && e.contactTimer<=0){
+      if(tContactHurt(t, e.dmg)) e.contactTimer=e.contactCd;   // 면역 중이면 쿨 소모 안 함(면역 끝나면 때림)
+    }
   }
 }
 function tEnemyFire(e){
-  const a0=e.facing, n=e.threeWay?3:1, spread=deg2rad(26);
+  const a0=e.facing, mz=e.r+6;
+  const push=(a,extra)=>{ tBullets.push(Object.assign({
+    x:e.x+Math.cos(a)*mz, y:e.y+Math.sin(a)*mz, vx:Math.cos(a)*e.bulletSpeed, vy:Math.sin(a)*e.bulletSpeed,
+    r:e.isBoss?14:9, damage:e.dmg, team:"enemy", owner:e.id, color:"#ff8f6b", alive:true, traveled:0,
+    maxRange:(e.range||400)+140, age:0 }, extra||{})); };
+  // 보스 전용 패턴(PRD 15.5 간이)
+  if(e.ringShot && (!e.ringShot.atHp || e.hp<=e.maxHp*e.ringShot.atHp)){
+    const n=e.ringShot.count;
+    for(let i=0;i<n;i++) push(a0+i*Math.PI*2/n);
+    return;
+  }
+  if(e.fan){
+    let n=e.fan.count;
+    if(e.phase2 && e.hp<=e.maxHp*e.phase2.at) n=e.phase2.count||n;   // 훈련 로봇 2페이즈 7발
+    const spread=deg2rad(e.fan.deg);
+    for(let i=0;i<n;i++) push(a0-spread/2+spread*(i/(n-1)));
+    return;
+  }
+  if(e.bounceShot){                                                  // 종이비행기 대장: 반사탄
+    push(a0, { bounce:true, maxBounce:e.bounceShot.maxBounce, r:e.bounceShot.radius||16, life:6, color:"#eef2f6" });
+    return;
+  }
+  const n=e.threeWay?3:1, spread=deg2rad(26);
   for(let i=0;i<n;i++){ let a=a0; if(n>1) a=a0-spread/2+spread*(i/(n-1));
-    const mz=e.r+6;
-    tBullets.push({ x:e.x+Math.cos(a)*mz, y:e.y+Math.sin(a)*mz, vx:Math.cos(a)*e.bulletSpeed, vy:Math.sin(a)*e.bulletSpeed,
-      r:e.isBoss?14:9, damage:e.dmg, team:"enemy", owner:e.id, color:"#ff8f6b", alive:true, traveled:0, maxRange:(e.range||400)+140 });
+    push(a, e.slowShot?{ sl:e.slowShot, color:"#9fdcff" }:null);     // 얼음 방울: 둔화탄
   }
 }
 function tPveUpdateBullets(dt){
   for(const b of tBullets){
     if(!b.alive) continue;
+    b.age=(b.age||0)+dt;
+    if(b.age>(b.life||5)){ b.alive=false; continue; }
+    if(b.boomerang){
+      const o=tFighters[b.owner];
+      if(!o || o.dead){ if(b.phase==="back"){ b.alive=false; continue; } }
+      else if(!steerBoomerang(b, o.x, o.y)){ b.alive=false; continue; }
+    }
     const speed=Math.hypot(b.vx,b.vy), steps=Math.max(1,Math.ceil(speed*dt/(b.r*0.9)));
     const sx=b.vx*dt/steps, sy=b.vy*dt/steps, sl=Math.hypot(sx,sy);
     for(let s=0;s<steps&&b.alive;s++){
       b.x+=sx; b.y+=sy; b.traveled+=sl;
-      if(b.x<ARENA.x||b.x>ARENA.x+ARENA.w||b.y<ARENA.y||b.y>ARENA.y+ARENA.h){ b.alive=false; break; }
-      let wall=false; for(const o of OBSTACLES){ if(circleRectOverlap(b.x,b.y,b.r,o)){ wall=true; break; } } if(wall){ b.alive=false; break; }
+      if(b.x<ARENA.x||b.x>ARENA.x+ARENA.w||b.y<ARENA.y||b.y>ARENA.y+ARENA.h){
+        if(b.boomerang && b.phase==="out"){ b.phase="back"; b.x=clamp(b.x,ARENA.x,ARENA.x+ARENA.w); b.y=clamp(b.y,ARENA.y,ARENA.y+ARENA.h); break; }
+        if(b.bounce){ if((b.bounces||0)>=b.maxBounce){ b.alive=false; break; }
+          if(b.x<ARENA.x||b.x>ARENA.x+ARENA.w) b.vx=-b.vx; else b.vy=-b.vy;
+          b.x=clamp(b.x,ARENA.x,ARENA.x+ARENA.w); b.y=clamp(b.y,ARENA.y,ARENA.y+ARENA.h);
+          b.bounces=(b.bounces||0)+1; b.lastWall=null; b.lastBounceAt=b.age; break; }
+        b.alive=false; break;
+      }
+      let wall=false, wref=null; for(const o of OBSTACLES){ if(circleRectOverlap(b.x,b.y,b.r,o)){ wall=true; wref=o; break; } }
+      if(wall){
+        if(b.boomerang){ if(b.phase==="out"){ b.phase="back"; b.x-=sx; b.y-=sy; } break; }
+        if(b.bounce){ if(!bounceBullet(b,wref,sx,sy)) b.alive=false; break; }
+        spawnHitFx(b.x,b.y,b.wid,"#aab0d0"); b.alive=false; break;
+      }
       if(b.team==="pve"){
         for(const id in tEnemies){ const e=tEnemies[id]; if(e.dead) continue;
-          if(dist(b.x,b.y,e.x,e.y)<b.r+e.r){ const k=tFighters[b.owner];
-            if(k && !b.isSuper) k.superGauge=Math.min(GAME_CONFIG.superCharge,(k.superGauge||0)+GAME_CONFIG.superChargePerHit);
-            tDamageEnemy(e,id,b.damage,k); b.alive=false; break; } }
+          if(dist(b.x,b.y,e.x,e.y)<b.r+e.r){
+            const k=tFighters[b.owner];
+            if(b.boomerang){
+              const hm=(b.phase==="out")?b.hitO:b.hitB;
+              if(hm[id]) continue;
+              hm[id]=true;
+              if(k && !b.isSuper) tryChargeGauge(b.aid, id, ()=>{ k.superGauge=Math.min(GAME_CONFIG.superCharge,(k.superGauge||0)+GAME_CONFIG.superChargePerHit); });
+              if(b.wref) applyWeaponHitEffects(b.wref, e, b.x, b.y);
+              tDamageEnemy(e,id,b.damage,k);
+              spawnHitFx(b.x,b.y,b.wid,b.color);
+              continue;                                    // 부메랑은 관통(복귀 타격)
+            }
+            if(k && !b.isSuper) tryChargeGauge(b.aid, id, ()=>{ k.superGauge=Math.min(GAME_CONFIG.superCharge,(k.superGauge||0)+GAME_CONFIG.superChargePerHit); });
+            if(b.wref) applyWeaponHitEffects(b.wref, e, b.x, b.y);
+            tDamageEnemy(e,id,b.damage,k);
+            spawnHitFx(b.x,b.y,b.wid,b.color);
+            b.alive=false; break; } }
       } else {
         for(const slot in tFighters){ const f=tFighters[slot]; if(f.dead||f.inactive||f.invincibleTimer>0) continue;
-          if(dist(b.x,b.y,f.x,f.y)<b.r+f.r){ tHurtPlayer(f, b.damage); b.alive=false; break; } }
+          if(dist(b.x,b.y,f.x,f.y)<b.r+f.r){
+            tHurtPlayer(f, b.damage);
+            if(b.sl) applySlowTo(f, b.sl.pct, b.sl.time);   // 얼음 방울: 명중 시 25% 둔화 1.2s(중첩 없음)
+            b.alive=false; break; } }
       }
       if(!b.alive) break;
-      if(b.traveled>b.maxRange){ b.alive=false; break; }
+      if(!b.boomerang && b.traveled>b.maxRange){ b.alive=false; break; }
     }
   }
   tBullets=tBullets.filter(b=>b.alive);
@@ -4197,32 +5242,63 @@ function tPveUpdateBullets(dt){
 }
 function tPveProgress(dt){
   if(tPve.status!=="playing") return;
-  if(tPve.teamLives<=0){ tPve.status="failed"; tPveEnd(); return; }
+  // 실패(PRD 12.2): 살아있는 활성 플레이어가 없고, 부활 가능한(목숨>0) 플레이어도 없을 때
+  let anyAlive=false, anyRevivable=false;
+  for(const s in tFighters){ const f=tFighters[s]; if(f.isBot||f.inactive) continue;
+    if(!f.dead) anyAlive=true; else if((f.lives||0)>0) anyRevivable=true; }
+  if(!anyAlive && !anyRevivable){ tPve.status="failed"; tPveEnd(); return; }
   const alive=Object.keys(tEnemies).length;
   if(tPve.phase==="wave"){
     if(alive===0){
       const stage=PVE_STAGES[tPve.stageIndex];
+      tPveCheckpointRevive(false);                          // 웨이브 통과: 목숨 0 플레이어 1개 복귀(PRD 12.2)
       if(tPve.waveIndex < stage.waves.length-1){ tPve.phase="gap"; tPve.phaseTimer=2; }
-      else if(tPve.stageIndex < PVE_STAGES.length-1){ tPve.phase="stageclear"; tPve.phaseTimer=5; }
+      else if(tPve.stageIndex < PVE_STAGES.length-1){
+        tPve.phase="stageclear"; tPve.phaseTimer=9;         // 강화 선택 시간(전원 선택 시 단축)
+        tPveOfferUpgrades(!!stage.boss);                    // PRD 13.2/19.4: 일반 3택1, 보스(5·10·15) 후엔 희귀(2스택)
+      }
       else { tPve.status="complete"; tPveEnd(); }
     }
   } else if(tPve.phase==="gap"){
     tPve.phaseTimer-=dt; if(tPve.phaseTimer<=0){ tPve.waveIndex++; tPveStartWave(); }
   } else if(tPve.phase==="stageclear"){
     tPve.phaseTimer-=dt;
+    // 전원 선택 완료 → 대기 단축
+    if(tPve.upg){ let all=true; for(const s in tPve.upg){ if(!tPve.upg[s].picked){ all=false; break; } }
+      if(all) tPve.phaseTimer=Math.min(tPve.phaseTimer,1.2); }
     if(tPve.phaseTimer<=0){
+      // 시간 초과 → 미선택자는 자동 선택(진행이 막히지 않게)
+      if(tPve.upg){ for(const s in tPve.upg){ const o=tPve.upg[s];
+        if(!o.picked && tFighters[s]){ o.picked=true; o.pi=Math.floor(Math.random()*3); tPveApplyUpgrade(tFighters[s], o.c[o.pi], o.r===1); } }
+        tPve.upg=null; }
+      const wasBoss=!!PVE_STAGES[tPve.stageIndex].boss;
       tPve.stageIndex++; tPve.waveIndex=0;
       const st=PVE_STAGES[tPve.stageIndex]; tMapId=st.mapId;
       OBSTACLES=getMap(tMapId).obstacles; BUSHES=getMap(tMapId).bushes;
-      tPve.teamLives=st.teamLives; tBullets=[]; tEnemies={};
+      tBullets=[]; tEnemies={};
+      tPveCheckpointRevive(wasBoss);                        // 보스(5·10·15) 통과: 전원 목숨 +1(상한)
+      tPve.teamLives=tPveLivesTotal();
       tPveReposition(); tPveStartWave();
     }
   }
 }
+// 체크포인트 목숨 회복(PRD 12.2/15.6): 목숨 0 플레이어 최소 1개 복귀 · 보스 통과 시 전원 +1(시작 상한)
+function tPveCheckpointRevive(bossBonus){
+  for(const s in tFighters){ const f=tFighters[s]; if(f.isBot||f.inactive) continue;
+    if((f.lives||0)<=0){ f.lives=1; if(f.dead) f.respawnTimer=Math.min(f.respawnTimer,1); }
+    if(bossBonus) f.lives=Math.min(PVE_LIVES_START, (f.lives||0)+1);
+  }
+  tPve.teamLives=tPveLivesTotal();
+}
 function tPveReposition(){
+  // PRD 12.6/15.6 회복 정책: 스테이지 전환 시 최대체력의 50% 회복(+회복 별 강화 15/스택), 사망 복귀자는 50%로.
   const map=getMap(tMapId); let i=0;
   for(const slot in tFighters){ const f=tFighters[slot]; const p=tSpawnPos(map.playerSpawn,i++); const sp=findClearSpawn(p.x,p.y,f.r);
-    f.x=sp.x; f.y=sp.y; f.dead=false; f.hp=f.maxHp; f.displayHp=f.maxHp; f.invincibleTimer=GAME_CONFIG.invincibleTime;
+    f.x=sp.x; f.y=sp.y;
+    const regen=15*upgStacks(f,"regen");
+    if(f.dead){ f.dead=false; f.hp=Math.min(f.maxHp, f.maxHp*0.5+regen); }
+    else f.hp=Math.min(f.maxHp, f.hp+f.maxHp*0.5+regen);
+    f.displayHp=f.hp; f.invincibleTimer=GAME_CONFIG.invincibleTime;
     f.spawnX=map.playerSpawn.x; f.spawnY=map.playerSpawn.y; }
 }
 function tPveEnd(){
@@ -4239,8 +5315,10 @@ function tPveGetDrawData(){
   if(OnlineManager.role==="host"){
     for(const s in tFighters){ const f=tFighters[s]; out.fighters.push({ x:f.x,y:f.y,facing:f.facing,hp:f.hp,maxHp:f.maxHp,dead:f.dead,inv:f.invincibleTimer>0,charId:f.char.id,team:"pve",slot:s,isMe:s===OnlineManager.mySlot,fr:f.fireRevealTimer>0?1:0 }); }
     for(const id in tEnemies){ const e=tEnemies[id]; out.enemies.push({ x:e.x,y:e.y,r:e.r,hp:e.hp,maxHp:e.maxHp,facing:e.facing,color:e.color,boss:e.isBoss,type:e.type }); }
-    out.bullets=tBullets.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.color }));
+    out.bullets=tBullets.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.color,w:b.wid||null,vx:b.vx,vy:b.vy }));
+    out.zones=packZones();
     out.pve={ stageIndex:tPve.stageIndex, waveIndex:tPve.waveIndex, teamLives:tPve.teamLives, status:tPve.status, phase:tPve.phase, enemiesRemaining:Object.keys(tEnemies).length };
+    if(tPve.upg){ const ug={}; for(const s in tPve.upg){ const o=tPve.upg[s]; ug[s]={c:o.c, r:o.r, p:o.picked?1:0, pi:o.pi}; } out.pve.upg=ug; }
   } else {
     const st=OnlineManager.onlineState;
     if(!st || !st.fighters){ out.waiting=true; return out; }
@@ -4251,7 +5329,8 @@ function tPveGetDrawData(){
       out.fighters.push({ x:rx,y:ry,facing:rf,hp:p.hp,maxHp:p.maxHp||tRosterMaxHp(s),dead:p.dead,inv:p.inv,charId:p.charId||tRosterCharId(s),team:"pve",slot:s,isMe:s===myslot,fr:p.fr }); }
     const en=st.enemies||{}; for(const id in en){ const e=en[id]; if(e.dead) continue; const def=getEnemyDef(e.type);
       out.enemies.push({ x:e.x,y:e.y,r:e.r||def.r,hp:e.hp,maxHp:e.maxHp,facing:e.facing,color:e.color||def.color,boss:(e.boss!==undefined?e.boss:(e.type==="boss"||e.type==="miniBoss")),type:e.type }); }
-    out.bullets=tBulletsView.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.c }));
+    out.bullets=tBulletsView.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.c,w:b.w||null,vx:b.vx,vy:b.vy }));
+    out.zones=(st.zones||[]);
     out.pve=st.pve||null;
   }
   return out;
@@ -4259,7 +5338,30 @@ function tPveGetDrawData(){
 function tDrawEnemy(e){
   ctx.save();
   if(isInBushXY(e.x,e.y)) ctx.globalAlpha=0.6;   // PVE 적도 풀숲 안이면 반투명
+  if(e.type==="cloud_ghost"){                     // 구름 유령: 2초마다 0.8초 반투명(공격 직전엔 보임)
+    const cyc=(uiTime%2.8);
+    if(cyc<0.8) ctx.globalAlpha*= (e.contactTimer<=0.3?0.9:0.35);
+  }
   ctx.translate(e.x,e.y);
+  // 몬스터 본체 이미지(1장) 훅 — 파일이 생기면 자동 적용, 없으면 아래 도형 fallback
+  const mimg=ASSETS_ENABLED?getMonsterImage(e.type):null;
+  if(mimg){
+    const s=e.r*2.4, iw=mimg.naturalWidth||1, ih=mimg.naturalHeight||1, dw=s*(iw/ih), dhh=s;
+    ctx.drawImage(mimg, -dw/2, -dhh/2, dw, dhh);
+    if(e.dashState==="warn"){ ctx.strokeStyle="#ffe14d"; ctx.lineWidth=3; ctx.setLineDash([6,5]);
+      ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(Math.cos(e.facing)*220, Math.sin(e.facing)*220); ctx.stroke(); ctx.setLineDash([]); }
+    ctx.restore();
+    if(!e.boss){ const w=Math.max(28,e.r*1.6),h=5,bx=e.x-w/2,by=e.y-e.r-12;
+      ctx.save(); ctx.fillStyle="rgba(0,0,0,0.5)"; roundRect(bx,by,w,h,3); ctx.fill();
+      ctx.fillStyle="#ff5a5a"; roundRect(bx,by,w*clamp(e.hp/(e.maxHp||1),0,1),h,3); ctx.fill(); ctx.restore(); }
+    return;
+  }
+  // 돌진 예고선(별벌레·보스): 도형 fallback에도 표시
+  if(e.dashState==="warn"){ ctx.strokeStyle="#ffe14d"; ctx.lineWidth=3; ctx.setLineDash([6,5]);
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(Math.cos(e.facing)*220, Math.sin(e.facing)*220); ctx.stroke(); ctx.setLineDash([]); }
+  // 방패 블록/거북: 정면 가드 방향 표시
+  if(e.frontGuard && !(e.guardDownT>0)){ ctx.save(); ctx.rotate(e.facing);
+    ctx.strokeStyle="#dfe6ef"; ctx.lineWidth=4; ctx.beginPath(); ctx.arc(0,0,e.r+6,-deg2rad(e.frontGuard.deg)/2,deg2rad(e.frontGuard.deg)/2); ctx.stroke(); ctx.restore(); }
   if(e.boss){ // 보스 오라(맥동하는 외곽 글로우)
     const pulse=0.5+0.5*Math.sin(uiTime*5), gr=ctx.createRadialGradient(0,0,e.r*0.5,0,0,e.r+22+pulse*8);
     gr.addColorStop(0,"rgba(255,80,110,0.35)"); gr.addColorStop(1,"rgba(255,80,110,0)");
@@ -4286,6 +5388,7 @@ function tDrawEnemy(e){
 function tPveRender(){
   const data=tPveGetDrawData();
   const me=data.fighters.find(f=>f.isMe); _viewer = me ? { x:me.x, y:me.y, team:"pve" } : null;
+  drawSkillZonesPacked(data.zones);
   for(const b of data.bullets) drawOnlineBullet(b);
   for(const e of data.enemies) tDrawEnemy(e);
   for(const f of data.fighters) tDrawFighter(f);
@@ -4296,9 +5399,9 @@ function tPveRender(){
   ctx.fillStyle="rgba(10,12,32,0.72)"; ctx.fillRect(0,0,LOGW,64); ctx.textBaseline="middle";
   ctx.textAlign="left"; ctx.fillStyle="#9fe0ff"; ctx.font="bold 17px 'Malgun Gothic',sans-serif"; ctx.fillText(stage.name,24,24);
   ctx.fillStyle="#aab4e0"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.fillText("웨이브 "+(pve.waveIndex+1)+"/"+stage.waves.length+" · 남은 적 "+pve.enemiesRemaining,24,46);
-  ctx.textAlign="right"; ctx.fillStyle="#ff8f8f"; ctx.font="bold 20px 'Malgun Gothic',sans-serif"; ctx.fillText("팀 라이프 ♥ "+pve.teamLives,LOGW-24,32);
+  ctx.textAlign="right"; ctx.fillStyle="#ff8f8f"; ctx.font="bold 20px 'Malgun Gothic',sans-serif"; ctx.fillText("팀 목숨 합계 ♥ "+pve.teamLives,LOGW-24,32);
   ctx.fillStyle="rgba(10,12,32,0.72)"; ctx.fillRect(0,656,LOGW,64);
-  ctx.textAlign="right"; ctx.fillStyle="#aab4e0"; ctx.font="bold 14px 'Malgun Gothic',sans-serif"; ctx.fillText("방향키 · Z 공격 · X 궁극기 · R 장전 · Esc 나가기",LOGW-24,688);
+  ctx.textAlign="right"; ctx.fillStyle="#aab4e0"; ctx.font="bold 14px 'Malgun Gothic',sans-serif"; ctx.fillText("방향키 · Z 기본공격 · X 특수기술 · C 궁극기 · R 장전 · Esc 나가기",LOGW-24,688);
   ctx.restore();
   drawCombatStrip();
   let boss=null; for(const e of data.enemies){ if(e.boss){ boss=e; break; } }
@@ -4317,8 +5420,40 @@ function tPveRender(){
   if(data.waiting) drawCenterBanner("동기화 대기 중…","#9fe0ff");
   else if(pve.status==="failed") drawCenterBanner("실패…","#ff7a7a");
   else if(pve.status==="complete") drawCenterBanner("올 클리어! 🎉","#ffe066");
-  else if(pve.phase==="stageclear") drawCenterBanner("스테이지 클리어!","#ffe066");
+  else if(pve.phase==="stageclear"){
+    drawCenterBanner("스테이지 클리어!","#ffe066");
+    const myU=pve.upg && pve.upg[OnlineManager.mySlot];
+    if(myU) drawUpgradeCards(myU);
+  }
   else if(pve.phase==="gap") drawCenterBanner("다음 웨이브 준비…","#9fe0ff");
+}
+// 강화 3택1 카드(PRD 13.2) — 1/2/3 키로 선택. 희귀(보스 후)는 금테+2배 표기.
+function drawUpgradeCards(u){
+  ctx.save();
+  const picked=(u.p===1||u.picked===true);
+  const cw=250, chh=118, gap=24, total=cw*3+gap*2, x0=LOGW/2-total/2, y0=440;
+  ctx.textBaseline="alphabetic";
+  ctx.textAlign="center"; ctx.font="bold 17px 'Malgun Gothic',sans-serif";
+  ctx.fillStyle=u.r===1?"#ffd23f":"#9fe0ff";
+  ctx.fillText(u.r===1?"👑 희귀 강화 선택! (효과 2배)":"성장 강화를 하나 고르세요", LOGW/2, y0-14);
+  for(let i=0;i<3;i++){
+    const id=u.c[i], def=pveUpgradeDef(id), x=x0+i*(cw+gap);
+    const sel=picked && (u.pi===i);
+    ctx.fillStyle=sel?"rgba(90,150,90,0.95)":"rgba(20,26,60,0.94)";
+    roundRect(x,y0,cw,chh,14); ctx.fill();
+    ctx.strokeStyle=u.r===1?"#ffd23f":(sel?"#bfffad":"#5a7bb0"); ctx.lineWidth=sel?4:3;
+    roundRect(x,y0,cw,chh,14); ctx.stroke();
+    ctx.fillStyle="#ffe066"; ctx.font="bold 20px 'Malgun Gothic',sans-serif";
+    ctx.fillText((i+1)+". "+def.name, x+cw/2, y0+34);
+    ctx.fillStyle="#dfe6ff"; ctx.font="14px 'Malgun Gothic',sans-serif";
+    ctx.fillText(def.desc, x+cw/2, y0+62);
+    ctx.fillStyle="#8893bb"; ctx.font="12px 'Malgun Gothic',sans-serif";
+    ctx.fillText(def.max>0?("최대 "+def.max+"번 중첩"):"즉시 효과", x+cw/2, y0+86);
+  }
+  ctx.font="bold 14px 'Malgun Gothic',sans-serif";
+  ctx.fillStyle=picked?"#bfffad":"#ffe066";
+  ctx.fillText(picked?"선택 완료! 친구들을 기다리는 중…":"키보드 1 · 2 · 3 으로 선택 (시간 지나면 자동 선택)", LOGW/2, y0+chh+26);
+  ctx.restore();
 }
 
 function tPveDrawOver(){
