@@ -142,8 +142,8 @@ const STUDENT_CHARACTERS = [
   // 슬롯1 · 럭키 (별조각 발사기) — 체력100 · 속도225
   { id:"student_01", name:"럭키", role:"골고루형", desc:"동글동글 균형형 별 친구",
     color:"#ffe14d", subColor:"#fff3b0", hpMul:1.0, speedMul:1.0, damageMul:1.0, bulletSpeedMul:1.0,
-    specialName:"별똥별 일자 폭발", ultName:"별빛 일곱 발", passiveName:"무한 탄창 (장전 불필요)",
-    superType:"burst", superName:"별빛 일곱 발", defaultWeaponId:"tool_01", assetId:"student_01",
+    specialName:"별빛 일곱 발", ultName:"별똥별 일자 폭발", passiveName:"무한 탄창 (장전 불필요)",
+    superType:"burst", superName:"별똥별 일자 폭발", defaultWeaponId:"tool_01", assetId:"student_01",
     unlockCost:0, unlockedByDefault:true },
   // 슬롯2 · 달이 (종이비행기 런처) — 체력90 · 속도216
   { id:"student_02", name:"달이", role:"멀리 공격형", desc:"든든한 곰돌이",
@@ -295,9 +295,9 @@ function sanitizeLoadout(charId, weaponId){
    모아=서포터(오오라 기물·전체무적), 달이=저격수(관통 저격·원거리 보너스), 럭키=일자 폭발+무한탄창,
    별골렘=방패 막기(막을수록 궁 충전), 눈꽃=범위↑·궁 강화, 시고니=너프(가시 수↓·기습 패시브). */
 const ABILITY = {
-  student_01: { // 럭키 — X: 내 앞 일자 5연속 폭발(한 시전당 같은 대상 1회) · 패시브: 무한 탄창
-    x:{ cd:6,  warn:0.5, count:5, startDist:70, gap:95, radius:50, dmg:30 },
-    c:{ count:7, spreadDeg:52, dmg:11, maxPerTarget:44, range:520, speed:600, radius:9 } },
+  student_01: { // 럭키(v1.21b X↔C 스왑) — X: 일곱 발 부채꼴(자주) · C: 일자 5연속 폭발(궁으로 승격·강화) · 패시브: 무한 탄창
+    x:{ cd:6,  count:7, spreadDeg:52, dmg:9, maxPerTarget:27, range:520, speed:600, radius:9 },
+    c:{ warn:0.5, count:5, startDist:70, gap:95, radius:55, dmg:45 } },
   student_02: { // 달이 — 저격수: X 투사체 대형화(r16→26) · C 눈앞 일직선 관통 저격 · 패시브 원거리(320px+) 명중 +30%
     x:{ cd:8,  dmg:38, range:950, speed:560, radius:26 },
     c:{ dmg:55, len:900, width:56 },
@@ -313,8 +313,8 @@ const ABILITY = {
     x:{ cd:10, life:5, radius:140, hps:10 },
     c:{ invuln:2 },
     passive:{ radius:180, hps:5 } },
-  student_06: { // 별골렘 — X: 방패 막기(브라움식) 75%↓·2초·쿨 9→5s, 막은 피해×0.6만큼 궁 게이지 충전
-    x:{ cd:5,  dur:2.0, reduceMul:0.25, slowMul:0.8, knockMul:0.3, gaugePerBlock:0.6 },
+  student_06: { // 별골렘 — X: 방패 막기(브라움식) 75%↓·3초(v1.21b: 2→3초, 체감 짧다는 피드백)·쿨5s, 막은 피해×0.6 궁 충전
+    x:{ cd:5,  dur:3.0, reduceMul:0.25, slowMul:0.8, knockMul:0.3, gaugePerBlock:0.6 },
     c:{ dist:220, radius:170, life:3, pullEnemy:150, pullPlayer:110, dps:6, maxTotal:18, tick:1, bossPullMul:0.25, bossSlowPct:0.20 } }
 };
 function getAbility(charId){ return ABILITY[charId]||ABILITY.student_01; }
@@ -512,6 +512,7 @@ const WORLD_ASSETS={
   ob_crystal:"obstacles/crystal_01.png", ob_box:"obstacles/block_01.png", ob_rock:"obstacles/rock_01.png",
   bush:"bushes/bush_01.png",
   trap_damage:"traps/spike.png", trap_slow:"traps/slow.png", ice_field:"traps/ice_field.png",
+  st_gate:"obstacles/monster_gate.png", st_wall:"obstacles/cushion_wall.png",   /* v1.22 구조물(코덱스 world 배치분) */
   heal_pickup:"pickups/heal.png",
   tile_floor:"tiles/ground_basic.png"
 };
@@ -2174,13 +2175,12 @@ function castSpecialFor(f, env){
   if(!f || f.dead || f.inactive || isFrozen(f)) return false;
   if(f.specialCd>0) return false;
   const cid=f.char.id, A=getAbility(cid);
-  if(cid==="student_01"){                      // 럭키 X — 별똥별 일자 폭발(내 앞 일직선 5연속, 한 시전당 같은 대상 1회·LOS)
-    const grp={};                              // 5개 폭발이 겹쳐도 같은 대상은 1번만(과잉 중첩 방지)
-    for(let i=0;i<A.x.count;i++){
-      const d=A.x.startDist+A.x.gap*i;
-      let tx=f.x+Math.cos(f.facing)*d, ty=f.y+Math.sin(f.facing)*d;
-      tx=clamp(tx, ARENA.x+24, ARENA.x+ARENA.w-24); ty=clamp(ty, ARENA.y+24, ARENA.y+ARENA.h-24);
-      skillZones.push({type:"meteor", owner:f, x:tx, y:ty, timer:A.x.warn+i*0.07, radius:A.x.radius, dmg:A.x.dmg, groupHit:grp});
+  if(cid==="student_01"){                      // 럭키 X(v1.21b 스왑) — 별빛 일곱 발: 부채꼴 7발(대상당 최대 27)
+    const ucid=newUltCastId(), spread=deg2rad(A.x.spreadDeg), n=A.x.count;
+    for(let i=0;i<n;i++){
+      const ang=f.facing-spread/2+spread*(i/(n-1));
+      env.spawnBullet(f,{ angle:ang, speed:A.x.speed, radius:A.x.radius, damage:A.x.dmg, range:A.x.range,
+        color:"#ffe066", wid:"tool_01", ultCid:ucid, ultMaxHits:Math.round(A.x.maxPerTarget/A.x.dmg) });
     }
   } else if(cid==="student_02"){               // 달이 X — 초장거리 대형 비행기(r26, 저격 패시브 적용)
     env.spawnBullet(f,{ speed:A.x.speed, radius:A.x.radius, damage:A.x.dmg, range:A.x.range, color:"#eef2f6", wid:"tool_02", snipe:A.passive.snipeDist });
@@ -2209,12 +2209,13 @@ function castUltimateFor(f, env, getGauge, setGauge){
   if(getGauge()<GAME_CONFIG.superCharge) return false;
   setGauge(0);
   const cid=f.char.id, A=getAbility(cid);
-  if(cid==="student_01"){                      // 럭키 C — 별빛 일곱 발(탄창/장전 불변, 같은 대상 최대 40)
-    const ucid=newUltCastId(), spread=deg2rad(A.c.spreadDeg), n=A.c.count;
-    for(let i=0;i<n;i++){
-      const ang=f.facing-spread/2+spread*(i/(n-1));
-      env.spawnBullet(f,{ angle:ang, speed:A.c.speed, radius:A.c.radius, damage:A.c.dmg, range:A.c.range,
-        color:"#ffe066", wid:"tool_01", ultCid:ucid, ultMaxHits:Math.round(A.c.maxPerTarget/A.c.dmg) });
+  if(cid==="student_01"){                      // 럭키 C(v1.21b 스왑) — 별똥별 일자 폭발: 내 앞 일직선 5연속(시전당 같은 대상 1회·45)
+    const grp={};                              // 5개 폭발이 겹쳐도 같은 대상은 1번만(과잉 중첩 방지)
+    for(let i=0;i<A.c.count;i++){
+      const d=A.c.startDist+A.c.gap*i;
+      let tx=f.x+Math.cos(f.facing)*d, ty=f.y+Math.sin(f.facing)*d;
+      tx=clamp(tx, ARENA.x+24, ARENA.x+ARENA.w-24); ty=clamp(ty, ARENA.y+24, ARENA.y+ARENA.h-24);
+      skillZones.push({type:"meteor", owner:f, x:tx, y:ty, timer:A.c.warn+i*0.07, radius:A.c.radius, dmg:A.c.dmg, groupHit:grp});
     }
   } else if(cid==="student_02"){               // 달이 C — 관통 일직선 저격(v1.21): 눈앞 900px 일자 위 적 전원 55(벽 뒤는 제외)
     const ex=f.x+Math.cos(f.facing)*A.c.len, ey=f.y+Math.sin(f.facing)*A.c.len;
@@ -3170,6 +3171,7 @@ function drawBushes(){
 }
 function drawObstacles(){
   for(const o of OBSTACLES){
+    if(o.sid) continue;                                    // v1.22 구조물은 drawStructsPacked가 HP바와 함께 그림
     ctx.save();
     // 코덱스 지형 이미지(수정/별상자/바위) — 충돌 사각형 위에 바닥 정렬로 그림. 없으면 아래 도형 fallback.
     const oimg=worldImage(o.kind==="crystal"?"ob_crystal":(o.kind==="box"?"ob_box":"ob_rock"));
@@ -3327,6 +3329,37 @@ function drawEffects(){
   }
 }
 // X/C 장판 그리기(로컬=packZones(), 게스트=state.zones 공용 — 숫자만으로 렌더)
+/* v1.22 구조물 렌더: k 0=방어 수정(별수정 이미지) 1=몬스터 문 2=쿠션 벽 — HP바 포함 */
+function drawStructsPacked(list){
+  if(!list || !list.length) return;
+  const imgs=["ob_box","st_gate","st_wall"], defs=[STRUCT_DEFS.core,STRUCT_DEFS.gate,STRUCT_DEFS.wall];
+  for(const st of list){
+    if(st.hp<=0) continue;
+    const def=defs[st.k]||defs[2], img=worldImage(imgs[st.k]);
+    ctx.save();
+    ctx.fillStyle="rgba(0,0,0,0.20)";
+    ctx.beginPath(); ctx.ellipse(st.x, st.y+def.h*0.42, def.w*0.62, def.h*0.2, 0, 0, Math.PI*2); ctx.fill();
+    if(img){
+      const iw=img.naturalWidth||1, ih=img.naturalHeight||1, dw=def.w*1.35, dh=dw*(ih/iw);
+      ctx.drawImage(img, st.x-dw/2, st.y+def.h/2-dh+def.h*0.06, dw, dh);
+    } else {
+      ctx.fillStyle=st.k===0?"#7fd6ff":(st.k===1?"#b06be0":"#ff9ec2");
+      roundRect(st.x-def.w/2, st.y-def.h/2, def.w, def.h, 10); ctx.fill();
+      ctx.strokeStyle="#ffffff"; ctx.lineWidth=3; roundRect(st.x-def.w/2, st.y-def.h/2, def.w, def.h, 10); ctx.stroke();
+    }
+    // HP바(수정은 크게·항상, 문/벽은 작게)
+    const big=st.k===0, bw=big?110:56, bh=big?10:6, bx=st.x-bw/2, by=st.y-def.h/2-(big?22:14);
+    ctx.fillStyle="rgba(0,0,0,0.55)"; roundRect(bx,by,bw,bh,4); ctx.fill();
+    const ratio=clamp(st.hp/st.mh,0,1);
+    ctx.fillStyle= big ? (ratio>0.5?"#5fd0ff":(ratio>0.25?"#ffd23f":"#ff6a6a")) : "#c99bff";
+    roundRect(bx,by,bw*ratio,bh,4); ctx.fill();
+    if(big){ ctx.strokeStyle="#bfeaff"; ctx.lineWidth=2; roundRect(bx,by,bw,bh,4); ctx.stroke();
+      ctx.fillStyle="#dff4ff"; ctx.font="bold 11px 'Malgun Gothic',sans-serif"; ctx.textAlign="center"; ctx.textBaseline="bottom";
+      ctx.fillText("방어 수정 "+Math.ceil(st.hp), st.x, by-2); }
+    ctx.restore();
+  }
+}
+
 function drawSkillZonesPacked(list){
   if(!list || !list.length) return;
   for(const z of list){
@@ -4500,6 +4533,8 @@ function resetTeamMatchFromRoom(){
     const stage=PVE_STAGES[0]; tMapId=stage.mapId;
     tPve={ stageIndex:0, waveIndex:0, teamLives:stage.teamLives, status:"playing", phase:"wave", phaseTimer:0, enemiesRemaining:0 };
     tBuildFighters();
+    tPveSetupStructures();                                 // v1.22: 구조물 생성+충돌(호스트/게스트 공통)
+    tGuestStructSig="";
     tPve.teamLives=tPveLivesTotal();                       // 개인 목숨(PRD 12.2) 합계로 표시
     if(OnlineManager.role==="host") tPveStartWave();
   } else {
@@ -4782,7 +4817,9 @@ function tHostWriteState(){
   if(getOnlineMode(OnlineManager.mode).modeType==="pve"){
     const en={}; for(const id in tEnemies){ const e=tEnemies[id]; en[id]={ x:Math.round(e.x), y:Math.round(e.y), hp:Math.round(e.hp), maxHp:Math.round(e.maxHp), facing:Math.round(e.facing*100)/100, type:e.type, dead:!!e.dead }; }
     st.enemies=en;
-    st.pve={ stageIndex:tPve.stageIndex, waveIndex:tPve.waveIndex, teamLives:tPve.teamLives, status:tPve.status, phase:tPve.phase, enemiesRemaining:Object.keys(tEnemies).length, mapId:tMapId };
+    st.structs=tPackStructs();                                       // v1.22 구조물(숫자만, ≤6개)
+    st.pve={ stageIndex:tPve.stageIndex, waveIndex:tPve.waveIndex, teamLives:tPve.teamLives, status:tPve.status, phase:tPve.phase, enemiesRemaining:Object.keys(tEnemies).length, mapId:tMapId,
+      dfT:Math.max(0,Math.ceil(tPve.defendT||0)), gates:tGatesAlive() };
     if(tPve.upg){ const ug={}; for(const s in tPve.upg){ const o=tPve.upg[s]; ug[s]={c:o.c, r:o.r, p:o.picked?1:0, pi:o.pi}; } st.pve.upg=ug; }   // 강화 후보(문자 id 3개·숫자만)
   }
   OnlineManager.writeHostState(st);
@@ -4815,7 +4852,8 @@ function tComputeResultText(){
 function tUpdateGuest(dt){
   const s=OnlineManager.onlineState; if(!s || !s.fighters) return;
   // PVE: host가 보낸 현재 스테이지 맵으로 장애물/풀숲을 맞춘다(보이는 벽=실제 충돌)
-  if(s.pve && s.pve.mapId && s.pve.mapId!==tMapId){ tMapId=s.pve.mapId; const m=getMap(tMapId); OBSTACLES=m.obstacles; BUSHES=m.bushes; }
+  if(s.pve && s.pve.mapId && s.pve.mapId!==tMapId){ tMapId=s.pve.mapId; const m=getMap(tMapId); OBSTACLES=m.obstacles.slice(); BUSHES=m.bushes; tGuestStructSig=""; }
+  if(s.structs) tGuestApplyStructs(s.structs);                       // v1.22: 구조물 상태+충돌 동기화
   if(s!==tLastStateRef){ tLastStateRef=s; tBulletsView=(s.bullets||[]).map(b=>({ x:b.x,y:b.y,vx:b.vx||0,vy:b.vy||0,r:b.r,c:b.c,w:b.w||null })); }
   for(const b of tBulletsView){ b.x+=b.vx*dt; b.y+=b.vy*dt; }
   const myslot=OnlineManager.mySlot, k=Math.min(1,dt*18);
@@ -4995,7 +5033,8 @@ const PVE_STAGES = [
     waves:[ {enemies:[{type:"bounce_bubble",count:4}]}, {enemies:[{type:"soft_jelly",count:6},{type:"bounce_bubble",count:3}]} ] },
   { id:"c03", name:"1구역 3: 드론 혼성전",     mapId:"training", teamLives:12,
     waves:[ {enemies:[{type:"paper_drone",count:2},{type:"soft_jelly",count:5}]}, {enemies:[{type:"paper_drone",count:3},{type:"soft_jelly",count:6}]}, {enemies:[{type:"bounce_bubble",count:4}]} ] },
-  { id:"c04", name:"1구역 4: 세 방향 파도",    mapId:"training", teamLives:12,
+  { id:"c04", name:"1구역 4: 수정 지키기",     mapId:"training", teamLives:12,
+    objective:"defend", defendTime:75, structures:[{kind:"core",x:640,y:480}],   /* v1.22: 방어 수정 75초 보호(PRD 12.5) */
     waves:[ {enemies:[{type:"soft_jelly",count:10}]}, {enemies:[{type:"bounce_bubble",count:6}]}, {enemies:[{type:"paper_drone",count:4}]} ] },
   { id:"c05", name:"1구역 보스: 별빛 훈련 로봇", mapId:"training", teamLives:12, boss:true,
     waves:[ {enemies:[{type:"boss_robot",count:1}]} ] },
@@ -5005,9 +5044,13 @@ const PVE_STAGES = [
   { id:"c07", name:"2구역 7: 별벌레 정예",     mapId:"crystal_cave", teamLives:12,
     waves:[ {enemies:[{type:"star_bug",count:2},{type:"bounce_bubble",count:6}]} ] },
   { id:"c08", name:"2구역 8: 갈라진 두 방",    mapId:"crystal_cave", teamLives:12,
+    structures:[{kind:"wall",x:450,y:550},{kind:"wall",x:830,y:150}],            /* v1.22: 파괴 가능 엄폐 벽 */
     waves:[ {enemies:[{type:"paper_drone",count:5}]}, {enemies:[{type:"cushion_block",count:3},{type:"soft_jelly",count:6}]} ] },
   { id:"c09", name:"2구역 9: 몬스터 문 봉쇄",  mapId:"crystal_cave", teamLives:12,
-    waves:[ {enemies:[{type:"soft_jelly",count:5},{type:"paper_drone",count:2}]}, {enemies:[{type:"soft_jelly",count:5},{type:"paper_drone",count:2}]}, {enemies:[{type:"star_bug",count:2}]} ] },
+    objective:"blockade",                                                        /* v1.22: 문 3개가 계속 소환 → 문 전파괴 후 최종 웨이브(PRD 12.5) */
+    structures:[{kind:"gate",x:330,y:170},{kind:"gate",x:330,y:530},{kind:"gate",x:1080,y:350}],
+    gateSpawn:{ enemies:[{type:"soft_jelly",count:2},{type:"paper_drone",count:1}], interval:6, cap:4 },
+    waves:[ {enemies:[{type:"star_bug",count:2}]} ] },
   { id:"c10", name:"2구역 보스: 별빛 수정 거북", mapId:"crystal_cave", teamLives:12, boss:true,
     waves:[ {enemies:[{type:"boss_turtle",count:1}]} ] },
   // ── 3구역: 은하 정원 ──
@@ -5029,6 +5072,7 @@ const PVE_STAGES = [
   { id:"c18", name:"4구역 18: 정예 연속전",    mapId:"lane3", teamLives:10,
     waves:[ {enemies:[{type:"shield_block",count:2}]}, {enemies:[{type:"ice_bubble",count:5}]}, {enemies:[{type:"star_bug",count:4}]} ] },
   { id:"c19", name:"4구역 19: 최종 전초전",    mapId:"lane3", teamLives:10,
+    structures:[{kind:"wall",x:280,y:350},{kind:"wall",x:1000,y:350},{kind:"wall",x:900,y:150},{kind:"wall",x:380,y:570}],   /* v1.22 엄폐 벽 */
     waves:[ {enemies:[{type:"soft_jelly",count:3},{type:"bounce_bubble",count:2},{type:"paper_drone",count:3}]},
             {enemies:[{type:"soft_jelly",count:4},{type:"cloud_ghost",count:3},{type:"ice_bubble",count:3}]},
             {enemies:[{type:"star_bug",count:2},{type:"shield_block",count:2},{type:"heal_fairy",count:2}]} ] },
@@ -5049,10 +5093,10 @@ function tActivePlayerCount(){
   return Math.max(1,n);
 }
 
-function tSpawnEnemy(type, hpMul, map, dmgMul){
+function tSpawnEnemy(type, hpMul, map, dmgMul, sx, sy, gateId){
   const def=PVE_ENEMY_TYPES[type]||PVE_ENEMY_TYPES.grunt;
-  const ex=clamp(map.enemySpawn.x+rand(-170,170), ARENA.x+def.r, ARENA.x+ARENA.w-def.r);
-  const ey=clamp(map.enemySpawn.y+rand(-90,180), ARENA.y+def.r, ARENA.y+ARENA.h-def.r);
+  const ex=clamp((sx!==undefined? sx+rand(-30,30) : map.enemySpawn.x+rand(-170,170)), ARENA.x+def.r, ARENA.x+ARENA.w-def.r);
+  const ey=clamp((sy!==undefined? sy+rand(-10,40) : map.enemySpawn.y+rand(-90,180)), ARENA.y+def.r, ARENA.y+ARENA.h-def.r);
   const pos=findClearSpawn(ex,ey,def.r);
   const id="e"+(++tEnemyId), hp=def.hp*hpMul;
   const e={ id:id, type:type, x:pos.x, y:pos.y, r:def.r, hp:hp, maxHp:hp, speed:def.speed*TEMPO.enemyMove, dmg:def.dmg*(dmgMul||1),
@@ -5072,10 +5116,106 @@ function tSpawnEnemy(type, hpMul, map, dmgMul){
     e.slam=def.slam?{...def.slam, timer:def.slam.cd*0.6, warnT:0}:null;
     e.summon=def.summon?{...def.summon, timer:def.summon.cd||6, fired:[]}:null;
     e.phase2=def.phase2; e.enrage=def.enrage; e.baseFireCd=e.fireCd; e.baseSpeed=e.speed; }
+  if(gateId) e.gate=gateId;                                    // v1.22 봉쇄: 소환한 문 태그(문당 동시 상한)
+  // v1.22 방어전: 잡몹 절반은 수정 직행(PRD "우선 공격 대상"), 보스는 제외
+  const _stg=PVE_STAGES[tPve.stageIndex];
+  if(_stg && _stg.objective==="defend" && !e.isBoss && tEnemyId%2===0) e.focusStructure=true;
   tEnemies[id]=e;
 }
+/* ── v1.22 구조물 시스템(설계서 1.3): host 권위 · 충돌은 OBSTACLES 사본에 추가/제거 ──
+   core=방어 수정(몬스터가 공격, HP 500+120×(N-1)) · gate=봉쇄 문(플레이어가 파괴, 180) · wall=쿠션 벽(120) */
+let tStructures={};
+const STRUCT_DEFS={
+  core:{ w:90, h:90, hp:500, name:"방어 수정" },
+  gate:{ w:70, h:90, hp:180, name:"몬스터 문" },
+  wall:{ w:70, h:70, hp:120, name:"쿠션 벽" }
+};
+function tPveSetupStructures(){
+  const stage=PVE_STAGES[tPve.stageIndex];
+  tStructures={};
+  OBSTACLES=getMap(tMapId).obstacles.slice();          // 원본 맵 배열 보존(사본에만 구조물 충돌 추가)
+  BUSHES=getMap(tMapId).bushes;
+  tPve.defendT = stage.objective==="defend" ? (stage.defendTime||75) : 0;
+  tPve.finalSpawned=false;
+  if(!stage.structures) return;
+  const nP=tActivePlayerCount();
+  let gi=0, wi=0;
+  for(const sd of stage.structures){
+    const def=STRUCT_DEFS[sd.kind];
+    const id = sd.kind==="gate" ? ("gate"+(++gi)) : (sd.kind==="wall" ? ("wall"+(++wi)) : "core");
+    let hp=def.hp; if(sd.kind==="core") hp+=120*(nP-1);          // PRD 19.1 인원 스케일
+    tStructures[id]={ id:id, kind:sd.kind, x:sd.x, y:sd.y, w:def.w, h:def.h, hp:hp, maxHp:hp, alive:true, spawnT:1.5+gi };
+    OBSTACLES.push({ x:sd.x-def.w/2, y:sd.y-def.h/2, w:def.w, h:def.h, kind:"structure", sid:id });
+  }
+}
+function tStructApplyDamage(st, dmg){
+  if(!st || !st.alive) return;
+  st.hp-=dmg;
+  if(st.hp<=0){ st.hp=0; st.alive=false;
+    OBSTACLES=OBSTACLES.filter(o=>o.sid!==st.id);       // 충돌 제거(이동·시야·탄이 자동 반영)
+    spawnSuperWave(st.x, st.y, 70);
+  }
+}
+// 탄 → 구조물: 플레이어 탄은 문/벽만, 몬스터 탄은 수정만(그 외는 그냥 벽 취급)
+function tStructBulletHit(wref, b){
+  const st=tStructures[wref.sid]; if(!st || !st.alive) return;
+  if(b.team==="pve"){ if(st.kind!=="core") tStructApplyDamage(st, b.damage); }
+  else if(st.kind==="core") tStructApplyDamage(st, b.damage);
+}
+// 방어전: focusStructure 몬스터는 수정 직행(pseudo target)
+function tStructFocus(e){
+  if(!e.focusStructure) return null;
+  const st=tStructures.core; if(!st || !st.alive) return null;
+  return { x:st.x, y:st.y, r:Math.max(st.w,st.h)/2, structure:st };
+}
+function tGatesAlive(){ let c=0; for(const id in tStructures){ const s=tStructures[id]; if(s.kind==="gate"&&s.alive) c++; } return c; }
+// 봉쇄: 살아있는 문이 주기적으로 소환(문당 동시 cap, 전체 40 상한)
+function tPveTickStructures(dt){
+  const stage=PVE_STAGES[tPve.stageIndex];
+  if(stage.objective!=="blockade") return;
+  const gs=stage.gateSpawn||{enemies:[{type:"soft_jelly",count:2}],interval:6,cap:4};
+  const map=getMap(tMapId), nHpMul=1+0.12*(tActivePlayerCount()-1);
+  for(const id in tStructures){ const g=tStructures[id];
+    if(g.kind!=="gate"||!g.alive) continue;
+    g.spawnT-=dt;
+    if(g.spawnT<=0){ g.spawnT=gs.interval;
+      let mine=0; for(const eid in tEnemies){ if(tEnemies[eid].gate===id) mine++; }
+      for(const grp of gs.enemies){ for(let i=0;i<grp.count;i++){
+        if(mine>=gs.cap || Object.keys(tEnemies).length>=40) break;
+        tSpawnEnemy(grp.type, nHpMul, map, 1, g.x, g.y+g.h*0.8, id); mine++;
+      } }
+    }
+  }
+}
+function tPackStructs(){
+  const order={core:0,gate:1,wall:2}, out=[];
+  for(const id in tStructures){ const s=tStructures[id];
+    out.push({k:order[s.kind], x:s.x, y:s.y, hp:Math.max(0,Math.round(s.hp)), mh:s.maxHp}); }
+  return out;
+}
+// 게스트: 패킷으로 구조물 상태 반영(생존 수가 바뀌면 충돌도 재구성)
+let tGuestStructSig="";
+function tGuestApplyStructs(list){
+  const kinds=["core","gate","wall"];
+  tStructures={}; let alive=0;
+  for(let i=0;i<list.length;i++){ const o=list[i], kind=kinds[o.k]||"wall", def=STRUCT_DEFS[kind];
+    const id=kind+"_"+i;
+    tStructures[id]={ id:id, kind:kind, x:o.x, y:o.y, w:def.w, h:def.h, hp:o.hp, maxHp:o.mh, alive:o.hp>0 };
+    if(o.hp>0) alive++; }
+  const sig=tMapId+"|"+list.length+"|"+alive;
+  if(sig!==tGuestStructSig){ tGuestStructSig=sig;
+    OBSTACLES=getMap(tMapId).obstacles.slice();
+    for(const id in tStructures){ const st=tStructures[id];
+      if(st.alive) OBSTACLES.push({ x:st.x-st.w/2, y:st.y-st.h/2, w:st.w, h:st.h, kind:"structure", sid:id }); }
+  }
+}
+
 function tPveStartWave(){
   const stage=PVE_STAGES[tPve.stageIndex], wave=stage.waves[tPve.waveIndex];
+  // v1.22 봉쇄: 문이 살아있는 동안은 일반 웨이브를 깔지 않음(문 전파괴 후 최종 웨이브만)
+  if(stage.objective==="blockade" && tGatesAlive()>0 && !tPve.finalSpawned){
+    tPve.phase="wave"; tPve.enemiesRemaining=Object.keys(tEnemies).length; return;
+  }
   // PRD 19장 스케일링: 인원(N) + 스테이지 상승 배율. 보스는 stageHpMul 미적용·인원 보스 배율만(15.6/24.1).
   const n=tActivePlayerCount(), st=tPve.stageIndex+1, map=getMap(tMapId);
   const stageHpMul=1+0.025*(st-1), stageDmgMul=1+0.015*(st-1);
@@ -5104,6 +5244,7 @@ function tPveUpdateHost(dt){
     f.displayHp=lerp(f.displayHp,f.hp,Math.min(1,dt*8));
   }
   for(const id in tEnemies) tEnemyUpdate(tEnemies[id], dt);
+  tPveTickStructures(dt);                                   // v1.22 봉쇄: 살아있는 문이 주기 소환
   tResolveCollisions();                                     // 몸싸움: 몹-플레이어/몹-몹 겹침 방지(근접 사격 가능)
   tPveUpdateBullets(dt);
   tickSkillZones(dt, envTeam());
@@ -5250,7 +5391,9 @@ function tEnemyUpdate(e,dt){
     }
     return;
   }
-  const t=tNearestPlayer(e); if(!t) return;
+  let t=tNearestPlayer(e);
+  const stT=tStructFocus(e); if(stT) t=stT;                    // v1.22 방어전: 수정 직행 몬스터
+  if(!t) return;
   const dx=t.x-e.x, dy=t.y-e.y, d=Math.hypot(dx,dy)||1;
   e.facing=Math.atan2(dy,dx);
   // 돌진 개시 판정(별벌레·보스 2페이즈)
@@ -5296,12 +5439,14 @@ function tEnemyUpdate(e,dt){
     if(mvx||mvy) tEnemyMove(e, mvx, mvy, e.speed*spdMul, dt);   // 벽 우회 포함
     else if(!hasLineOfSight(e.x,e.y,t.x,t.y)) tEnemyMove(e, dx/d, dy/d, e.speed*spdMul, dt);   // 사거리 안인데 벽 → 돌아가기
     e.fireTimer-=dt;
-    if(d<e.range && e.fireTimer<=0 && hasLineOfSight(e.x,e.y,t.x,t.y)){ tEnemyFire(e); e.fireTimer=e.fireCd; }
+    // 구조물 표적은 자기 충돌체가 시야를 막으므로 LOS 생략(탄이 사각 충돌로 명중 처리)
+    if(d<e.range && e.fireTimer<=0 && (t.structure || hasLineOfSight(e.x,e.y,t.x,t.y))){ tEnemyFire(e); e.fireTimer=e.fireCd; }
   } else {
     tEnemyMove(e, dx/d, dy/d, e.speed*spdMul, dt);              // 벽 우회 포함
     e.contactTimer-=dt;
     if(d < e.r+t.r+6 && e.contactTimer<=0){
-      if(tContactHurt(t, e.dmg)) e.contactTimer=e.contactCd;   // 면역 중이면 쿨 소모 안 함(면역 끝나면 때림)
+      if(t.structure){ tStructApplyDamage(t.structure, e.dmg); e.contactTimer=e.contactCd; }   // v1.22 수정 접촉 피해
+      else if(tContactHurt(t, e.dmg)) e.contactTimer=e.contactCd;   // 면역 중이면 쿨 소모 안 함(면역 끝나면 때림)
     }
   }
 }
@@ -5357,6 +5502,7 @@ function tPveUpdateBullets(dt){
       }
       let wall=false, wref=null; for(const o of OBSTACLES){ if(circleRectOverlap(b.x,b.y,b.r,o)){ wall=true; wref=o; break; } }
       if(wall){
+        if(wref.sid) tStructBulletHit(wref, b);               // v1.22 구조물 피해(플레이어탄→문/벽, 몬스터탄→수정)
         if(b.boomerang){ if(b.phase==="out"){ b.phase="back"; b.x-=sx; b.y-=sy; } break; }
         if(b.bounce){ if(!bounceBullet(b,wref,sx,sy)) b.alive=false; break; }
         spawnHitFx(b.x,b.y,b.wid,"#aab0d0"); b.alive=false; break;
@@ -5403,7 +5549,27 @@ function tPveProgress(dt){
   if(!anyAlive && !anyRevivable){ tPve.status="failed"; tPveEnd(); return; }
   const alive=Object.keys(tEnemies).length;
   if(tPve.phase==="wave"){
-    if(alive===0){
+    const stageNow=PVE_STAGES[tPve.stageIndex];
+    // v1.22 방어(defend): 수정 파괴=즉시 실패 · 시간을 버티면 클리어 · 타이머 중 전멸이면 웨이브 순환
+    if(stageNow.objective==="defend"){
+      const core=tStructures.core;
+      if(core && !core.alive){ tPve.status="failed"; tPveEnd(); return; }
+      if(tPve.defendT>0){
+        tPve.defendT-=dt;
+        if(tPve.defendT>0){
+          if(alive===0){ tPve.waveIndex=(tPve.waveIndex+1)%stageNow.waves.length; tPveStartWave(); }
+          return;                                           // 아직 방어 중(클리어 판정 보류)
+        }
+        tEnemies={}; tBullets=tBullets.filter(b=>b.team==="pve");   // 버텨냄 → 남은 적 정리 후 클리어 경로
+        tPve.waveIndex=stageNow.waves.length-1;             // 마지막 웨이브 취급 → 아래에서 stageclear
+      }
+    }
+    // v1.22 봉쇄(blockade): 문이 남아있으면 계속 소환되므로 클리어 판정 보류, 전파괴 시 최종 웨이브 1회
+    if(stageNow.objective==="blockade"){
+      if(tGatesAlive()>0) return;
+      if(!tPve.finalSpawned){ tPve.finalSpawned=true; tPve.waveIndex=stageNow.waves.length-1; tPveStartWave(); return; }
+    }
+    if(Object.keys(tEnemies).length===0){
       const stage=PVE_STAGES[tPve.stageIndex];
       tPveCheckpointRevive(false);                          // 웨이브 통과: 목숨 0 플레이어 1개 복귀(PRD 12.2)
       if(tPve.waveIndex < stage.waves.length-1){ tPve.phase="gap"; tPve.phaseTimer=2; }
@@ -5428,7 +5594,7 @@ function tPveProgress(dt){
       const wasBoss=!!PVE_STAGES[tPve.stageIndex].boss;
       tPve.stageIndex++; tPve.waveIndex=0;
       const st=PVE_STAGES[tPve.stageIndex]; tMapId=st.mapId;
-      OBSTACLES=getMap(tMapId).obstacles; BUSHES=getMap(tMapId).bushes;
+      tPveSetupStructures();                               // v1.22: 맵+구조물 충돌 재구성(OBSTACLES/BUSHES 포함)
       tBullets=[]; tEnemies={};
       tPveCheckpointRevive(wasBoss);                        // 보스(5·10·15) 통과: 전원 목숨 +1(상한)
       tPve.teamLives=tPveLivesTotal();
@@ -5471,7 +5637,9 @@ function tPveGetDrawData(){
     for(const id in tEnemies){ const e=tEnemies[id]; out.enemies.push({ x:e.x,y:e.y,r:e.r,hp:e.hp,maxHp:e.maxHp,facing:e.facing,color:e.color,boss:e.isBoss,type:e.type }); }
     out.bullets=tBullets.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.color,w:b.wid||null,vx:b.vx,vy:b.vy }));
     out.zones=packZones();
-    out.pve={ stageIndex:tPve.stageIndex, waveIndex:tPve.waveIndex, teamLives:tPve.teamLives, status:tPve.status, phase:tPve.phase, enemiesRemaining:Object.keys(tEnemies).length };
+    out.structs=tPackStructs();                                      // v1.22
+    out.pve={ stageIndex:tPve.stageIndex, waveIndex:tPve.waveIndex, teamLives:tPve.teamLives, status:tPve.status, phase:tPve.phase, enemiesRemaining:Object.keys(tEnemies).length,
+      dfT:Math.max(0,Math.ceil(tPve.defendT||0)), gates:tGatesAlive() };
     if(tPve.upg){ const ug={}; for(const s in tPve.upg){ const o=tPve.upg[s]; ug[s]={c:o.c, r:o.r, p:o.picked?1:0, pi:o.pi}; } out.pve.upg=ug; }
   } else {
     const st=OnlineManager.onlineState;
@@ -5485,6 +5653,7 @@ function tPveGetDrawData(){
       out.enemies.push({ x:e.x,y:e.y,r:e.r||def.r,hp:e.hp,maxHp:e.maxHp,facing:e.facing,color:e.color||def.color,boss:(e.boss!==undefined?e.boss:(e.type==="boss"||e.type==="miniBoss")),type:e.type }); }
     out.bullets=tBulletsView.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.c,w:b.w||null,vx:b.vx,vy:b.vy }));
     out.zones=(st.zones||[]);
+    out.structs=st.structs||[];                                      // v1.22
     out.pve=st.pve||null;
   }
   return out;
@@ -5542,6 +5711,7 @@ function tDrawEnemy(e){
 function tPveRender(){
   const data=tPveGetDrawData();
   const me=data.fighters.find(f=>f.isMe); _viewer = me ? { x:me.x, y:me.y, team:"pve" } : null;
+  drawStructsPacked(data.structs);                                   // v1.22 구조물(수정/문/벽 + HP바)
   drawSkillZonesPacked(data.zones);
   for(const b of data.bullets) drawOnlineBullet(b);
   for(const e of data.enemies) tDrawEnemy(e);
@@ -5552,7 +5722,11 @@ function tPveRender(){
   ctx.save();
   ctx.fillStyle="rgba(10,12,32,0.72)"; ctx.fillRect(0,0,LOGW,64); ctx.textBaseline="middle";
   ctx.textAlign="left"; ctx.fillStyle="#9fe0ff"; ctx.font="bold 17px 'Malgun Gothic',sans-serif"; ctx.fillText(stage.name,24,24);
-  ctx.fillStyle="#aab4e0"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.fillText("웨이브 "+(pve.waveIndex+1)+"/"+stage.waves.length+" · 남은 적 "+pve.enemiesRemaining,24,46);
+  // v1.22 목표 표시: 방어=남은 시간, 봉쇄=남은 문, 그 외=웨이브
+  let objTxt="웨이브 "+(pve.waveIndex+1)+"/"+stage.waves.length+" · 남은 적 "+pve.enemiesRemaining;
+  if(stage.objective==="defend" && pve.dfT>0) objTxt="🛡 수정 지키기 "+pve.dfT+"초 · 남은 적 "+pve.enemiesRemaining;
+  else if(stage.objective==="blockade" && pve.gates>0) objTxt="🚪 몬스터 문 "+pve.gates+"개 파괴!";
+  ctx.fillStyle="#aab4e0"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.fillText(objTxt,24,46);
   ctx.textAlign="right"; ctx.fillStyle="#ff8f8f"; ctx.font="bold 20px 'Malgun Gothic',sans-serif"; ctx.fillText("팀 목숨 합계 ♥ "+pve.teamLives,LOGW-24,32);
   ctx.fillStyle="rgba(10,12,32,0.72)"; ctx.fillRect(0,656,LOGW,64);
   ctx.textAlign="right"; ctx.fillStyle="#aab4e0"; ctx.font="bold 14px 'Malgun Gothic',sans-serif"; ctx.fillText("방향키 · Z 기본공격 · X 특수기술 · C 궁극기 · R 장전 · Esc 나가기",LOGW-24,688);

@@ -99,30 +99,31 @@ run("같은 공격·같은 대상 20, 다른 대상은 각각", ()=>{
 });
 
 console.log("=== 5) X/C 피해로 게이지 충전 금지 ===");
-run("럭키 C 명중해도 게이지 0 유지", ()=>{
+run("럭키 C(v1.21b: 일자 폭발) 명중해도 게이지 0 유지", ()=>{
   const {p,e}=setup("student_01", 80);
   api.setSuper(100);
-  api.handleKeyPress("KeyC"); frames(20);
-  check("C 발사 후 게이지 0", api.superGauge===0);
-  check("적이 피해 받음", e.hp<e.maxHp);
+  api.handleKeyPress("KeyC"); frames(70);   // 예고 0.5s+순차 폭발 대기
+  check("C 시전 후 게이지 0", api.superGauge===0);
+  check("적이 피해 받음(45·시전당 1회)", Math.round(e.maxHp-e.hp)===45);
   check("C 피해로 재충전 안 됨", api.superGauge===0);
+  check("장판 정리됨", !api.skillZones.some(z=>z.type==="meteor"));
 });
-run("럭키 X(v1.21 일자 폭발): 5개 생성·같은 대상 1회 30 · 게이지 0 유지", ()=>{
-  const {p,e}=setup("student_01", 160);   // 폭발 1~2개 반경 안(겹침) — 그래도 1회만
+run("럭키 X(v1.21b 스왑: 일곱 발): 부채꼴 7발·대상당 27·게이지 0 유지", ()=>{
+  const {p,e}=setup("student_01", 160);
   api.setSuper(0);
   api.handleKeyPress("KeyX");
-  check("폭발 예고 5개 일자 생성", api.skillZones.filter(z=>z.type==="meteor").length===5);
-  frames(80);   // 예고(0.5+0.07*4) 후 순차 폭발
-  check("같은 대상 1회만 30 피해", Math.round(e.maxHp-e.hp)===30);
+  check("부채꼴 7발 생성", api.bullets.length===7);
+  check("대상당 상한 3발(9×3=27)", api.bullets[0].ultMaxHits===3);
+  frames(60);
+  check("같은 대상 최대 27 피해", (e.maxHp-e.hp)<=27+1e-6 && e.hp<e.maxHp);
   check("X 피해로 게이지 충전 없음", api.superGauge===0);
-  check("장판 정리됨", !api.skillZones.some(z=>z.type==="meteor"));
 });
 
 console.log("=== 6) 별골렘 X 방패(v1.21): 75% 감소·최소 1·막은 피해로 궁 충전 ===");
 run("방패 피해 감소", ()=>{
   const {p}=setup("student_06", 400);
   api.castSpecialFor(p, api.envLocal());
-  check("방패 켜짐(2.0s·쿨5s)", p.shieldTimer>1.9 && p.specialCd<=5);
+  check("방패 켜짐(3.0s·쿨5s — v1.21b 지속 확대)", p.shieldTimer>2.9 && p.specialCd<=5);
   const g0=api.superGauge; const hp0=p.hp;
   api.applyDamage(p, 10, "enemy", 999, p.x, p.y);
   check("10 피해 → 2.5로 감소(75%↓)", Math.abs((hp0-p.hp)-2.5)<1e-6);

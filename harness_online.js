@@ -148,7 +148,7 @@ run("게이지 가득→C(럭키 별빛 일곱 발)로 상대 피해, 자기 무
   H.facing=0; G.x=H.x+60; G.y=H.y; G.invincibleTimer=0;  // 상대를 정면 가까이에(탄이 몇 프레임 안에 명중)
   const ghp0=G.hp, hhp0=H.hp;
   H.superGauge=api.GAME_CONFIG.superCharge;               // 게이지 가득
-  api.keysDown.add("KeyC"); F(8); api.keysDown.clear();
+  api.keysDown.add("KeyC"); F(80); api.keysDown.clear();   // v1.21b: C=일자 폭발(예고 0.5s+순차) → 폭발까지 대기
   check("상대(guest) 피해 받음", G.hp<ghp0);
   check("자기(host) 무피해", H.hp===hhp0);
   check("사용 후 게이지 0", H.superGauge===0);
