@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
 # ==========================================================================
-# 별빛 아레나 - 학생 에셋 슬라이서  v5  (코덱스 검토 반영본 / 2026-07-01)
+# 별빛 아레나 - 학생 에셋 슬라이서  v6  (열 폭 불균등 대응 / 2026-07-03)
 # ==========================================================================
 #  기준 시트: reference/02_basic_motion_master.png (승인 마스터, 6행 x 5열)
 #            reference/01_fixed_character_weapon_master.png (무기 아이콘)
 #
 #  ※ v4(256x256 고정)와는 다른 계열이다. 혼동 금지.
+#  v6 핵심 변경(공격 프레임 등 일자 잘림 원인 해결):
+#   * 시트의 5열은 폭이 균등하지 않다 — attack 열(341px)이 다른 열(250~261px)보다 넓음.
+#     기존 균등 5열 가정은 attack 셀 왼쪽을 ~48px 지나쳐 크롭 → 캐릭터 등이 일자로 잘렸다
+#     (럭키/시고니/눈꽃에서 두드러짐). move·return 열도 20~50px 어긋나 있었음.
+#   * 해결: 헤더의 파란 열제목 상자 5개를 자동 감지해 실제 열 경계(상자 사이 gap 중점)를
+#     사용. 감지 실패 시에만 기존 균등 분할로 폴백. 가로 inset은 5%(≈17px) → 2px 절대값
+#     (경계가 정확해졌으므로 큰 여유 불필요, 셀 구분선은 remove_bg가 처리).
 #  v5 핵심 변경(코덱스 검토 반영):
 #   1) keep_main: bbox 겹침(6px) → "실제 픽셀 거리 + 셀 끝 도달 + 절대 크기"로 판정.
 #      - 셀 오른쪽 끝까지 날아가는 발사 이펙트/발사체 제거(럭키 별·달이 종이비행기 등).
@@ -199,6 +206,28 @@ def crop_ratio(im, x0,y0,x1,y1):
     W,H=im.size
     return im.crop((int(x0*W),int(y0*H),int(x1*W),int(y1*H)))
 
+def detect_columns(im):
+    """모션 시트 헤더의 파란 열제목 상자 5개를 감지해 실제 열 경계 비율 6개를 반환.
+       (v6: attack 열이 다른 열보다 넓어 균등 분할이 캐릭터를 일자로 자르던 문제의 해결책)
+       경계 = 인접 상자 사이 gap의 중점. 5개 상자가 안 잡히면 None(균등 분할 폴백)."""
+    W,H=im.size; px=im.load()
+    def blue(r,g,b): return b>140 and b-r>40 and b-g>30 and r<140
+    for y in range(int(H*0.16)):
+        runs=[]; in_run=False; start=0
+        for x in range(W):
+            v=blue(*px[x,y][:3])
+            if v and not in_run: in_run=True; start=x
+            elif not v and in_run:
+                in_run=False
+                if x-start>W*0.04: runs.append((start,x))
+        if in_run and W-start>W*0.04: runs.append((start,W))
+        if len(runs)==5:
+            bounds=[runs[0][0]]
+            for i in range(4): bounds.append((runs[i][1]+runs[i+1][0])//2)
+            bounds.append(runs[4][1])
+            return [b/W for b in bounds]
+    return None
+
 def save(im, path):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     im.save(path); print("  +", os.path.relpath(path, ROOT))
@@ -209,11 +238,18 @@ if motion is None:
     print("! reference/02_basic_motion_master.png 없음 (캐릭터 생략)")
 else:
     g=MOTION; gW=g["right"]-g["left"]; gH=g["bottom"]-g["top"]; cw=gW/g["cols"]; rh=gH/g["rows"]; ins=g["inset"]
+    colb=detect_columns(motion)   # v6: 실제 열 경계(불균등 폭). None이면 균등 폴백.
+    padx=2.0/motion.size[0]       # v6: 가로 inset 2px 절대값(경계 정확 → 큰 여유 불필요)
+    print("열 경계:", ("자동 감지 "+str([round(b,4) for b in colb])) if colb else "균등 분할 폴백(감지 실패)")
     for ri,cid in enumerate(CHARS):
         cleaned=[]  # (content_image, cx, w, h)
         for ci,fr in enumerate(FRAMES):
-            x0=g["left"]+ci*cw; y0=g["top"]+ri*rh
-            cell=crop_ratio(motion, x0+cw*ins, y0+rh*ins, x0+cw*(1-ins), y0+rh*(1-ins))
+            y0=g["top"]+ri*rh
+            if colb:
+                cell=crop_ratio(motion, colb[ci]+padx, y0+rh*ins, colb[ci+1]-padx, y0+rh*(1-ins))
+            else:
+                x0=g["left"]+ci*cw
+                cell=crop_ratio(motion, x0+cw*ins, y0+rh*ins, x0+cw*(1-ins), y0+rh*(1-ins))
             cell=remove_bg(cell)
             cell, body = keep_main(cell)
             Wc=cell.size[0]
