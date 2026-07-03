@@ -3332,7 +3332,7 @@ function drawEffects(){
 /* v1.22 구조물 렌더: k 0=방어 수정(별수정 이미지) 1=몬스터 문 2=쿠션 벽 — HP바 포함 */
 function drawStructsPacked(list){
   if(!list || !list.length) return;
-  const imgs=["ob_box","st_gate","st_wall"], defs=[STRUCT_DEFS.core,STRUCT_DEFS.gate,STRUCT_DEFS.wall];
+  const imgs=["ob_crystal","st_gate","st_wall"], defs=[STRUCT_DEFS.core,STRUCT_DEFS.gate,STRUCT_DEFS.wall];   /* v1.23: 수정=crystal_01(별수정) — box와 구분(코덱스 회차8) */
   for(const st of list){
     if(st.hp<=0) continue;
     const def=defs[st.k]||defs[2], img=worldImage(imgs[st.k]);
@@ -5048,7 +5048,7 @@ const PVE_STAGES = [
     waves:[ {enemies:[{type:"paper_drone",count:5}]}, {enemies:[{type:"cushion_block",count:3},{type:"soft_jelly",count:6}]} ] },
   { id:"c09", name:"2구역 9: 몬스터 문 봉쇄",  mapId:"crystal_cave", teamLives:12,
     objective:"blockade",                                                        /* v1.22: 문 3개가 계속 소환 → 문 전파괴 후 최종 웨이브(PRD 12.5) */
-    structures:[{kind:"gate",x:330,y:170},{kind:"gate",x:330,y:530},{kind:"gate",x:1080,y:350}],
+    structures:[{kind:"gate",x:330,y:135},{kind:"gate",x:330,y:530},{kind:"gate",x:1080,y:450}],   /* v1.23: 문1·문3 좌표 이동 — 데미지 트랩·풀숲 겹침 해소(코덱스 회차8) */
     gateSpawn:{ enemies:[{type:"soft_jelly",count:2},{type:"paper_drone",count:1}], interval:6, cap:4 },
     waves:[ {enemies:[{type:"star_bug",count:2}]} ] },
   { id:"c10", name:"2구역 보스: 별빛 수정 거북", mapId:"crystal_cave", teamLives:12, boss:true,
@@ -5117,9 +5117,10 @@ function tSpawnEnemy(type, hpMul, map, dmgMul, sx, sy, gateId){
     e.summon=def.summon?{...def.summon, timer:def.summon.cd||6, fired:[]}:null;
     e.phase2=def.phase2; e.enrage=def.enrage; e.baseFireCd=e.fireCd; e.baseSpeed=e.speed; }
   if(gateId) e.gate=gateId;                                    // v1.22 봉쇄: 소환한 문 태그(문당 동시 상한)
-  // v1.22 방어전: 잡몹 절반은 수정 직행(PRD "우선 공격 대상"), 보스는 제외
+  // v1.23 방어전: 잡몹 1/3만 수정 직행 + 초반 10초는 직행 없음(코덱스 회차8: 50%+75초 조합은 입문 스테이지에 과함 — 파티 시뮬 s4 실패 2/3 재현 후 보강), 보스는 제외
   const _stg=PVE_STAGES[tPve.stageIndex];
-  if(_stg && _stg.objective==="defend" && !e.isBoss && tEnemyId%2===0) e.focusStructure=true;
+  if(_stg && _stg.objective==="defend" && !e.isBoss && tEnemyId%3===0
+     && tPve.defendT <= (_stg.defendTime||75)-10) e.focusStructure=true;
   tEnemies[id]=e;
 }
 /* ── v1.22 구조물 시스템(설계서 1.3): host 권위 · 충돌은 OBSTACLES 사본에 추가/제거 ──
@@ -5144,6 +5145,7 @@ function tPveSetupStructures(){
     const def=STRUCT_DEFS[sd.kind];
     const id = sd.kind==="gate" ? ("gate"+(++gi)) : (sd.kind==="wall" ? ("wall"+(++wi)) : "core");
     let hp=def.hp; if(sd.kind==="core") hp+=120*(nP-1);          // PRD 19.1 인원 스케일
+    else if(sd.kind==="gate") hp+=50*(nP-1);                     // v1.23: 문도 인원 배율(코덱스 회차8 — 6인 문 포커싱 대비, cap 4 유지)
     tStructures[id]={ id:id, kind:sd.kind, x:sd.x, y:sd.y, w:def.w, h:def.h, hp:hp, maxHp:hp, alive:true, spawnT:1.5+gi };
     OBSTACLES.push({ x:sd.x-def.w/2, y:sd.y-def.h/2, w:def.w, h:def.h, kind:"structure", sid:id });
   }
