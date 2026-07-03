@@ -420,6 +420,99 @@ const MAPS = [
   }
 ];
 
+/* v1.25 학생 제작 맵(도안 수업 1차분, 2026-07-03) ---------------------------
+   종이 도안지의 왼쪽 절반(11×10칸, 1칸=56px)을 문자열로 판독 → 로드 시 좌우 거울 미러.
+   기호: W벽 B풀숲 S가시 L끈끈이 *시작점(1개, 반대편은 자동 미러).
+   도안의 ◎거점·♥회복샘은 아직 미구현이라 이번 판에서는 제외(12회차 요소 구현 때 그 자리에 활성화).
+   판독 원칙: 블록(구조) 단위 충실 재현 + 규칙 위반만 수정(시작점 1개화·가시 스폰 안전거리·거점 보류). */
+const STUDENT_CELL = 56, STUDENT_COLS = 22, STUDENT_ROWS = 10;
+const STUDENT_MAPS = [
+  { id:"stu01_hajung", name:"⭐하중", desc:"학생 맵 · 4-1", floorColor:"#23304f", strokeColor:"#5b74b8",
+    cells:[ "...........",
+            ".BB.....L..",
+            ".BB..W..L..",
+            ".....W.....",
+            ".*.........",
+            "........W..",
+            "...BB...W..",
+            "...BB.SS...",
+            "...........",
+            "..........." ] },
+  { id:"stu02_deathworld", name:"⭐죽음의 세계", desc:"학생 맵 · 1반 (밀실 투기장)", floorColor:"#1a1626", strokeColor:"#7a5cff",
+    cells:[ "WWWWWWWWWWW",
+            "W......L...",
+            "W.*....L...",
+            "W...WW.....",
+            "W.B.WW..S..",
+            "W.BBB......",
+            "W.BBB..L...",
+            "W..........",
+            "W......S...",
+            "WWWWWWWWWWW" ] },
+  { id:"stu03_quilt", name:"⭐맵앰맵", desc:"학생 맵 · 1반 6번 (중앙 요새)", floorColor:"#2a2140", strokeColor:"#b06be0",
+    cells:[ "...........",
+            "...........",
+            "...SSWW....",
+            "...SSBW....",
+            "...WLB.....",
+            "...WBW.....",
+            "...........",
+            ".*......LLL",
+            "........LLL",
+            "..........." ] },
+  { id:"stu04_sigoni", name:"⭐시고니", desc:"학생 맵 · 1반 4번 (매복형)", floorColor:"#1f2e26", strokeColor:"#4f9a78",
+    cells:[ "...........",
+            "..BB.......",
+            "..BBS......",
+            "...........",
+            ".*.........",
+            "...........",
+            ".....BB..L.",
+            "....WBS..L.",
+            "....W.B....",
+            "..........." ] },
+  { id:"stu05_doridori", name:"⭐도리도리", desc:"학생 맵 · 1반 (지뢰밭형)", floorColor:"#2e1f22", strokeColor:"#c96a6a",
+    cells:[ "..WWWWWWWWW",
+            ".S.S.......",
+            "...L.......",
+            "..B....B...",
+            ".S.........",
+            "......S....",
+            "........WW.",
+            "........WW.",
+            ".*...S.....",
+            "..........." ] }
+];
+(function buildStudentMaps(){
+  const CS=STUDENT_CELL, OX=24, OY=70;                       // ARENA(24,70,1232,576)와 동일 원점
+  for(const sm of STUDENT_MAPS){
+    // 좌우 거울 미러로 22×10 전체 그리드 구성
+    const grid=[];
+    for(let r=0;r<STUDENT_ROWS;r++){ const left=sm.cells[r]; let row="";
+      for(let c=0;c<STUDENT_COLS;c++) row += (c<11 ? left[c] : left[21-c]);
+      grid.push(row);
+    }
+    const obstacles=[], bushes=[], traps=[]; let spawn=null;
+    for(let r=0;r<STUDENT_ROWS;r++){
+      let c=0;
+      while(c<STUDENT_COLS){
+        const ch=grid[r][c];
+        if(ch==="."||ch==="*"){ if(ch==="*"&&c<11) spawn={x:OX+c*CS+CS/2, y:OY+r*CS+CS/2}; c++; continue; }
+        let c2=c; while(c2+1<STUDENT_COLS && grid[r][c2+1]===ch) c2++;   // 가로 연속 병합(충돌/렌더 rect 절약)
+        const rect={ x:OX+c*CS, y:OY+r*CS, w:(c2-c+1)*CS, h:CS };
+        if(ch==="W") obstacles.push({ x:rect.x, y:rect.y, w:rect.w, h:rect.h, kind:"rock" });
+        else if(ch==="B") bushes.push(rect);
+        else if(ch==="S") traps.push({ x:rect.x, y:rect.y, w:rect.w, h:rect.h, type:"damage" });
+        else if(ch==="L") traps.push({ x:rect.x, y:rect.y, w:rect.w, h:rect.h, type:"slow" });
+        c=c2+1;
+      }
+    }
+    MAPS.push({ id:sm.id, name:sm.name, desc:sm.desc, floorColor:sm.floorColor, strokeColor:sm.strokeColor,
+      playerSpawn:spawn, enemySpawn:{ x:OX+1232-(spawn.x-OX), y:spawn.y },   // 반대 팀 = 좌우 미러 지점
+      obstacles:obstacles, bushes:bushes, traps:traps });
+  }
+})();
+
 /* 7) 모드 3종 ---------------------------------------------------------
    allyCount: 아군 AI 수 / enemyCount: 적 AI 수
    enemyStatMul: 적 체력 배수 / enemyDamageMul: 적 공격력 배수 */
