@@ -104,12 +104,16 @@ const GAME_CONFIG = {
 
 /* 2) 난이도 ------------------------------------------------------------ */
 const DIFFICULTIES = [
+  // botSpecialProb/botUltProb: 빠른대전 캐릭터 봇이 X/C를 시도할 초당 확률 · botUltChargeRate: 봇 궁 게이지 초당 충전량(100이 가득)
   { id: "easy",   name: "쉬움",   enemyHpMul: 0.7, enemySpeedMul: 0.85, enemyDamageMul: 0.7,
-    enemyAimError: 0.22, enemyCooldownMul: 1.4, bossHpMul: 0.8, bossDamageMul: 0.8 },
+    enemyAimError: 0.22, enemyCooldownMul: 1.4, bossHpMul: 0.8, bossDamageMul: 0.8,
+    botSpecialProb: 0.06, botUltChargeRate: 2, botUltProb: 0.15 },
   { id: "normal", name: "보통",   enemyHpMul: 1.0, enemySpeedMul: 1.0,  enemyDamageMul: 1.0,
-    enemyAimError: 0.12, enemyCooldownMul: 1.0, bossHpMul: 1.0, bossDamageMul: 1.0 },
+    enemyAimError: 0.12, enemyCooldownMul: 1.0, bossHpMul: 1.0, bossDamageMul: 1.0,
+    botSpecialProb: 0.35, botUltChargeRate: 5, botUltProb: 0.5 },
   { id: "hard",   name: "어려움", enemyHpMul: 1.4, enemySpeedMul: 1.15, enemyDamageMul: 1.3,
-    enemyAimError: 0.05, enemyCooldownMul: 0.7, bossHpMul: 1.3, bossDamageMul: 1.25 }
+    enemyAimError: 0.05, enemyCooldownMul: 0.7, bossHpMul: 1.3, bossDamageMul: 1.25,
+    botSpecialProb: 0.85, botUltChargeRate: 8, botUltProb: 1.0 }
 ];
 
 /* 3) 보상(골드) ------------------------------------------------------- */
@@ -1788,7 +1792,11 @@ function getMatchConfig(){
     enemyBulletSpeed: GAME_CONFIG.enemyBulletSpeed * TEMPO.enemyBullet,
     enemyRange: GAME_CONFIG.enemyRange,
     bossMaxHp: GAME_CONFIG.bossMaxHp * diff.bossHpMul,
-    bossDamageMul: GAME_CONFIG.bossDamageMul * diff.bossDamageMul
+    bossDamageMul: GAME_CONFIG.bossDamageMul * diff.bossDamageMul,
+    // v1.27 캐릭터 봇 스킬 파라미터(쉬움=거의 안 씀 / 어려움=적극 사용)
+    botSpecialProb: diff.botSpecialProb||0,
+    botUltChargeRate: diff.botUltChargeRate||0,
+    botUltProb: diff.botUltProb||0
   };
 }
 
@@ -1805,7 +1813,14 @@ function makeFighter(opts){
     color=charData.color; subColor=charData.subColor;
   } else {
     if(opts.isBoss){ maxHp=MATCH.bossMaxHp; moveSpeed=MATCH.enemyMoveSpeed*0.9; color="#b3203a"; subColor="#ff6a86"; }
-    else { maxHp=MATCH.enemyMaxHp; moveSpeed=MATCH.enemyMoveSpeed; color="#8a3fd0"; subColor="#e0b3ff"; }
+    else {
+      // 전투 밸런스(HP·이동·피해·쿨다운)는 난이도(MATCH) 기반 유지 — 캐릭터는 외형·스킬 정체성만
+      maxHp=MATCH.enemyMaxHp; moveSpeed=MATCH.enemyMoveSpeed;
+      if(opts.characterId){                       // v1.27 캐릭터 봇(빠른대전): 진짜 캐릭터로 렌더 + X/C 사용
+        charData=getCharacter(opts.characterId);
+        color=charData.color; subColor=charData.subColor;
+      } else { color="#8a3fd0"; subColor="#e0b3ff"; }
+    }
   }
 
   const r=opts.isBoss?38:22;
@@ -1816,7 +1831,7 @@ function makeFighter(opts){
     team:team, isPlayer:isPlayer, isBoss:!!opts.isBoss,
     characterId: charData?charData.id:null,
     weaponId: charData?getWeaponForCharacter(charData.id):null,   // 무기 완전 고정(캐릭터에서 계산)
-    specialCd:0,
+    specialCd:0, superGauge:0,   // 봇 X 쿨타임·C 게이지(플레이어 본인 게이지는 전역 superGauge)
     name: opts.name || (charData?charData.name:"크롬"),
     char: charData,
     baseX:opts.x, baseY:opts.y,
@@ -1854,10 +1869,14 @@ function createFighters(){
   }
 
   enemies=[];
+  // v1.27 캐릭터 봇: 적도 실제 학생 캐릭터로(플레이어와 안 겹치게 · 여러 명이면 서로 다른 캐릭터)
+  const botPool=STUDENT_CHARACTERS.map(c=>c.id).filter(id=>id!==selectedCharacterId);
+  const botOff=Math.floor(Math.random()*Math.max(1,botPool.length));
   for(let i=0;i<mode.enemyCount;i++){
     const pos=teamSlotPos(map.enemySpawn,i);
-    const name=mode.enemyCount>1?("크롬 "+(i+1)):"크롬";
-    enemies.push(makeFighter({ team:"enemy", isPlayer:false, x:pos.x, y:pos.y, name:name }));
+    const charId=botPool.length?botPool[(botOff+i)%botPool.length]:selectedCharacterId;
+    enemies.push(makeFighter({ team:"enemy", isPlayer:false, characterId:charId, x:pos.x, y:pos.y,
+      name:"봇 "+getCharacter(charId).name }));
   }
   enemy=enemies[0];
 }
@@ -2175,7 +2194,10 @@ function fireAiShot(fighter, angle){
     if(isBoss && Math.random()<0.5){
       spawnBullets(fighter, angle, { count:3, spreadDeg:26, damage:damage, speed:MATCH.enemyBulletSpeed, range:MATCH.enemyRange, radius:radius, color:"#ff768f" });
     } else {
-      spawnBullets(fighter, angle, { count:1, spreadDeg:0, damage:damage, speed:MATCH.enemyBulletSpeed, range:MATCH.enemyRange, radius:radius, color:"#c98bff" });
+      // v1.27 캐릭터 봇: 발사체 스킨(색·스프라이트)만 자기 도구 것 — 피해·속도·사거리·크기는 난이도(MATCH) 그대로
+      const w=(!isBoss && fighter.weaponId)?getWeapon(fighter.weaponId):null;
+      spawnBullets(fighter, angle, { count:1, spreadDeg:0, damage:damage, speed:MATCH.enemyBulletSpeed, range:MATCH.enemyRange, radius:radius,
+        color:(w&&w.color)||"#c98bff", wid:w?w.id:undefined });
     }
   } else {
     // 아군 봇도 자기 캐릭터의 고정 무기 패턴(발수/속도/사거리/부메랑/이펙트)을 사용. 피해만 봇 보정(0.8배).
@@ -2688,6 +2710,24 @@ function updateAI(f, dt){
     fireAiShot(f, baseA);
     ai.fireTimer=cooldown*rand(0.85,1.25);
     ai.reactionTimer=(isEnemy?0.35:0.25)*rand(0.7,1.3);
+  }
+  // v1.27 캐릭터 봇 X/C(빠른대전 적 전용 — tBotUpdate 로직 이식, 난이도 파라미터로 빈도 조절).
+  // 아군 봇·보스는 기존 그대로(스킬 없음). 시전 전 타겟을 바라보게 해 방향성 스킬이 유효하게.
+  if(isEnemy && !f.isBoss && f.char){
+    tickThornTrail(f);                          // 시고니 X: 이동 경로 가시(시전한 봇만 유효)
+    tickMoaPassive(f, dt, envLocal);            // 모아 패시브: 근처 적 팀원 회복
+    f.superGauge=Math.min(GAME_CONFIG.superCharge, (f.superGauge||0)+MATCH.botUltChargeRate*dt);
+    if(ai.knowsTarget && canBeHit(target) && hasLineOfSight(f.x,f.y,target.x,target.y)){
+      const wRange=GAME_CONFIG.playerRange*getWeapon(f.weaponId).rangeMul;
+      if(f.specialCd<=0 && d<Math.max(wRange,260) && Math.random()<dt*MATCH.botSpecialProb){
+        f.facing=Math.atan2(target.y-f.y,target.x-f.x);
+        castSpecialFor(f, envLocal());
+      }
+      if((f.superGauge||0)>=GAME_CONFIG.superCharge && d<wRange && Math.random()<dt*MATCH.botUltProb){
+        f.facing=Math.atan2(target.y-f.y,target.x-f.x);
+        castUltimateFor(f, envLocal(), ()=>f.superGauge||0, v=>{ f.superGauge=v; });
+      }
+    }
   }
   regen(f, dt);
 }
@@ -3375,14 +3415,16 @@ function drawFighter(f){
   let alpha=vis.alpha;
   if(f.invincibleTimer>0 && Math.floor(f.invincibleTimer*12)%2===0) alpha*=0.35;
   ctx.save(); ctx.globalAlpha=alpha; ctx.translate(f.x,f.y);
-  // 학생 캐릭터(아군/플레이어)는 이미지 우선, 실패 시 도형. 적(크롬)은 항상 도형.
+  // 캐릭터가 배정된 파이터(아군/플레이어/v1.27 적 캐릭터 봇)는 이미지 우선, 실패 시 도형.
+  // 보스는 크롬 정체성 유지(항상 도형 크롬).
   let drew=false;
-  if(f.team==="player" && f.characterId){
+  const asChar = f.characterId && !f.isBoss;
+  if(asChar){
     const attacking = f.lastFireTime!==undefined && (matchElapsed-f.lastFireTime) < 0.22;
     drew=drawCharacterSprite(f.characterId, f.r, f.facing,
       { moving:spriteMoving("L"+f.id,f.x,f.y), hit:f.hitFlash>0, attacking:attacking });
   }
-  if(!drew){ if(f.team==="player") drawPlayerCharacter(f); else drawChrome(f); }
+  if(!drew){ if(asChar || f.team==="player") drawPlayerCharacter(f); else drawChrome(f); }
   ctx.restore();
   if(f.hitFlash>0){ ctx.save(); ctx.globalAlpha=0.5*(f.hitFlash/0.15)*alpha; ctx.fillStyle="#ffffff"; ctx.beginPath(); ctx.arc(f.x,f.y,f.r+2,0,Math.PI*2); ctx.fill(); ctx.restore(); }
   drawFighterInfo(f, alpha);
@@ -3691,13 +3733,13 @@ function drawCharacterCard(x,y,w,h,ch,wpn){
   ctx.save();
   ctx.fillStyle="rgba(16,22,52,0.9)"; roundRect(x,y,w,h,14); ctx.fill();
   ctx.strokeStyle=ch.color; ctx.lineWidth=3; roundRect(x,y,w,h,14); ctx.stroke();
-  // 미리보기 + 이름/역할
-  ctx.save(); ctx.translate(x+44,y+46);
-  if(!drawCharacterSprite(ch.id,26,Math.PI/2,{moving:false})) drawPlayerCharacter({r:26,color:ch.color,subColor:ch.subColor,facing:Math.PI/2});
+  // 미리보기 + 이름/역할 — 초상은 살짝 작게·아래로, 이름은 오른쪽으로(넓은 idle 프레임이 이름을 가리지 않게)
+  ctx.save(); ctx.translate(x+40,y+58);
+  if(!drawCharacterSprite(ch.id,20,Math.PI/2,{moving:false})) drawPlayerCharacter({r:20,color:ch.color,subColor:ch.subColor,facing:Math.PI/2});
   ctx.restore();
   ctx.textAlign="left"; ctx.textBaseline="alphabetic";
-  ctx.fillStyle="#fff"; ctx.font="bold 22px 'Malgun Gothic',sans-serif"; ctx.fillText(ch.name, x+82, y+34);
-  ctx.fillStyle="#ffe066"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.fillText(ch.role||"캐릭터", x+82, y+54);
+  ctx.fillStyle="#fff"; ctx.font="bold 22px 'Malgun Gothic',sans-serif"; ctx.fillText(ch.name, x+92, y+38);
+  ctx.fillStyle="#ffe066"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.fillText(ch.role||"캐릭터", x+92, y+58);
   // 설명
   ctx.fillStyle="#cfd6f0"; ctx.font="13px 'Malgun Gothic',sans-serif"; ctx.fillText(ch.desc||"", x+18, y+92);
   // 능력치 막대
@@ -3752,7 +3794,8 @@ function drawLobbyTopBar(){
   const y=80, h=32;
   // 좌: 프로필 칩(U=프로필 화면) · 골드 칩
   let x=64;
-  const lv="Lv."+(profile.level||1), idTxt=profile.id?(" · "+profile.id):"";
+  const lv="Lv."+(profile.level||1);
+  const idTxt=(profile.id && profile.id!==profile.nickname)?(" · "+profile.id):"";   // 닉네임=ID면 중복 표시 생략
   x=drawTopChip("👤 "+profile.nickname+" · "+lv+idTxt, x, y, h, false)+10;
   x=drawTopChip("💰 "+profile.gold+" G", x, y, h, false)+10;
   ctx.save(); ctx.textAlign="left"; ctx.textBaseline="middle";
@@ -3777,7 +3820,8 @@ function drawLobbySections(){
   // 현재 탭 표시(홈 아래 밑줄)
   ctx.save(); ctx.strokeStyle="#9fe0ff"; ctx.lineWidth=3;
   ctx.beginPath(); ctx.moveTo(276, y+h+5); ctx.lineTo(x-14, y+h+5); ctx.stroke(); ctx.restore();
-  x=drawTopChip("🛒 상점", x, y, h, menuIndex===8)+8;
+  // 상점 비활성(SHOP_ENABLED=false) 동안엔 "준비 중"을 미리 표기 — 눌러도 토스트 안내(빈 화면 없음)
+  x=drawTopChip(SHOP_ENABLED?"🛒 상점":"🛒 상점 (준비 중)", x, y, h, menuIndex===8)+8;
   x=drawTopChip("📖 수집", x, y, h, menuIndex===9)+8;
 }
 // ③ 플레이 메뉴: 혼자(캠페인 └난이도 · 빠른대전 └규칙·팀·맵·난이도) / 친구와(온라인 센터)

@@ -100,7 +100,9 @@ script += `
   get curStudent(){return currentStudentId;}, ADMIN_PIN, goToLogin,
   lsGet:(k)=>localStorage.getItem(k), lsSet:(k,v)=>localStorage.setItem(k,v), lsClear:()=>{for(const k in localStorageData) delete localStorageData[k];},
   setMenuIndex:(i)=>{menuIndex=i;}, get selChar(){return selectedCharacterId;}, get selMode(){return selectedModeId;},
-  get omRole(){return OnlineManager.role;}, get omRoomRef(){return OnlineManager.roomRef;}, leaveToStart:doLeaveToStart
+  get omRole(){return OnlineManager.role;}, get omRoomRef(){return OnlineManager.roomRef;}, leaveToStart:doLeaveToStart,
+  // ---- v1.27 캐릭터 봇 ----
+  get MATCH(){return MATCH;}, updateAI
 };
 `;
 
@@ -165,6 +167,40 @@ function playMode(modeId, charId, weaponId){
 }
 run("solo 플레이", ()=> playMode("solo","lumi","star_blaster"));
 run("trio 플레이", ()=> playMode("trio","bolt","meteor_rifle"));
+
+console.log("=== 4b) 빠른대전 캐릭터 봇 (v1.27: 진짜 캐릭터 + X/C 스킬) ===");
+run("적 봇 캐릭터 배정(로스터·플레이어 제외·서로 다름·난이도 스탯 유지)", ()=>{
+  api.setSel("student_01","tool_01","normal","training","trio"); api.startGame();
+  check("적 전원 characterId 보유", api.enemies.every(e=>!!e.characterId && !!e.char));
+  check("플레이어 캐릭터와 안 겹침", api.enemies.every(e=>e.characterId!=="student_01"));
+  const ids=api.enemies.map(e=>e.characterId);
+  check("봇끼리 서로 다른 캐릭터", new Set(ids).size===ids.length);
+  check("이름 '봇 ' 접두", api.enemies.every(e=>e.name.indexOf("봇 ")===0));
+  check("무기 = 캐릭터 고정 무기", api.enemies.every(e=>e.weaponId===api.getWeaponForCharacter(e.characterId)));
+  check("HP는 난이도 기반(enemyMaxHp)", api.enemies.every(e=>Math.abs(e.maxHp-api.MATCH.enemyMaxHp)<1e-9));
+  check("봇 게이지/쿨다운 초기화", api.enemies.every(e=>e.superGauge===0 && e.specialCd===0));
+});
+run("봇 X/C 시전 배선(castSpecialFor/castUltimateFor + envLocal)", ()=>{
+  api.setSel("student_01","tool_01","hard","training","solo"); api.startGame();
+  const e=api.enemy;
+  // X: 시전 성공 + 쿨타임 설정 (적 팀 컨텍스트로 크래시 없음)
+  e.facing=Math.PI;
+  const okX=api.castSpecialFor(e, api.envLocal());
+  check("적 봇 X 시전 성공", okX===true);
+  check("X 쿨타임 시작", e.specialCd>0);
+  // C: 게이지 100 → 시전 성공 + 게이지 0
+  e.superGauge=api.GAME_CONFIG.superCharge;
+  const okC=api.castUltimateFor(e, api.envLocal(), ()=>e.superGauge, v=>{ e.superGauge=v; });
+  check("적 봇 C 시전 성공", okC===true);
+  check("C 게이지 소진", e.superGauge===0);
+  // 난이도 파라미터 배선: hard가 easy보다 적극적
+  const hardProb=api.MATCH.botSpecialProb;
+  api.setSel("student_01","tool_01","easy","training","solo"); api.startGame();
+  check("난이도별 스킬 빈도(easy<hard)", api.MATCH.botSpecialProb<hardProb && api.MATCH.botUltChargeRate>0);
+  // 프레임 진행 시 봇 게이지 자동 충전
+  const g0=api.enemy.superGauge; frames(60);
+  check("봇 게이지 시간 충전", api.enemy.superGauge>g0);
+});
 
 console.log("=== 5) X 특수기술 / C 궁극기 (v1.18: Z/X/C) ===");
 function testUlt(charId, label){
