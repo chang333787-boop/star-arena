@@ -152,7 +152,7 @@ run("질주 버프", ()=>{
 
 console.log("=== 8) 모아(v1.21 서포터): X 오오라 기물 / C 전체 무적 2초 / 패시브 근처 회복 ===");
 run("X 오오라 기물: 5초·반경140·팀원 초당 10", ()=>{
-  api.setSel("student_05",null,"normal","training","duo"); api.startGame(); frames(2);
+  api.setSel("student_05",null,"normal","training","trio"); api.startGame(); frames(2);   // v1.26: duo 제거 → trio(아군 2)로 아군 확보
   const p=api.player, ally=api.allies[0], e=api.enemy;
   e.freezeTimer=9999; e.x=p.x+500;
   ally.freezeTimer=9999; ally.x=p.x+50; ally.y=p.y;
@@ -168,7 +168,7 @@ run("X 오오라 기물: 5초·반경140·팀원 초당 10", ()=>{
   check("동시 1개만 존재", api.skillZones.filter(z=>z.type==="healTotem").length===1);
 });
 run("모아 C: 살아있는 팀 전체(본인 포함) 무적 2초", ()=>{
-  api.setSel("student_05",null,"normal","training","duo"); api.startGame(); frames(2);
+  api.setSel("student_05",null,"normal","training","trio"); api.startGame(); frames(2);   // v1.26: duo 제거 → trio(아군 2)로 아군 확보
   const p=api.player, ally=api.allies[0], e=api.enemy;
   e.freezeTimer=9999; ally.freezeTimer=9999;
   p.invincibleTimer=0; ally.invincibleTimer=0; const einv0=e.invincibleTimer||0;
@@ -183,7 +183,7 @@ run("모아 C: 살아있는 팀 전체(본인 포함) 무적 2초", ()=>{
   check("무적 중 피해 0", p.hp===hp0);
 });
 run("모아 패시브: 반경 180 팀원 초당 5(본인 제외)", ()=>{
-  api.setSel("student_05",null,"normal","training","duo"); api.startGame(); frames(2);
+  api.setSel("student_05",null,"normal","training","trio"); api.startGame(); frames(2);   // v1.26: duo 제거 → trio(아군 2)로 아군 확보
   const p=api.player, ally=api.allies[0];
   ally.freezeTimer=9999; ally.x=p.x+100; ally.y=p.y; ally.hp=ally.maxHp-30;
   const h0=ally.hp; p.moaAcc=0;
@@ -256,7 +256,7 @@ run("시고니 패시브: 등 뒤 명중 +20%", ()=>{
 
 console.log("=== 11) 별골렘 C 블랙홀: 끌어당김 + 상한 18 + 아군 무영향 ===");
 run("블랙홀", ()=>{
-  api.setSel("student_06",null,"normal","training","duo"); api.startGame(); frames(2);
+  api.setSel("student_06",null,"normal","training","trio"); api.startGame(); frames(2);   // v1.26: duo 제거 → trio(아군 2)로 아군 확보
   const p=api.player, ally=api.allies[0], e=api.enemy;
   p.facing=0; e.freezeTimer=9999; e.invincibleTimer=0; e.hp=e.maxHp;
   const A=api.getAbility("student_06").c;

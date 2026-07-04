@@ -114,8 +114,8 @@ run("학생 캐릭터 선택은 그대로 유지", ()=>{
 });
 
 console.log("=== 5) 로비/상점 구조 ===");
-run("메뉴 9행(v1.20 캠페인 행 추가) + 상점 비활성", ()=>{
-  check("MENU_ROWS=9", api.MENU_ROWS===9);
+run("메뉴 11행(v1.26 로비 3층 IA: 캠페인·빠른대전+스코프설정·온라인·상점·수집·설정) + 상점 비활성", ()=>{
+  check("MENU_ROWS=11", api.MENU_ROWS===11);
   check("SHOP_ENABLED=false", api.SHOP_ENABLED===false);
 });
 run("아군 봇도 학생 캐릭터 + 고정 무기", ()=>{

@@ -147,7 +147,7 @@ run("상점 봉인 + 학생 세트 전원 해금 + 골드 보존", ()=>{
   check("골드 보존", api.profile.gold===777);
 });
 
-console.log("=== 4) 모드별 플레이 (1대1/2대1/3대3) ===");
+console.log("=== 4) 모드별 플레이 (1대1/3대3) — v1.26: 2대1(duo) 제거 ===");
 function playMode(modeId, charId, weaponId){
   api.setSel(charId, weaponId, "normal", "training", modeId);
   api.startGame();
@@ -161,11 +161,9 @@ function playMode(modeId, charId, weaponId){
   // 적/아군 수 확인
   const mode = modeId;
   if(modeId==="solo") check("solo 적1 아군0", api.enemies.length===1 && api.allies.length===0);
-  if(modeId==="duo")  check("duo 적1 아군1",  api.enemies.length===1 && api.allies.length===1);
   if(modeId==="trio") check("trio 적3 아군2", api.enemies.length===3 && api.allies.length===2);
 }
 run("solo 플레이", ()=> playMode("solo","lumi","star_blaster"));
-run("duo 플레이",  ()=> playMode("duo","nova","stardust"));
 run("trio 플레이", ()=> playMode("trio","bolt","meteor_rifle"));
 
 console.log("=== 5) X 특수기술 / C 궁극기 (v1.18: Z/X/C) ===");
@@ -498,36 +496,48 @@ run("계정 저장은 프로필 키와 분리", ()=>{
   check("깨진 accounts → 빈 학급 복구", api.accounts && api.accounts.students && typeof api.accounts.students==="object");
 });
 
-console.log("=== 15) 로비 메뉴 재배치 (v1.18: 무기행 제거·상점 비활성) ===");
-run("로비 행 매핑(바로시작/온라인/값행/로그아웃/교사용)", ()=>{
-  // row0 = 바로 시작(오프라인)
+console.log("=== 15) 로비 메뉴 재배치 (v1.26: 3층 IA — 혼자/함께 그룹 + 스코프 설정) ===");
+run("로비 행 매핑(캠페인/빠른대전/값행/상점/수집/설정)", ()=>{
   api.setSel("student_01","tool_01","normal","training","solo");
+  // row0 = ⭐ 캠페인 도전(혼자 · 20스테이지 · 오프라인 PVE 호스트 로직)
   api.setState("start"); api.setMenuIndex(0); api.handleKeyPress("Enter");
-  check("row0 Enter → 게임 시작(playing)", api.state==="playing");
-  // 값 행: 캐릭터(row2) ←→ 로 변경 → 무기도 고정 무기로 자동 변경
-  api.setState("start"); api.setMenuIndex(2); const c0=api.selChar; api.handleKeyPress("ArrowRight");
-  check("row2 ←→ 캐릭터 변경", api.selChar!==c0);
-  check("캐릭터 변경 → 무기 자동 고정", api.profile.selectedWeaponId===api.getWeaponForCharacter(api.selChar));
-  // 캠페인(row3) Enter → 혼자 도전 캠페인(온라인 PVE 호스트 로직·오프라인)
-  api.setState("start"); api.setMenuIndex(3); api.handleKeyPress("Enter");
-  check("row3 Enter → 캠페인(online_playing·오프라인)", api.state==="online_playing" && api.omRole==="host" && api.omRoomRef===null);
+  check("row0 Enter → 캠페인(online_playing·오프라인)", api.state==="online_playing" && api.omRole==="host" && api.omRoomRef===null);
   api.leaveToStart();
-  // 값 행: 모드(row6 — v1.20 캠페인 행 추가로 한 칸 밀림)
-  api.setState("start"); api.setMenuIndex(6); const m0=api.selMode; api.handleKeyPress("ArrowRight");
-  check("row6 ←→ 모드 변경", api.selMode!==m0);
+  // row2 = ▶ 빠른 대전(단판)
+  api.setState("start"); api.setMenuIndex(2); api.handleKeyPress("Enter");
+  check("row2 Enter → 빠른 대전 시작(playing)", api.state==="playing");
+  // 값 행: 난이도(row1 캠페인 스코프 — row6 빠른대전과 같은 값 공유)
+  api.setState("start"); api.setMenuIndex(1); const d0=api.profile.selectedDifficultyId; api.handleKeyPress("ArrowRight");
+  check("row1 ←→ 난이도 변경", api.profile.selectedDifficultyId!==d0);
+  // 값 행: 규칙(row3 — 지금은 섬멸전 1종이라 값 유지·무크래시)
+  api.setMenuIndex(3); api.handleKeyPress("ArrowRight");
+  check("row3 규칙 행 안전(섬멸전 1종)", api.state==="start");
+  // 값 행: 팀(row4 — 1대1/3대3)
+  api.setMenuIndex(4); const m0=api.selMode; api.handleKeyPress("ArrowRight");
+  check("row4 ←→ 팀 변경", api.selMode!==m0);
+  // 캐릭터 중앙 행 제거 → C 키 + 우측 카드 담당
+  const c0=api.selChar; api.handleKeyPress("KeyC");
+  check("C 키 캐릭터 변경", api.selChar!==c0);
+  check("캐릭터 변경 → 무기 자동 고정", api.profile.selectedWeaponId===api.getWeaponForCharacter(api.selChar));
   // W 키로 무기 변경 불가(로비)
   const w0=api.profile.selectedWeaponId; api.handleKeyPress("KeyW");
   check("W 키 무기 변경 없음", api.profile.selectedWeaponId===w0);
-  // 상점 비활성: openShop은 토스트만(상태 유지)
-  api.setState("start"); api.openShop();
-  check("상점 비활성(SHOP_ENABLED=false) → 화면 이동 없음", api.state==="start");
-  // 로그아웃(row7) → 로그인 화면
-  api.setState("start"); api.setMenuIndex(7); api.handleKeyPress("Enter");
-  check("row7 Enter → 로그아웃(로그인 화면)", api.state==="login"); api.handleKeyPress("Escape");
-  // 교사용(row8) → 교사용 로그인 화면(별도)
-  api.setState("start"); api.setMenuIndex(8);
-  let threw=false; try{ api.handleKeyPress("Enter"); }catch(e){ threw=true; }
-  check("row8 → 교사용 로그인(admin_login)", !threw && api.state==="admin_login");
+  // row8 상점: 비활성(SHOP_ENABLED=false) → 토스트만(상태 유지)
+  api.setMenuIndex(8); api.handleKeyPress("Enter");
+  check("row8 상점(비활성) → 화면 이동 없음", api.state==="start");
+  // row9 수집 → COLLECTION 진입 후 Esc 복귀
+  api.setMenuIndex(9); api.handleKeyPress("Enter");
+  check("row9 Enter → 수집(collection)", api.state==="collection");
+  api.handleKeyPress("Escape");
+  check("수집 Esc → 로비 복귀", api.state==="start");
+  // row10 설정 오버레이: 로그아웃(1)·교사용(2)
+  api.setMenuIndex(10); api.handleKeyPress("Enter");            // 설정 열림
+  api.handleKeyPress("ArrowDown"); api.handleKeyPress("Enter"); // 1 = 로그아웃
+  check("설정 → 로그아웃(로그인 화면)", api.state==="login");
+  api.setState("start"); api.setMenuIndex(10); api.handleKeyPress("Enter");
+  api.handleKeyPress("ArrowDown"); api.handleKeyPress("ArrowDown");
+  let threw=false; try{ api.handleKeyPress("Enter"); }catch(e){ threw=true; }  // 2 = 교사용
+  check("설정 → 교사용 로그인(admin_login)", !threw && api.state==="admin_login");
   api.setState("start");
 });
 run("시작 화면 렌더 안전(로비)", ()=>{ let t=false; try{ api.setState("start"); api.render(); frames(3); }catch(e){ t=true; console.log("  render err:",e.message); } check("로비 렌더 throw 없음", !t); });

@@ -57,8 +57,8 @@ console.log("=== A) FIREBASE_CONFIG=null 안전 ===");
 check("초기 available=false", api.OnlineManager.available===false);
 run("온라인 메뉴 진입/렌더", ()=>{ api.openOnlineMenu(); check("state=online_menu", api.state===api.STATE.ONLINE_MENU); F(3); });
 run("메뉴에서 Esc → start", ()=>{ api.handleKeyPress("Escape"); check("state=start", api.state===api.STATE.START); });
-run("로비 '온라인 센터'(row1) Enter → online_menu(소프트락 아님)", ()=>{
-  api.setState(api.STATE.START); api.setMenuIndex(1); api.handleKeyPress("Enter");  // 새 로비: row1=온라인 센터
+run("로비 '온라인 센터'(row7) Enter → online_menu(소프트락 아님)", ()=>{
+  api.setState(api.STATE.START); api.setMenuIndex(7); api.handleKeyPress("Enter");  // v1.26 3층 IA 로비: row7=온라인 센터('친구와' 그룹)
   check("Enter로 online_menu 진입", api.state===api.STATE.ONLINE_MENU);
   api.handleKeyPress("Escape"); check("다시 Esc로 탈출", api.state===api.STATE.START);
 });
