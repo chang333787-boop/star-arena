@@ -258,8 +258,8 @@ run("눈꽃 C(얼음 깨기) 적팀 피해/아군 무피해", ()=>{
   api.castUlt(me);
   check("적팀 즉시 빙결", foe.freezeTimer>0);
   check("아군 빙결 없음", !(ally.freezeTimer>0));
-  api.tickZones(1.55);                                   // 빙결(v1.21: 1.5s) 종료 → 파괴 피해 40
-  check("빙결 종료 피해(40) 적팀만", foe.hp===foeHp0-40 && ally.hp===allyHp0);
+  api.tickZones(1.05);                                   // 빙결(GAMEPLAY-1 너프: 1.0s) 종료 → 파괴 피해 30
+  check("빙결 종료 피해(30) 적팀만", foe.hp===foeHp0-30 && ally.hp===allyHp0);
   check("사용 후 게이지 0", me.superGauge===0);
   check("C 피해로 게이지 재충전 안 됨", me.superGauge===0);
   check("게이지 부족 시 미발동", (function(){ const h0=foe.hp; me.superGauge=10; api.castUlt(me); return foe.hp===h0 && me.superGauge===10; })());

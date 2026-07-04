@@ -102,7 +102,11 @@ script += `
   setMenuIndex:(i)=>{menuIndex=i;}, get selChar(){return selectedCharacterId;}, get selMode(){return selectedModeId;},
   get omRole(){return OnlineManager.role;}, get omRoomRef(){return OnlineManager.roomRef;}, leaveToStart:doLeaveToStart,
   // ---- v1.27 캐릭터 봇 ----
-  get MATCH(){return MATCH;}, updateAI
+  get MATCH(){return MATCH;}, updateAI,
+  // ---- GAMEPLAY-1: 성장 루프 + 오브젝트 모드 ----
+  get buffOrbs(){return BUFFORBS;}, tickBuffOrbs, grantGrowth, zCooldownOf, atkSlowFactor,
+  setRule:(r)=>{selectedRuleId=r;}, get RULE(){return RULE;}, tickRule, teamStars,
+  damageRuleStructure, get obstacles(){return OBSTACLES;}, matchTimeLimit, RULE_CONFIG, GROWTH, getMap
 };
 `;
 
@@ -201,6 +205,90 @@ run("봇 X/C 시전 배선(castSpecialFor/castUltimateFor + envLocal)", ()=>{
   const g0=api.enemy.superGauge; frames(60);
   check("봇 게이지 시간 충전", api.enemy.superGauge>g0);
 });
+
+console.log("=== 4c) GAMEPLAY-1: 성장 루프(버프 오브) ===");
+run("처치 드랍 → 픽업 → 스택 효과(공속·공격·체력)", ()=>{
+  api.setRule("tdm");
+  api.setSel("student_01","tool_01","normal","training","solo"); api.startGame();
+  const p=api.player;
+  api.killEnemy();
+  check("처치 시 버프 오브 1개 드랍", api.buffOrbs.length===1);
+  const orb=api.buffOrbs[0];
+  p.x=orb.x; p.y=orb.y; api.tickBuffOrbs();
+  check("접촉 픽업 → 스택 1(오브 소멸)", api.buffOrbs.length===0 && p.growth && (p.growth.aspd+p.growth.atk+p.growth.hp)===1);
+  const w=api.getWeapon("tool_01");
+  p.growth={aspd:2,atk:0,hp:0};
+  check("공속 2스택 → 간격 0.55×0.84", Math.abs(api.zCooldownOf(p,w)-0.55*0.84)<1e-6);
+  p.growth={aspd:0,atk:1,hp:0};
+  check("공격 1스택 → 피해 20→22", Math.abs(api.weaponFireSpec(p,w).damage-22)<1e-6);
+  const mh0=p.maxHp;
+  api.grantGrowth(p,"hp");
+  check("체력 스택 → 최대체력 +15", p.maxHp===mh0+15);
+  p.growth={aspd:5,atk:5,hp:5};
+  const before=JSON.stringify(p.growth);
+  api.grantGrowth(p,"atk");
+  check("종류별 최대 5스택(전부 만렙이면 무시)", JSON.stringify(p.growth)===before);
+});
+
+console.log("=== 4d) GAMEPLAY-1: 오브젝트 모드 3종 ===");
+run("수정부수기(siege): 3v3 강제·구조물·탑 파괴 즉시 승리", ()=>{
+  api.setRule("siege");
+  api.setSel("student_01","tool_01","normal","training","solo"); api.startGame();   // 팀=solo여도 3v3 강제
+  check("3v3 강제", api.enemies.length===3 && api.allies.length===2);
+  check("매치 180초·리스폰 5초", api.matchTimeLimit()===180 && api.MATCH.respawnDelay===5);
+  const R=api.RULE;
+  check("팀 수정탑 2개(HP1800)", R.towers.player.hp===1800 && R.towers.enemy.hp===1800);
+  check("건설 벽 6개(팀당 3·HP120)", api.obstacles.filter(o=>o.sid&&o.sid.indexOf("rwall_")===0&&o.hp===120).length===6);
+  // 포탑 자동 공격: 적을 사거리 안에 두고 tick → 포탑 탄 생성
+  const tw=R.towers.player, e=api.enemies[0];
+  e.x=tw.x-80; e.y=tw.y+tw.h/2; e.invincibleTimer=0;
+  const b0=api.bullets.length; api.tickRule(1.0);
+  check("포탑 자동 사격(팀 탄 생성)", api.bullets.length>b0);
+  // 적 탑 파괴 → 즉시 승리
+  api.damageRuleStructure(R.towers.enemy, 99999);
+  check("탑 파괴 → 즉시 승리 종료", R.winner==="player" && api.state==="over");
+  check("원본 맵 오염 없음(사본 사용)", api.getMap("training").obstacles.every(o=>!o.sid));
+});
+run("핫존(hotzone): 단독 점유 +8/초 · 경합 정지 · 100 승리", ()=>{
+  api.setRule("hotzone"); api.startGame();
+  const R=api.RULE;
+  api.player.x=R.x; api.player.y=R.y;
+  for(const f of api.enemies){ f.x=R.x-450; f.y=R.y-260; }
+  for(const f of api.allies){ f.x=R.x+450; f.y=R.y+260; }
+  api.tickRule(1.0);
+  check("아군 단독 점유 +8/초", Math.abs(R.gauge.player-8)<1e-6);
+  const g0=R.gauge.player;
+  for(const f of api.enemies){ f.x=R.x; f.y=R.y; }
+  api.tickRule(1.0);
+  check("양팀 경합 = 게이지 정지", Math.abs(R.gauge.player-g0)<1e-6 && R.holder==="contest");
+  for(const f of api.enemies){ f.x=R.x-450; f.y=R.y-260; }
+  R.gauge.player=99.5;
+  api.tickRule(0.2);
+  check("게이지 100 → 즉시 승리", R.winner==="player" && api.state==="over");
+});
+run("별모으기(stargrab): 스폰·픽업·카운트다운·사망 드랍", ()=>{
+  api.setRule("stargrab"); api.startGame();
+  const R=api.RULE, p=api.player;
+  check("리스폰 3초", api.MATCH.respawnDelay===3);
+  // 봇을 멀리 치워 픽업 간섭 제거
+  for(const f of api.enemies.concat(api.allies)){ f.x=ARENAX(); f.y=ARENAY(); }
+  api.tickRule(4.01);
+  check("4초 주기 별 스폰", R.stars.length>=1);
+  const s=R.stars[0]; p.x=s.x; p.y=s.y;
+  api.tickRule(0.01);
+  check("접촉 픽업", (p.stars||0)>=1);
+  p.stars=10;
+  api.tickRule(0.01);
+  check("팀 합계 10 → 15초 카운트다운 시작", R.countdown.player>0 && R.countdown.player<=15);
+  const st0=R.stars.length;
+  api.applyDamage(p, 99999, "enemy", -1, p.x, p.y);
+  check("사망 시 보유 별 전부 드랍(6초 소멸)", p.stars===0 && R.stars.length===st0+10 && R.stars.some(x=>x.ttl>0));
+  api.tickRule(0.01);
+  check("합계 10 미달 → 카운트다운 리셋", R.countdown.player<0);
+  api.setRule("tdm");   // 이후 테스트 복원
+});
+function ARENAX(){ return 40+((ARENAX._i=(ARENAX._i||0)+37)%60); }   // 봇 대피용 좌상단 구석 좌표
+function ARENAY(){ return 40+((ARENAY._i=(ARENAY._i||0)+53)%60); }
 
 console.log("=== 5) X 특수기술 / C 궁극기 (v1.18: Z/X/C) ===");
 function testUlt(charId, label){
