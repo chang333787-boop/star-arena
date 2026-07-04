@@ -1,0 +1,59 @@
+<!doctype html><meta charset="utf-8"><title>에셋 적용 감사</title>
+<style>
+  body{margin:0;background:#0b1024;color:#e8edff;font:13px/1.4 system-ui;padding:20px}
+  h1{font-size:18px;margin:0 0 4px} .sub{color:#93a0cc;font-size:12px;margin-bottom:14px}
+  h2{font-size:15px;margin:22px 0 8px;color:#cfe0ff}
+  .grid{display:flex;flex-wrap:wrap;gap:12px}
+  .card{width:150px;background:#141a34;border:1px solid #2a3560;border-radius:10px;padding:10px;display:flex;flex-direction:column;align-items:center;gap:5px}
+  .thumb{width:96px;height:96px;display:grid;place-items:center;border-radius:8px;
+    background:repeating-conic-gradient(#20264a 0 25%,#171d3a 0 50%) 0 0/16px 16px}
+  .thumb img{max-width:92px;max-height:92px}
+  .nm{font-weight:700;font-size:12px} .pth{font:10px monospace;color:#8b97c4;word-break:break-all;text-align:center}
+  .b{font-size:10px;font-weight:700;padding:2px 6px;border-radius:6px}
+  .ok{background:#123d24;color:#7ee6a0} .no{background:#4a1420;color:#ff8fa3} .new{background:#3a2a12;color:#ffcf6a} .stale{background:#12324a;color:#7ec8ff}
+  .row{display:flex;gap:5px;flex-wrap:wrap;justify-content:center}
+  .miss{color:#ff8fa3;font-size:22px;font-weight:800}
+</style>
+<h1>별빛 아레나 — 에셋 적용 감사 (실제 파일 대조)</h1>
+<div class="sub">각 항목 = 지금 디스크의 실제 파일. 이미지 안 뜨면 = 파일 없음. 뱃지: 파일상태 + 게임등록 여부</div>
+<div id="root"></div>
+<script>
+const DATA={
+  "월드요소 12종 (게임 등록됨)":[
+    ["수정","obstacles/crystal_01","reg","old"],["상자","obstacles/block_01","reg","old"],
+    ["바위","obstacles/rock_01","reg","old"],["몬스터문","obstacles/monster_gate","reg","old"],
+    ["쿠션벽(낱개)","obstacles/cushion_wall","reg","old"],
+    ["가시","traps/spike","reg","new"],["둔화장판","traps/slow","reg","new"],["얼음장판","traps/ice_field","reg","new"],
+    ["덤불(낱개)","bushes/bush_01","reg","old"],["회복물약","pickups/heal","reg","old"],
+    ["바닥타일","tiles/ground_basic","reg","old"],["길타일","tiles/ground_path","reg","old"]
+  ],
+  "게임이 참조하나 — 파일 상태 확인":[
+    ["점령지타일","tiles/capture_zone","reg","made"],
+    ["덤불2","bushes/bush_02","reg","missing"],
+    ["HP아이콘","ui/icon_hp","reg","missing"],["공격아이콘","ui/icon_attack","reg","missing"],
+    ["속도아이콘","ui/icon_speed","reg","missing"],["궁게이지아이콘","ui/icon_super","reg","missing"]
+  ],
+  "내가 새로 만든 것 — 파일 있음 / 게임 미등록":[
+    ["풀 바닥","tiles/ground_grass","unreg","new"],["눈 바닥","tiles/ground_snow","unreg","new"],
+    ["모래 바닥","tiles/ground_sand","unreg","new"],["나무 바닥","tiles/ground_wood","unreg","new"],
+    ["어둠 바닥","tiles/ground_void","unreg","new"],["별광맥","tiles/star_vein","unreg","new"],
+    ["별 픽업","pickups/star","unreg","new"],["수정탑 청","obstacles/tower_blue","unreg","new"],
+    ["수정탑 홍","obstacles/tower_red","unreg","new"],["쿠션벽 타일셋","obstacles/cushion_wall_tileset","unreg","new"],
+    ["덤불 타일셋","bushes/bush_tileset","unreg","new"]
+  ]
+};
+const badge=(t)=>{const m={reg:["게임등록","ok"],unreg:["미등록","no"],old:["기존파일","stale"],new:["새파일","new"],made:["내가만듦","new"],missing:["파일없음","no"]};const[l,c]=m[t];return `<span class="b ${c}">${l}</span>`;};
+const root=document.getElementById('root');
+for(const[sec,items]of Object.entries(DATA)){
+  const h=document.createElement('h2');h.textContent=sec+` (${items.length})`;root.appendChild(h);
+  const g=document.createElement('div');g.className='grid';
+  for(const[nm,path,reg,st]of items){
+    const c=document.createElement('div');c.className='card';
+    c.innerHTML=`<div class="thumb"><img src="assets/${path}.png" onerror="this.parentNode.innerHTML='<span class=miss>✕</span>'"></div>
+      <div class="nm">${nm}</div><div class="pth">${path}.png</div>
+      <div class="row">${badge(reg)}${badge(st)}</div>`;
+    g.appendChild(c);
+  }
+  root.appendChild(g);
+}
+</script>

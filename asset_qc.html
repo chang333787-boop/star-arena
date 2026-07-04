@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>별빛 아레나 — Asset QC</title>
+  <style>
+    :root {
+      --cell: 56px;
+      --cols: 22;
+      --rows: 10;
+      --arena-width: calc(var(--cell) * var(--cols));
+      --arena-height: calc(var(--cell) * var(--rows));
+      color-scheme: dark;
+      font-family: "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #edf2ff; background: #090d1d; }
+    header, main { width: min(calc(100% - 32px), 1280px); margin-inline: auto; }
+    header { padding: 30px 0 20px; }
+    h1 { margin: 0 0 8px; font-size: 26px; }
+    header p { margin: 0; color: #aeb8d8; font-size: 14px; }
+    .legend { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 14px; color: #cbd5f4; font-size: 12px; }
+    .legend span::before { display: inline-block; width: 14px; height: 10px; margin-right: 6px; content: ""; vertical-align: -1px; }
+    .legend .grid-key::before { border: 1px solid #8090c9; }
+    .legend .foot-key::before { border-bottom: 2px solid #ff5e7d; }
+    .legend .alpha-key::before {
+      background-color: #fff;
+      background-image: linear-gradient(45deg,#cdd4e6 25%,transparent 25%),linear-gradient(-45deg,#cdd4e6 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#cdd4e6 75%),linear-gradient(-45deg,transparent 75%,#cdd4e6 75%);
+      background-position: 0 0,0 5px,5px -5px,-5px 0; background-size: 10px 10px;
+    }
+    section { margin: 0 0 32px; }
+    h2 { margin: 0 0 9px; font-size: 18px; }
+    .section-note { margin: -3px 0 10px; color: #98a6ca; font-size: 12px; }
+    .viewport { overflow-x: auto; padding: 0 0 10px; }
+    .arena {
+      position: relative; width: var(--arena-width); height: var(--arena-height); overflow: hidden;
+      border: 2px solid #52628f; border-radius: 4px;
+      background-color: #111831;
+      background-image:
+        linear-gradient(to right, rgba(154,174,232,.28) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(154,174,232,.28) 1px, transparent 1px);
+      background-size: var(--cell) var(--cell);
+    }
+    .arena::after {
+      position: absolute; inset: 0; z-index: 20; content: ""; pointer-events: none;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
+    }
+    .asset {
+      position: absolute; z-index: 1; width: calc(var(--w, 2) * var(--cell)); height: calc(var(--h, 2) * var(--cell));
+      left: calc(var(--x) * var(--cell)); top: calc(var(--y) * var(--cell));
+      border: 1px solid rgba(255,255,255,.08);
+    }
+    .name {
+      position: absolute; z-index: 6; top: 2px; left: 3px; max-width: calc(100% - 6px); overflow: hidden;
+      color: #fff; font: 700 10px/15px ui-monospace, SFMono-Regular, Consolas, monospace;
+      white-space: nowrap; text-overflow: ellipsis; text-shadow: 0 1px 2px #000, 0 0 3px #000;
+    }
+    .image-box {
+      position: absolute; z-index: 2; left: 50%; bottom: 20px; width: var(--box-w, 96px); height: var(--box-h, 82px);
+      transform: translateX(-50%); overflow: visible;
+      background-color: #f7f7fa;
+      background-image: linear-gradient(45deg,#cfd4df 25%,transparent 25%),linear-gradient(-45deg,#cfd4df 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#cfd4df 75%),linear-gradient(-45deg,transparent 75%,#cfd4df 75%);
+      background-position: 0 0,0 6px,6px -6px,-6px 0; background-size: 12px 12px;
+      outline: 1px solid rgba(255,255,255,.34);
+    }
+    .image-box img { position: absolute; left: 50%; bottom: 0; max-width: none; transform: translateX(-50%); object-fit: contain; }
+    .asset.contain .image-box img { width: 100%; height: 100%; }
+    .asset.character .image-box img { width: auto; height: 70.4px; }
+    .asset.monster .image-box img { width: auto; height: var(--draw-h); }
+    .asset.tile .image-box img { width: 56px; height: 56px; }
+    .asset.weapon .image-box img { width: auto; height: 42px; max-width: 102px; }
+    .footline { position: absolute; z-index: 5; left: 5px; right: 5px; bottom: 19px; border-top: 2px solid rgba(255,94,125,.95); }
+    .meta {
+      position: absolute; z-index: 6; left: 3px; right: 3px; bottom: 2px; overflow: hidden;
+      color: #d7ddf2; font: 9px/14px ui-monospace, SFMono-Regular, Consolas, monospace;
+      white-space: nowrap; text-align: center; text-overflow: ellipsis; text-shadow: 0 1px 2px #000;
+    }
+    .error .image-box { background: #5d1725; }
+    .error .image-box::after { position: absolute; inset: 0; display: grid; place-items: center; content: "LOAD ERROR"; color: #fff; font: 700 10px monospace; }
+    footer { padding: 4px 0 34px; color: #7f8caf; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>별빛 아레나 — Asset QC</h1>
+    <p>56px 셀 · 22×10칸(1232×560px). 파일을 직접 열어 현재 PNG의 크기, 발밑 정렬, 투명 여백을 검수합니다.</p>
+    <div class="legend">
+      <span class="grid-key">56px 게임 격자</span>
+      <span class="foot-key">접지 기준선</span>
+      <span class="alpha-key">투명도 확인판</span>
+    </div>
+  </header>
+  <main id="qc"></main>
+  <footer>이미지 박스의 체크무늬가 보이지 않는 영역은 불투명 픽셀일 수 있습니다. 빨간 선은 각 미리보기의 접지 기준입니다.</footer>
+  <script>
+    "use strict";
+
+    const motions = ["idle", "move", "attack", "hit", "return"];
+    const students = Array.from({length: 6}, (_, i) => `student_${String(i + 1).padStart(2, "0")}`);
+    const characters = students.flatMap(student => motions.map(motion => ({
+      name: `${student}/${motion}`,
+      src: `assets/characters/${student}/${motion}.png`,
+      kind: "character"
+    })));
+
+    const monsterRadii = {
+      soft_jelly:19, bounce_bubble:15, paper_drone:17, cushion_block:28, star_bug:20,
+      cloud_ghost:19, heal_fairy:16, shield_block:24, ice_bubble:17,
+      boss_robot:52, boss_turtle:58, boss_plane:50, boss_king:66
+    };
+    const monsters = Object.entries(monsterRadii).map(([name, r]) => ({
+      name, src:`assets/monsters/${name}.png`, kind:"monster", drawH:r * 2.4, meta:`게임 높이 ${Math.round(r * 2.4)}px · r=${r}`
+    }));
+
+    const named = (dir, names, kind="contain") => names.map(name => ({name, src:`assets/${dir}/${name}.png`, kind}));
+    const sections = [
+      {title:"캐릭터 · student_01~06 × 5프레임", note:"게임 렌더 기준 높이 70.4px(r=22 × 3.2), 원본 비율 유지, 발밑 정렬", items:characters, span:[2,2]},
+      {title:"몬스터 · 13종", note:"PVE_ENEMY_TYPES의 반지름과 게임 렌더 배율(r × 2.4)을 적용", items:monsters, span:[3,3]},
+      {title:"장애물 · 5종", note:"2×2셀 검수 슬롯에 원본 비율로 맞춤 표시", items:named("obstacles", ["block_01","crystal_01","cushion_wall","monster_gate","rock_01"]), span:[3,3]},
+      {title:"수풀", items:named("bushes", ["bush_01"]), span:[3,3]},
+      {title:"바닥 타일", note:"각 PNG를 실제 56×56px 셀 크기로 축소 표시", items:named("tiles", ["ground_basic","ground_path"], "tile"), span:[3,3]},
+      {title:"함정", items:named("traps", ["spike","slow","ice_field"]), span:[3,3]},
+      {title:"픽업", items:named("pickups", ["heal"]), span:[3,3]},
+      {title:"무기 아이콘 · tool_01~06", items:Array.from({length:6}, (_,i) => {
+        const tool=`tool_${String(i+1).padStart(2,"0")}`;
+        return {name:`${tool}/icon`, src:`assets/weapons/${tool}/icon.png`, kind:"weapon"};
+      }), span:[3,2]},
+      {title:"무기 발사체·피격 효과 · 현재 추가 PNG", items:Array.from({length:6}, (_,i) => {
+        const tool=`tool_${String(i+1).padStart(2,"0")}`;
+        return ["projectile","effect_hit"].map(type => ({name:`${tool}/${type}`,src:`assets/weapons/${tool}/${type}.png`,kind:"contain"}));
+      }).flat(), span:[3,2]}
+    ];
+
+    function renderSection(section) {
+      const wrapper = document.createElement("section");
+      wrapper.innerHTML = `<h2>${section.title}</h2>${section.note ? `<p class="section-note">${section.note}</p>` : ""}<div class="viewport"><div class="arena"></div></div>`;
+      const arena = wrapper.querySelector(".arena");
+      const [spanX, spanY] = section.span;
+      const perRow = Math.floor(22 / spanX);
+
+      section.items.forEach((item, index) => {
+        const x = (index % perRow) * spanX;
+        const y = Math.floor(index / perRow) * spanY;
+        const card = document.createElement("div");
+        card.className = `asset ${item.kind}`;
+        card.style.cssText = `--x:${x};--y:${y};--w:${spanX};--h:${spanY};${item.drawH ? `--draw-h:${item.drawH}px;` : ""}`;
+        card.innerHTML = `<div class="name">${item.name}</div><div class="image-box"><img src="${item.src}" alt="${item.name}"></div><div class="footline"></div><div class="meta">${item.meta || "로딩 중"}</div>`;
+        const img = card.querySelector("img");
+        const meta = card.querySelector(".meta");
+        img.addEventListener("load", () => { meta.textContent = item.meta ? `${img.naturalWidth}×${img.naturalHeight} · ${item.meta}` : `${img.naturalWidth}×${img.naturalHeight}px`; });
+        img.addEventListener("error", () => { card.classList.add("error"); meta.textContent = "파일 로드 실패"; });
+        arena.appendChild(card);
+      });
+      return wrapper;
+    }
+
+    const qc = document.getElementById("qc");
+    sections.forEach(section => qc.appendChild(renderSection(section)));
+  </script>
+</body>
+</html>

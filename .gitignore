@@ -1,1 +1,3 @@
 _backup_*/
+.DS_Store
+.playwright-mcp/
