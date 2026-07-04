@@ -51,8 +51,8 @@ run("cycleWeapon은 무기를 바꾸지 못함(항상 고정 재교정)", ()=>{
 });
 
 console.log("=== 2) 캐릭터 능력치(실제 HP·이동속도 = 설계값) ===");
-// GAMEPLAY-1 전투 재설계: 달이 85/205 · 모아 105 · 별골렘 200/185(탱커)
-const STATS={student_01:[100,225],student_02:[85,205],student_03:[85,259],student_04:[95,234],student_05:[105,221],student_06:[200,185]};
+// GAMEPLAY-1/OVERNIGHT-1 전투 재설계: 달이 85/205 · 모아 105 · 별골렘 260/185(확실한 탱커)
+const STATS={student_01:[100,225],student_02:[85,205],student_03:[85,259],student_04:[95,234],student_05:[105,221],student_06:[260,185]};
 run("6캐릭터 HP/속도 정확 일치", ()=>{
   for(const cid in STATS){
     api.setSel(cid,null); api.startGame();
@@ -71,9 +71,9 @@ const WSPEC={ // [dmg, cooldown, range, speed(실효), radius, count, spreadDeg,
   tool_01:[20,0.55,470,520*0.85,9,1,0,7,1.3],
   tool_02:[36,0.85,700,430*0.85,14,1,0,5,1.5],
   tool_03:[9.5,0.50,500,560*0.85,10,1,0,7,1.2],
-  tool_04:[6,0.50,280,440*0.85,7,2,24,12,1.0],     // 탄막 주범 → 발수 3→2·공속 대폭↓
+  tool_04:[6,0.50,280,440*0.85,7,3,26,12,1.0],     // OVERNIGHT-1 2-2: 발수 3(중앙 직선)·공속 0.50 유지
   tool_05:[15,0.58,363,420*0.85,12,1,0,7,1.2],
-  tool_06:[40,0.72,220,390*0.85,10,1,0,8,1.4] };   // 탱커: 짧은 사거리 강한 한 방
+  tool_06:[52,0.72,220,390*0.85,10,1,0,8,1.4] };   // OVERNIGHT-1 2-3: 탱커 한 방 40→52
 run("6무기 실제 발사 스펙 = 설계값", ()=>{
   for(const cid in MATCHING){
     const wid=MATCHING[cid];
@@ -116,8 +116,8 @@ run("학생 캐릭터 선택은 그대로 유지", ()=>{
 });
 
 console.log("=== 5) 로비/상점 구조 ===");
-run("메뉴 11행(v1.26 로비 3층 IA: 캠페인·빠른대전+스코프설정·온라인·상점·수집·설정) + 상점 비활성", ()=>{
-  check("MENU_ROWS=11", api.MENU_ROWS===11);
+run("메뉴 12행(OVERNIGHT-1: 3층 IA + 맵공방) + 상점 비활성", ()=>{
+  check("MENU_ROWS=12", api.MENU_ROWS===12);
   check("SHOP_ENABLED=false", api.SHOP_ENABLED===false);
 });
 run("아군 봇도 학생 캐릭터 + 고정 무기", ()=>{

@@ -106,7 +106,9 @@ script += `
   // ---- GAMEPLAY-1: 성장 루프 + 오브젝트 모드 ----
   get buffOrbs(){return BUFFORBS;}, tickBuffOrbs, grantGrowth, zCooldownOf, atkSlowFactor,
   setRule:(r)=>{selectedRuleId=r;}, get RULE(){return RULE;}, tickRule, teamStars,
-  damageRuleStructure, get obstacles(){return OBSTACLES;}, matchTimeLimit, RULE_CONFIG, GROWTH, getMap
+  damageRuleStructure, get obstacles(){return OBSTACLES;}, matchTimeLimit, RULE_CONFIG, GROWTH, getMap,
+  // ---- OVERNIGHT-1: 맵공방/승인 ----
+  loadEditorStore, saveEditorStore, applyApprovedMaps, compileEditorMap, get MAPS(){return MAPS;}
 };
 `;
 
@@ -237,7 +239,7 @@ run("수정부수기(siege): 3v3 강제·구조물·탑 파괴 즉시 승리", (
   check("3v3 강제", api.enemies.length===3 && api.allies.length===2);
   check("매치 180초·리스폰 5초", api.matchTimeLimit()===180 && api.MATCH.respawnDelay===5);
   const R=api.RULE;
-  check("팀 수정탑 2개(HP1800)", R.towers.player.hp===1800 && R.towers.enemy.hp===1800);
+  check("팀 수정탑 2개(HP450 — OVERNIGHT-1 2-7)", R.towers.player.hp===450 && R.towers.enemy.hp===450);
   check("건설 벽 6개(팀당 3·HP120)", api.obstacles.filter(o=>o.sid&&o.sid.indexOf("rwall_")===0&&o.hp===120).length===6);
   // 포탑 자동 공격: 적을 사거리 안에 두고 tick → 포탑 탄 생성
   const tw=R.towers.player, e=api.enemies[0];
@@ -289,6 +291,35 @@ run("별모으기(stargrab): 스폰·픽업·카운트다운·사망 드랍", ()
 });
 function ARENAX(){ return 40+((ARENAX._i=(ARENAX._i||0)+37)%60); }   // 봇 대피용 좌상단 구석 좌표
 function ARENAY(){ return 40+((ARENAY._i=(ARENAY._i||0)+53)%60); }
+
+console.log("=== 4e) OVERNIGHT-1: 맵공방 제출→교사 승인→맵 반영→플레이 ===");
+run("맵공방 E2E(점령전 맵)", ()=>{
+  const st=api.loadEditorStore();
+  st.pending=[{ id:"ed_test1", name:"테스트맵", author:"하니스", mode:"hotzone", size:[22,10], floor:"grass",
+    cellsLeft:["...........",
+               ".W.........",
+               "...........",
+               "...........",
+               ".*.....O...",
+               "...........",
+               "...........",
+               "...........",
+               "...........",
+               "..........."], createdAt:1 }];
+  api.saveEditorStore(st);
+  api.setState("map_review"); api.handleKeyPress("Enter");    // 교사 승인
+  const st2=api.loadEditorStore();
+  check("승인 → pending 비움·approved 저장", st2.pending.length===0 && st2.approved.length===1);
+  const m=api.getMap("ed_test1");
+  check("맵 목록 반영(벽 미러 2개·거점·스폰)", m.id==="ed_test1" && m.obstacles.length===2 && !!m.rulePoints.zone && !!m.playerSpawn);
+  check("바닥 테마 저장(grass)", m.floor==="grass");
+  api.setRule("hotzone");
+  api.setSel("student_01","tool_01","normal","ed_test1","solo"); api.startGame();
+  check("에디터 맵으로 점령전 시작", api.state==="playing");
+  check("거점 = 에디터 배치점(중심선 x=640·r4 y=322)", Math.abs(api.RULE.x-640)<1 && Math.abs(api.RULE.y-322)<1);
+  api.setRule("tdm"); api.setState("start");
+  api.saveEditorStore({pending:[],approved:[]});              // 정리(다음 테스트 오염 방지)
+});
 
 console.log("=== 5) X 특수기술 / C 궁극기 (v1.18: Z/X/C) ===");
 function testUlt(charId, label){
@@ -654,11 +685,16 @@ run("로비 행 매핑(캠페인/빠른대전/값행/상점/수집/설정)", ()=
   check("row9 Enter → 수집(collection)", api.state==="collection");
   api.handleKeyPress("Escape");
   check("수집 Esc → 로비 복귀", api.state==="start");
-  // row10 설정 오버레이: 로그아웃(1)·교사용(2)
-  api.setMenuIndex(10); api.handleKeyPress("Enter");            // 설정 열림
+  // row10 맵공방(OVERNIGHT-1) → EDITOR 진입 후 Esc 복귀
+  api.setMenuIndex(10); api.handleKeyPress("Enter");
+  check("row10 Enter → 맵공방(editor)", api.state==="editor");
+  api.handleKeyPress("Escape");
+  check("맵공방 Esc → 로비 복귀", api.state==="start");
+  // row11 설정 오버레이: 로그아웃(1)·교사용(2)
+  api.setMenuIndex(11); api.handleKeyPress("Enter");            // 설정 열림
   api.handleKeyPress("ArrowDown"); api.handleKeyPress("Enter"); // 1 = 로그아웃
   check("설정 → 로그아웃(로그인 화면)", api.state==="login");
-  api.setState("start"); api.setMenuIndex(10); api.handleKeyPress("Enter");
+  api.setState("start"); api.setMenuIndex(11); api.handleKeyPress("Enter");
   api.handleKeyPress("ArrowDown"); api.handleKeyPress("ArrowDown");
   let threw=false; try{ api.handleKeyPress("Enter"); }catch(e){ threw=true; }  // 2 = 교사용
   check("설정 → 교사용 로그인(admin_login)", !threw && api.state==="admin_login");
