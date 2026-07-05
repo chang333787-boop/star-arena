@@ -1453,7 +1453,8 @@ const STATE = { START:"start", SHOP:"shop",
   PROFILE:"profile", COLLECTION:"collection", LOGIN:"login", ADMIN:"admin",
   SPLASH:"splash", ADMIN_LOGIN:"admin_login",
   EDITOR:"editor", MAP_REVIEW:"map_review",     /* OVERNIGHT-1 Phase 4: 맵공방 + 교사 맵 승인 */
-  BALANCE:"balance" };                          /* BALANCE-1: 교사용 밸런스 조정 콘솔 */
+  BALANCE:"balance",                            /* BALANCE-1: 교사용 밸런스 조정 콘솔 */
+  PF_SELECT:"pf_select", PLATFORMER:"platformer" };   /* GENRE-EXPAND-1 §3: 별빛 점프 */
 let gameState = STATE.SPLASH;
 let splashTimer = 0;
 let loginMsg = "";          // 로그인 안내/오류
@@ -1503,7 +1504,7 @@ let MATCH = null;
 let menuIndex = 0;
 // 로비 메뉴(v1.26 · 3층 IA): ③플레이 = 혼자[0캠페인 1└난이도 2빠른대전 3└규칙 4└팀 5└맵 6└난이도] · 함께[7온라인센터]
 //                            ②섹션 = 8상점 9수집 10맵공방(OVERNIGHT-1) · ①껍데기 = 11설정
-const MENU_ROWS = 12;
+const MENU_ROWS = 13;   /* GENRE-EXPAND-1: 7=🦘 별빛 점프 삽입(온라인 이하 +1) */
 const VALUE_ROWS = { "1":1, "3":1, "4":1, "5":1, "6":1 }; // ←→로 값 바꾸는 행
 let settingsOpen = false, settingsIndex = 0;   // ⚙ 설정 오버레이(START 위에 그림 — 새 STATE 아님)
 let shopIndex = 0;
@@ -1615,7 +1616,10 @@ function _touchDockTap(p){   // 하단 스킬독 탭(X/C=스킬, Z=장전) + PVE
   return false;
 }
 function handleTouchStart(e){
-  if(controlMode()!=="touch" || !inPlayState()) return;
+  if(controlMode()!=="touch") return;
+  if(gameState===STATE.PLATFORMER){ e.preventDefault();
+    for(const t of e.changedTouches){ const p=canvasToLogical(t.clientX,t.clientY); pfTouchAt(p,true); } return; }
+  if(!inPlayState()) return;
   e.preventDefault();
   for(const t of e.changedTouches){
     const p=canvasToLogical(t.clientX,t.clientY);
@@ -1635,6 +1639,8 @@ function handleTouchMove(e){
 }
 function handleTouchEnd(e){
   if(controlMode()!=="touch") return;
+  if(gameState===STATE.PLATFORMER){ e.preventDefault();
+    if(PF){ PF.touch.l=false; PF.touch.r=false; PF.touch.j=false; PF.touch.dn=false; } return; }
   e.preventDefault();
   for(const t of e.changedTouches){
     if(t.identifier===TOUCH.moveId){ TOUCH.moveId=null; TOUCH.moveVec={x:0,y:0}; }
@@ -1728,6 +1734,8 @@ function handleKeyPress(code){
   if(gameState === STATE.ADMIN){ handleAdminKey(code); return; }
   if(gameState === STATE.BALANCE){ handleBalanceKey(code); return; }   // BALANCE-1: 교사용 밸런스 콘솔
   if(gameState === STATE.START){ handleStartKey(code); return; }
+  if(gameState === STATE.PF_SELECT){ handlePfSelectKey(code); return; }   // GENRE-EXPAND-1 §3
+  if(gameState === STATE.PLATFORMER){ handlePlatformerKey(code); return; }
   if(gameState === STATE.EDITOR){ handleEditorKey(code); return; }        // OVERNIGHT-1: 맵공방
   if(gameState === STATE.MAP_REVIEW){ handleMapReviewKey(code); return; } // OVERNIGHT-1: 교사 맵 승인
   if(gameState === STATE.SHOP){ handleShopKey(code); return; }
@@ -1792,6 +1800,392 @@ function handleStartKey(code){
   if(code==="KeyQ"){ doLogout(); return; }                    // 로그아웃(단축키 유지 · 메뉴는 설정 안)
 }
 function openSettings(){ settingsOpen=true; settingsIndex=0; }
+
+/* =======================================================================
+   GENRE-EXPAND-1 §3 · 별빛 점프 (플랫포머) — 탑다운과 완전 분리된 사이드뷰 루프
+   타일 legend: #솔리드 -원웨이 S가시 J스프링 M몬스터 o별조각 F깃발 G골 *시작 .공기
+   ======================================================================= */
+const PF_CONST={ GRAVITY:2200, HOLD_MUL:0.6, JUMP_V:-820, JUMP_CUT:0.45, MOVE_SPD:220,
+  ACC_G:1800, ACC_A:1100, FRIC_G:2200, FRIC_A:200, TERM_VY:900,
+  COYOTE:0.10, BUFFER:0.10, SPRING_V:-1300, STOMP_V:-500,
+  MON_SPD:60, PW:32, PH:46 };   // PW/PH = 플레이어 히트박스(가로/세로)
+const PF_SIZES=[ {cols:33, rows:12, name:"연습 33×12 (1.5화면)"},
+                 {cols:66, rows:12, name:"스탠다드 66×12 (3화면)"},
+                 {cols:110, rows:14, name:"롱 110×14 (5화면)"} ];
+const PF_BEST_KEY="starArena.pfBest.v1";
+function pfLoadBest(){ try{ const s=JSON.parse(localStorage.getItem(PF_BEST_KEY)); if(s&&typeof s==="object") return s; }catch(e){} return {}; }
+function pfSaveBest(st){ try{ localStorage.setItem(PF_BEST_KEY, JSON.stringify(st)); }catch(e){} }
+/* 내장 레벨 3종 (§3.7) — 실물리로 클리어 검증됨(하니스) */
+const PF_LEVELS=[
+  { id:"pf_first", name:"첫 점프", author:"별빛", rows:[
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    "..........................o...G..",
+    ".....................----........",
+    "................o................",
+    "............----.................",
+    ".......o.........................",
+    "....##....##..............#######",
+    ".*..##....##...o.....o....#######",
+    "#############..####..############" ] },
+  { id:"pf_hill", name:"별빛 언덕", author:"별빛", rows:[
+    "...................................................................",
+    "...................................................................",
+    "...............o.......................o...........................",
+    "..............---......................---.........................",
+    "........o..........................o.......................o...G...",
+    ".......---.....................----.....................#########..",
+    "..................o.....F................................#########.",
+    "..............#####...####........####..........J........#########.",
+    "......M.......#####...####..SS....####....M......#..SSSS..#########",
+    "....######....#####...####..##....############...#..####..#########",
+    ".*..######....#####...####..##....############...#..####..#########",
+    "##################################################################." ] },
+  { id:"pf_cloud", name:"구름 꼭대기", author:"별빛", rows:[
+    "..................................................................",
+    "......................o....................o................o..G..",
+    "....................-----................-----...........########.",
+    "..........o..............................................########.",
+    "........-----.....o..........F....o.....................J########.",
+    "................-----......-----.....--------...........#.........",
+    "....o....................................................#........",
+    "...----..........J..............o..............SS.......#.........",
+    "..........o......#............------...........##.......#.........",
+    "........----.....#.....M................M................#........",
+    ".*................#...######......################........#.......",
+    "##################################################################" ] }
+];
+let PF=null;   // 플랫포머 런타임 상태
+let pfSelIdx=0;
+function pfLevelList(){   // 내장 3 + 승인된 플랫포머 레벨(비활성 제외)
+  const out=PF_LEVELS.slice();
+  try{ const st=loadEditorStore();
+    for(const rec of st.approved){
+      if(rec.mode!=="platformer" || rec.disabled) continue;
+      out.push({ id:rec.id, name:rec.name, author:rec.author||"학생", rows:rec.cellsLeft });
+    } }catch(e){}
+  return out;
+}
+function pfOpenSelect(){ pfSelIdx=0; gameState=STATE.PF_SELECT; }
+function pfTileAt(c,r){
+  if(c<0||c>=PF.cols) return "#";                 // 좌우 경계 = 벽
+  if(r<0) return ".";
+  if(r>=PF.rows) return ".";                      // 아래는 낙사 판정이 처리
+  return PF.grid[r][c];
+}
+function pfSolid(ch){ return ch==="#"; }
+function pfStartLevel(level, opts){
+  opts=opts||{};
+  const rows=level.rows.map(s=>s.split(""));
+  const cols=rows[0].length;
+  let sx=1.5, sy=1, monsters=[], starsTotal=0;
+  for(let r=0;r<rows.length;r++) for(let c=0;c<rows[r].length;c++){
+    const ch=rows[r][c];
+    if(ch==="*"){ sx=c+0.5; sy=r; rows[r][c]="."; }
+    else if(ch==="M"){ monsters.push({x:(c+0.5)*56, y:(r+1)*56, dir:-1, dead:false, w:40, h:40}); rows[r][c]="."; }
+    else if(ch==="o") starsTotal++;
+  }
+  PF={ level:level, test:!!opts.test, grid:rows, cols:cols, rows:rows.length,
+       p:{ x:sx*56, y:sy*56+56-0.01, vx:0, vy:0, onGround:false, coyote:0, buffer:0, facing:1,
+           jumpHeld:false, cutDone:false, dropT:0 },
+       monsters:monsters, checkpoint:{x:sx*56, y:sy*56+56-0.01},
+       time:0, deaths:0, stars:0, starsTotal:starsTotal, cleared:false, clearT:0,
+       camX:0, camY:0, camGY:sy*56+56, touch:{l:false,r:false,j:false} };
+  pfCamSnap();
+  gameState=STATE.PLATFORMER;
+}
+function pfDie(){
+  if(PF.cleared) return;
+  PF.deaths++;
+  playSfx("hit");
+  const p=PF.p;
+  p.x=PF.checkpoint.x; p.y=PF.checkpoint.y; p.vx=0; p.vy=0; p.onGround=false; p.dropT=0;
+  PF.camGY=p.y; pfCamSnap();
+}
+function pfClear(){
+  if(PF.cleared) return;
+  PF.cleared=true; PF.clearT=0;
+  playSfx("clear");
+  if(PF.test) return;                              // 에디터 테스트플레이: 보상·기록 없음
+  const best=pfLoadBest(), id=PF.level.id, prev=best[id];
+  const rec={ time:Math.round(PF.time*100)/100, stars:PF.stars, total:PF.starsTotal };
+  // §4.1 보상: 첫 클리어 +40G·경험치30 / 기록 갱신 +10G
+  if(!prev){ addGold(40); addExp(30); showToast("🦘 첫 클리어! +40G · 경험치 +30"); best[id]=rec; }
+  else if(rec.time < prev.time){ addGold(10); showToast("⏱ 기록 갱신! +10G ("+prev.time.toFixed(2)+"→"+rec.time.toFixed(2)+"초)"); best[id]=rec; }
+  else if(rec.stars > (prev.stars||0)){ best[id]={time:prev.time, stars:rec.stars, total:rec.total}; }
+  pfSaveBest(best);
+  try{ saveProfile(); }catch(e){}
+}
+function pfJumpPressed(){   // keydown 에지(Z/Space) 또는 터치 점프 버튼
+  if(!PF || PF.cleared) return;
+  PF.p.buffer=PF_CONST.BUFFER;
+  // ↓+점프 = 원웨이 통과 하강
+  if((keysDown.has("ArrowDown")||PF.touch.dn) && PF.p.onGround){
+    const p=PF.p, r=Math.floor((p.y+1)/56);
+    const c0=Math.floor((p.x-PF_CONST.PW/2)/56), c1=Math.floor((p.x+PF_CONST.PW/2)/56);
+    let oneway=true;
+    for(let c=c0;c<=c1;c++){ const ch=pfTileAt(c,r); if(ch==="#"){ oneway=false; break; } }
+    if(oneway){ p.dropT=0.25; p.onGround=false; p.buffer=0; return; }
+  }
+}
+function pfUpdate(dt){
+  if(!PF) return;
+  const C=PF_CONST, p=PF.p;
+  if(PF.cleared){ PF.clearT+=dt; return; }
+  PF.time+=dt;
+  // ── 입력 ──
+  let dir=0;
+  if(keysDown.has("ArrowLeft")||keysDown.has("KeyA")||PF.touch.l) dir-=1;
+  if(keysDown.has("ArrowRight")||keysDown.has("KeyD")||PF.touch.r) dir+=1;
+  const jumpHeld=keysDown.has("KeyZ")||keysDown.has("Space")||PF.touch.j;
+  // ── 수평 ──
+  const acc=p.onGround?C.ACC_G:C.ACC_A, fric=p.onGround?C.FRIC_G:C.FRIC_A;
+  if(dir!==0){ p.vx+=dir*acc*dt; p.vx=clamp(p.vx,-C.MOVE_SPD,C.MOVE_SPD); p.facing=dir; }
+  else { const s=Math.sign(p.vx); p.vx-=s*fric*dt; if(Math.sign(p.vx)!==s) p.vx=0; }
+  // x 이동 + 충돌(솔리드만)
+  p.x+=p.vx*dt;
+  {
+    const hw=C.PW/2;
+    const r0=Math.floor((p.y-C.PH+2)/56), r1=Math.floor((p.y-2)/56);
+    if(p.vx>0){ const c=Math.floor((p.x+hw)/56);
+      for(let r=r0;r<=r1;r++) if(pfSolid(pfTileAt(c,r))){ p.x=c*56-hw-0.01; p.vx=0; break; } }
+    else if(p.vx<0){ const c=Math.floor((p.x-hw)/56);
+      for(let r=r0;r<=r1;r++) if(pfSolid(pfTileAt(c,r))){ p.x=(c+1)*56+hw+0.01; p.vx=0; break; } }
+    p.x=clamp(p.x, hw+0.01, PF.cols*56-hw-0.01);
+  }
+  // ── 수직 ──
+  const rising=p.vy<0;
+  const g=(rising&&jumpHeld)?C.GRAVITY*C.HOLD_MUL:C.GRAVITY;
+  p.vy=Math.min(C.TERM_VY, p.vy+g*dt);
+  if(!jumpHeld && p.vy<0 && !p.cutDone){ p.vy*=C.JUMP_CUT; p.cutDone=true; }   // 가변 점프(릴리즈 컷 1회)
+  const prevFeet=p.y;
+  p.y+=p.vy*dt;
+  if(p.dropT>0) p.dropT-=dt;
+  p.onGround=false;
+  {
+    const hw=C.PW/2-2;
+    const c0=Math.floor((p.x-hw)/56), c1=Math.floor((p.x+hw)/56);
+    if(p.vy>=0){   // 하강: 솔리드 + 원웨이(위→아래 교차 시만·드랍 중 제외)
+      const r=Math.floor(p.y/56);
+      for(let c=c0;c<=c1;c++){
+        const ch=pfTileAt(c,r);
+        const top=r*56;
+        if(pfSolid(ch) || (ch==="-" && p.dropT<=0 && prevFeet<=top+1)){
+          if(p.y>=top){ p.y=top-0.01; p.vy=0; p.onGround=true; p.coyote=C.COYOTE; p.cutDone=false; PF.camGY=p.y; break; }
+        }
+      }
+    } else {       // 상승: 머리 박기(솔리드만)
+      const r=Math.floor((p.y-C.PH)/56);
+      for(let c=c0;c<=c1;c++) if(pfSolid(pfTileAt(c,r))){ p.y=(r+1)*56+C.PH+0.01; p.vy=0; break; }
+    }
+  }
+  if(!p.onGround) p.coyote=Math.max(0,p.coyote-dt);
+  // 점프(버퍼+코요테)
+  if(p.buffer>0){ p.buffer-=dt;
+    if(p.onGround||p.coyote>0){ p.vy=C.JUMP_V; p.onGround=false; p.coyote=0; p.buffer=0; p.cutDone=false; playSfx("jump"); }
+  }
+  // ── 타일 상호작용(몸 중심·발 기준) ──
+  {
+    const cc=Math.floor(p.x/56), rF=Math.floor((p.y-4)/56), rM=Math.floor((p.y-C.PH/2)/56);
+    const cells=[[cc,rF],[cc,rM]];
+    for(const [c,r] of cells){
+      const ch=pfTileAt(c,r);
+      if(ch==="S"){ pfDie(); return; }
+      else if(ch==="J" && p.vy>=0){ p.vy=C.SPRING_V; p.cutDone=true; playSfx("spring"); }
+      else if(ch==="o"){ PF.grid[r][c]="."; PF.stars++; playSfx("buff"); }
+      else if(ch==="F"){ if(PF.checkpoint.x!==(c+0.5)*56){ PF.checkpoint={x:(c+0.5)*56, y:r*56+56-0.01}; playSfx("checkpoint"); showToast("🚩 체크포인트!"); } }
+      else if(ch==="G"){ pfClear(); return; }
+    }
+  }
+  // ── 몬스터 ──
+  for(const m of PF.monsters){
+    if(m.dead) continue;
+    const nx=m.x+m.dir*C.MON_SPD*dt;
+    const fc=Math.floor((nx+m.dir*m.w/2)/56), fr=Math.floor((m.y-2)/56), br=Math.floor((m.y+2)/56);
+    const wallAhead=pfSolid(pfTileAt(fc, fr));
+    const groundAhead=pfSolid(pfTileAt(fc, br)) || pfTileAt(fc,br)==="-";
+    if(wallAhead || !groundAhead) m.dir*=-1; else m.x=nx;
+    // 플레이어 접촉
+    const px0=p.x-C.PW/2, px1=p.x+C.PW/2, py0=p.y-C.PH, py1=p.y;
+    const mx0=m.x-m.w/2, mx1=m.x+m.w/2, my0=m.y-m.h, my1=m.y;
+    if(px1>mx0 && px0<mx1 && py1>my0 && py0<my1){
+      if(p.vy>0 && (py1-my0) < m.h*0.25+8){ m.dead=true; p.vy=C.STOMP_V; p.cutDone=true; playSfx("stomp"); }   // 밟기
+      else { pfDie(); return; }
+    }
+  }
+  // ── 낙사 ──
+  if(p.y > (PF.rows+2)*56){ pfDie(); return; }
+  pfCamUpdate(dt);
+}
+function pfCamSnap(){
+  const mw=PF.cols*56, mh=PF.rows*56;
+  PF.camX=clamp(PF.p.x-LOGW/2, 0, Math.max(0,mw-LOGW));
+  PF.camY=clamp(PF.camGY-LOGH*0.62, Math.min(0,mh-LOGH), Math.max(0,mh-LOGH));
+}
+function pfCamUpdate(dt){
+  const C=PF_CONST, p=PF.p, mw=PF.cols*56, mh=PF.rows*56;
+  // x: lookahead +80 · 데드존 60
+  const want=clamp(p.x+p.facing*80-LOGW/2, 0, Math.max(0,mw-LOGW));
+  const dx=want-PF.camX;
+  if(Math.abs(dx)>60) PF.camX+=(dx-Math.sign(dx)*60);
+  else PF.camX+=dx*Math.min(1,dt*4);
+  // y: 착지 y 기준 + lerp(점프 출렁임 방지 — 착지 층 바뀔 때만 이동)
+  const wy=clamp(PF.camGY-LOGH*0.62, Math.min(0,mh-LOGH), Math.max(0,mh-LOGH));
+  PF.camY+=(wy-PF.camY)*Math.min(1,dt*8);
+}
+function pfRender(){
+  const C=PF_CONST;
+  // 하늘 배경
+  ctx.fillStyle="#1a2352"; ctx.fillRect(0,0,LOGW,LOGH);
+  ctx.save();
+  for(let i=0;i<40;i++){ const sx=(i*167+((i*77)%97)*7)%(LOGW+200)-100-PF.camX*0.3, sy=(i*97)%LOGH;
+    ctx.globalAlpha=0.5; ctx.fillStyle="#dfe6ff"; ctx.fillRect(((sx%(LOGW+200))+LOGW+200)%(LOGW+200)-100, sy, 2, 2); }
+  ctx.restore();
+  ctx.save(); ctx.translate(-Math.round(PF.camX), -Math.round(PF.camY));
+  // 타일(컬링: 뷰포트 ±2칸)
+  const c0=Math.max(0,Math.floor(PF.camX/56)-2), c1=Math.min(PF.cols-1,Math.ceil((PF.camX+LOGW)/56)+2);
+  const r0=Math.max(0,Math.floor(PF.camY/56)-2), r1=Math.min(PF.rows-1,Math.ceil((PF.camY+LOGH)/56)+2);
+  const wallImg=worldImage("wall_tiles");
+  for(let r=r0;r<=r1;r++) for(let c=c0;c<=c1;c++){
+    const ch=PF.grid[r][c]; if(ch===".") continue;
+    const x=c*56, y=r*56;
+    if(ch==="#"){
+      if(wallImg){ const above=(r>0 && PF.grid[r-1][c]==="#"); ctx.drawImage(wallImg, 112, above?112:0, 112, 112, x, y, 56, 56); }
+      else { ctx.fillStyle="#3f4a80"; ctx.fillRect(x,y,56,56); ctx.strokeStyle="#5a6aa8"; ctx.strokeRect(x+1,y+1,54,54); }
+    } else if(ch==="-"){
+      ctx.fillStyle="#8fd0a0"; roundRect(x+2,y+2,52,12,5); ctx.fill();
+      ctx.fillStyle="rgba(0,0,0,0.22)"; ctx.fillRect(x+6,y+10,44,3);
+    } else if(ch==="S"){
+      ctx.fillStyle="#ff6a6a";
+      for(let k=0;k<4;k++){ ctx.beginPath(); ctx.moveTo(x+k*14,y+56); ctx.lineTo(x+k*14+7,y+30); ctx.lineTo(x+k*14+14,y+56); ctx.closePath(); ctx.fill(); }
+    } else if(ch==="J"){
+      ctx.fillStyle="#ffd23f"; roundRect(x+8,y+40,40,12,5); ctx.fill();
+      ctx.strokeStyle="#b98700"; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.moveTo(x+14,y+40); ctx.lineTo(x+20,y+28); ctx.lineTo(x+28,y+40); ctx.lineTo(x+36,y+28); ctx.lineTo(x+42,y+40); ctx.stroke();
+    } else if(ch==="o"){
+      const p2=0.5+0.5*Math.sin(uiTime*4+c);
+      drawStar(x+28, y+28+p2*3, 5, 12, 5, "#ffe14d");
+    } else if(ch==="F"){
+      const active=(Math.abs(PF.checkpoint.x-(c+0.5)*56)<1);
+      ctx.strokeStyle="#cfd6f0"; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(x+16,y+8); ctx.lineTo(x+16,y+56); ctx.stroke();
+      ctx.fillStyle=active?"#7dffb0":"#8893bb";
+      ctx.beginPath(); ctx.moveTo(x+18,y+10); ctx.lineTo(x+46,y+18); ctx.lineTo(x+18,y+26); ctx.closePath(); ctx.fill();
+    } else if(ch==="G"){
+      ctx.fillStyle="rgba(255,225,80,0.25)"; roundRect(x+4,y+4,48,48,10); ctx.fill();
+      const p3=0.5+0.5*Math.sin(uiTime*5);
+      drawStar(x+28, y+28, 5, 16+p3*3, 7, "#ffe14d");
+    }
+  }
+  // 몬스터
+  for(const m of PF.monsters){
+    if(m.dead) continue;
+    if(m.x+m.w<PF.camX-112 || m.x-m.w>PF.camX+LOGW+112) continue;
+    const img=getMonsterImage("soft_jelly");
+    ctx.save(); ctx.translate(m.x, m.y);
+    if(img){ const k=Math.min(m.w/(img.naturalWidth||1), m.h/(img.naturalHeight||1))*1.4;
+      if(m.dir>0){ ctx.scale(-1,1); }
+      ctx.drawImage(img, -(img.naturalWidth*k)/2, -img.naturalHeight*k, img.naturalWidth*k, img.naturalHeight*k); }
+    else { ctx.fillStyle="#c58bff"; ctx.beginPath(); ctx.arc(0,-m.h/2,m.w/2,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle="#3a2a55"; ctx.fillRect(-8,-m.h/2-4,4,6); ctx.fillRect(4,-m.h/2-4,4,6); }
+    ctx.restore();
+  }
+  // 플레이어(캐릭터 스프라이트 재활용 — 좌우 플립)
+  {
+    const p=PF.p;
+    ctx.save(); ctx.translate(p.x, p.y);
+    const drew=drawCharacterSprite(selectedCharacterId, 20, p.facing>0?0:Math.PI,
+      { moving:Math.abs(p.vx)>20, attacking:false });
+    if(!drew){ ctx.fillStyle="#ffe14d"; roundRect(-PF_CONST.PW/2, -PF_CONST.PH, PF_CONST.PW, PF_CONST.PH, 8); ctx.fill(); }
+    ctx.restore();
+  }
+  ctx.restore();
+  // ── HUD ──
+  ctx.save(); ctx.textBaseline="middle";
+  ctx.fillStyle="rgba(10,12,32,0.72)"; ctx.fillRect(0,0,LOGW,52);
+  ctx.textAlign="left"; ctx.fillStyle="#9fe0ff"; ctx.font="bold 18px 'Malgun Gothic',sans-serif";
+  ctx.fillText("🦘 "+PF.level.name+(PF.test?" (테스트)":""), 20, 26);
+  ctx.textAlign="center"; ctx.fillStyle="#ffffff"; ctx.font="bold 24px 'Malgun Gothic',sans-serif";
+  ctx.fillText(PF.time.toFixed(1)+"초", LOGW/2, 26);
+  ctx.textAlign="right"; ctx.fillStyle="#ffe14d"; ctx.font="bold 16px 'Malgun Gothic',sans-serif";
+  ctx.fillText("⭐ "+PF.stars+" / "+PF.starsTotal+"   💀 "+PF.deaths, LOGW-20, 26);
+  ctx.fillStyle="#8893bb"; ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.textAlign="center";
+  ctx.fillText(controlMode()==="touch"?"◀▶ 이동 · 🦘 점프 버튼 · 아래+점프 = 내려가기":"←→ 이동 · Z/Space 점프(길게=높이) · ↓+점프 내려가기 · R 깃발부터 · Esc 나가기", LOGW/2, LOGH-16);
+  ctx.restore();
+  // 터치 버튼
+  if(controlMode()==="touch"){
+    ctx.save(); ctx.globalAlpha=0.5;
+    ctx.fillStyle="#23305e"; ctx.beginPath(); ctx.arc(90,LOGH-90,44,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(200,LOGH-90,44,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(LOGW-100,LOGH-90,54,0,Math.PI*2); ctx.fill();
+    ctx.globalAlpha=0.95; ctx.fillStyle="#dfe6ff"; ctx.font="bold 28px 'Malgun Gothic',sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText("◀",90,LOGH-88); ctx.fillText("▶",200,LOGH-88); ctx.fillText("🦘",LOGW-100,LOGH-90);
+    ctx.restore();
+  }
+  // 클리어 오버레이
+  if(PF.cleared){
+    dimScreen(0.6);
+    ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillStyle="#ffe14d"; ctx.font="bold 54px 'Malgun Gothic',sans-serif"; ctx.fillText("🏁 클리어!", LOGW/2, 240);
+    ctx.fillStyle="#ffffff"; ctx.font="bold 26px 'Malgun Gothic',sans-serif";
+    ctx.fillText(PF.time.toFixed(2)+"초 · ⭐ "+PF.stars+"/"+PF.starsTotal+" · 💀 "+PF.deaths, LOGW/2, 300);
+    const best=pfLoadBest()[PF.level.id];
+    if(!PF.test && best){ ctx.fillStyle="#9fe0ff"; ctx.font="16px 'Malgun Gothic',sans-serif"; ctx.fillText("베스트 "+best.time.toFixed(2)+"초 · ⭐ "+(best.stars||0), LOGW/2, 336); }
+    ctx.fillStyle="#ffe066"; ctx.font="bold 18px 'Malgun Gothic',sans-serif";
+    ctx.fillText(PF.test?"테스트 통과! Enter/Esc 에디터로 (제출 가능)":"Enter 다시 도전 · Esc 레벨 선택", LOGW/2, 400);
+    ctx.restore();
+  }
+}
+function drawPfSelect(){
+  dimScreen(0.7);
+  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillStyle="#7dffb0"; ctx.font="bold 40px 'Malgun Gothic',sans-serif"; ctx.fillText("🦘 별빛 점프", LOGW/2, 96);
+  ctx.fillStyle="#8893bb"; ctx.font="15px 'Malgun Gothic',sans-serif";
+  ctx.fillText("옆에서 보는 점프 맵 — 골(★)까지 달려라! 맵공방에서 직접 만들 수도 있어요", LOGW/2, 132);
+  const list=pfLevelList(), best=pfLoadBest();
+  if(pfSelIdx>=list.length) pfSelIdx=0;
+  let y=180;
+  for(let i=0;i<list.length && i<9;i++){
+    const lv=list[i], sel=(i===pfSelIdx), b=best[lv.id];
+    drawButton(lv.name+"  ·  "+(lv.author||"별빛")+(b?("   ⏱ "+b.time.toFixed(2)+"초 · ⭐"+(b.stars||0)):"   (미클리어)"), LOGW/2, y+21, 620, 42, sel);
+    y+=52;
+  }
+  ctx.fillStyle="#aab4e0"; ctx.font="15px 'Malgun Gothic',sans-serif";
+  ctx.fillText("↑↓ 선택 · Enter 시작 · Esc 로비", LOGW/2, y+24);
+  ctx.restore();
+}
+function handlePfSelectKey(code){
+  const list=pfLevelList();
+  if(code==="Escape"){ goToStartScreen(); return; }
+  if(code==="ArrowUp"){ pfSelIdx=(pfSelIdx+list.length-1)%list.length; return; }
+  if(code==="ArrowDown"){ pfSelIdx=(pfSelIdx+1)%list.length; return; }
+  if(code==="Enter"||code==="NumpadEnter"){ pfStartLevel(list[pfSelIdx]); return; }
+}
+function handlePlatformerKey(code){
+  if(!PF){ gameState=STATE.START; return; }
+  if(PF.cleared){
+    if(PF.test){ if(code==="Enter"||code==="NumpadEnter"||code==="Escape"){ if(ED) ED.testCleared=true; gameState=STATE.EDITOR; PF=null; } return; }
+    if(code==="Enter"||code==="NumpadEnter"){ pfStartLevel(PF.level); return; }
+    if(code==="Escape"){ PF=null; pfOpenSelect(); return; }
+    return;
+  }
+  if(code==="KeyZ"||code==="Space"){ pfJumpPressed(); return; }
+  if(code==="KeyR"){ pfDie(); return; }                       // 깃발부터 재시작(사망 카운트 포함)
+  if(code==="Escape"){
+    if(PF.test){ gameState=STATE.EDITOR; PF=null; return; }   // 테스트 중단(클리어 아님)
+    PF=null; pfOpenSelect(); return;
+  }
+}
+// 터치(§3.6): 좌하단 ◀▶ · 우하단 점프 — 플랫포머 상태에서 터치 핸들러가 위임
+function pfTouchAt(p, on){
+  if(!PF) return false;
+  if(dist(p.x,p.y,90,LOGH-90)<60){ PF.touch.l=on; return true; }
+  if(dist(p.x,p.y,200,LOGH-90)<60){ PF.touch.r=on; return true; }
+  if(dist(p.x,p.y,LOGW-100,LOGH-90)<70){ if(on&&!PF.touch.j) pfJumpPressed(); PF.touch.j=on; return true; }
+  if(p.y>LOGH*0.55 && p.x<LOGW/2){ PF.touch.dn=on; return true; }   // 하단 좌측 넓게 = ↓(원웨이 하강 보조)
+  return false;
+}
 
 /* =======================================================================
    BALANCE-1 · 교사용 밸런스 조정 콘솔
@@ -1933,6 +2327,15 @@ function balanceFields(){
     num("r.paint.gaugeAmt","칠 10칸당 궁 게이지",R.paint,"gaugeAmt",0,10,1,{group:"별빛 칠하기"})
   ]});
 
+  // ── 6.5) 플랫포머 물리(§3.3) ──
+  cats.push({ name:"별빛 점프", fields:[
+    num("pf.GRAVITY","중력(px/s²)",PF_CONST,"GRAVITY",1000,4000,100),
+    mk("pf.JUMP_V","점프 힘",()=>-PF_CONST.JUMP_V,v=>{PF_CONST.JUMP_V=-v;},400,1400,20),
+    num("pf.JUMP_CUT","릴리즈 컷 배율",PF_CONST,"JUMP_CUT",0.2,1,0.05,{dec:2}),
+    num("pf.MOVE_SPD","이동 속도",PF_CONST,"MOVE_SPD",120,400,10),
+    mk("pf.SPRING_V","스프링 힘",()=>-PF_CONST.SPRING_V,v=>{PF_CONST.SPRING_V=-v;},600,2200,50),
+    num("pf.MON_SPD","몬스터 속도",PF_CONST,"MON_SPD",20,180,10)
+  ]});
   // ── 7) 성장 오브 ──
   cats.push({ name:"성장 오브", fields:[
     pct("gr.aspdPct","공속 오브(스택당 %)",GROWTH,"aspdPct",0,0.3),
@@ -2120,12 +2523,27 @@ const ED_PAL_COMMON=[
   { ch:"C", name:"쿠션벽(부서짐)", color:"#ff9ec2" },
   { ch:"*", name:"팀 시작점",    color:"#ffe14d" }
 ];
+/* GENRE-EXPAND-1 §3.8: 에디터 모드 목록 = 전투 규칙 + 플랫포머 */
+const EDITOR_MODES=RULES.concat([{ id:"platformer", name:"별빛 점프", desc:"옆에서 보는 점프 맵 — 테스트플레이(T)로 직접 클리어해야 제출" }]);
+const ED_PAL_PF=[
+  { ch:".", name:"지우개",        color:"#44507e" },
+  { ch:"#", name:"블록(솔리드)",  color:"#5a6aa8" },
+  { ch:"-", name:"원웨이 발판",   color:"#8fd0a0" },
+  { ch:"S", name:"가시",          color:"#ff6a6a" },
+  { ch:"J", name:"스프링",        color:"#ffd23f" },
+  { ch:"M", name:"순찰 몬스터",   color:"#c58bff" },
+  { ch:"o", name:"별조각",        color:"#ffe14d" },
+  { ch:"F", name:"체크포인트 깃발", color:"#7dffb0" },
+  { ch:"G", name:"골",            color:"#ffd166" },
+  { ch:"*", name:"시작점",        color:"#9fe0ff" }
+];
 const ED_PAL_MODE={ tdm:[], siege:[{ch:"X",name:"팀 수정탑",color:"#5aa0ff"}],
   hotzone:[{ch:"O",name:"거점(점령 공간)",color:"#ffd23f"}], stargrab:[{ch:"G",name:"별광맥",color:"#ffe14d"}],
   tag:[], paint:[] };   /* GENRE-EXPAND-1: 술래·칠하기 — 모드 전용 요소 없음 */
 /* GENRE-EXPAND-1 §1.7: 술래잡기 맵은 함정·쿠션벽 제외(벽·수풀·얼음·시작점만) */
 const ED_PAL_EXCLUDE={ tag:{S:1,L:1,C:1} };
-const ED_CELL_COLOR={ ".":null, W:"#878da8", B:"#5ad36b", S:"#ff6a6a", L:"#7fd88a", I:"#8fd9ff", C:"#ff9ec2", "*":"#ffe14d", O:"#ffd23f", X:"#5aa0ff", G:"#ffcf4d" };
+const ED_CELL_COLOR={ ".":null, W:"#878da8", B:"#5ad36b", S:"#ff6a6a", L:"#7fd88a", I:"#8fd9ff", C:"#ff9ec2", "*":"#ffe14d", O:"#ffd23f", X:"#5aa0ff", G:"#ffcf4d",
+  "#":"#5a6aa8", "-":"#8fd0a0", J:"#ffd23f", M:"#c58bff", o:"#ffe875", F:"#7dffb0" };   /* GENRE-EXPAND-1: 플랫포머 legend */
 const EDITOR_STORE_KEY="starArena.editorMaps.v1";
 let ED=null;            // 에디터 상태
 let reviewIdx=0;        // 교사 승인 화면 선택
@@ -2135,7 +2553,9 @@ function loadEditorStore(){
 }
 function saveEditorStore(st){ try{ localStorage.setItem(EDITOR_STORE_KEY, JSON.stringify(st)); }catch(e){} }
 function edPalette(){
-  const mode=ED?ED.mode:"tdm", ex=ED_PAL_EXCLUDE[mode];
+  const mode=ED?ED.mode:"tdm";
+  if(mode==="platformer") return ED_PAL_PF;
+  const ex=ED_PAL_EXCLUDE[mode];
   const base=ex ? ED_PAL_COMMON.filter(p=>!ex[p.ch]) : ED_PAL_COMMON;   // GENRE-EXPAND-1: 모드별 제외(술래=함정류 없음)
   return base.concat(ED_PAL_MODE[mode]||[]);
 }
@@ -2145,8 +2565,8 @@ function edSaveDraft(){ try{ localStorage.setItem(EDITOR_DRAFT_KEY, JSON.stringi
   floorIdx:ED.floorIdx, cols:ED.cols, rows:ED.rows, half:ED.half, cells:ED.cells })); }catch(e){} }
 function edClearDraft(){ try{ localStorage.removeItem(EDITOR_DRAFT_KEY); }catch(e){} }
 function edLoadDraft(){ try{ const d=JSON.parse(localStorage.getItem(EDITOR_DRAFT_KEY)); if(d && d.cells && d.cols && d.cells.length===d.rows) return d; }catch(e){} return null; }
-function edSnapshot(){ if(!ED.undo) ED.undo=[]; ED.undo.push(ED.cells.map(row=>row.slice())); if(ED.undo.length>40) ED.undo.shift(); }
-function edUndo(){ if(ED.undo && ED.undo.length){ ED.cells=ED.undo.pop(); edSaveDraft(); ED.msg="↩ 되돌렸어요"; } }
+function edSnapshot(){ if(!ED.undo) ED.undo=[]; ED.undo.push(ED.cells.map(row=>row.slice())); if(ED.undo.length>40) ED.undo.shift(); if(ED.pf) ED.testCleared=false; }   // 편집 = 테스트 클리어 무효(§3.8)
+function edUndo(){ if(ED.undo && ED.undo.length){ ED.cells=ED.undo.pop(); edSaveDraft(); ED.msg="↩ 되돌렸어요"; if(ED.pf) ED.testCleared=false; } }
 function openEditor(){
   const d=edLoadDraft();
   if(d){   // C8: 이전 초안 복원 — 실수로 나가도 이어서
@@ -2159,21 +2579,46 @@ function openEditor(){
   }
   gameState=STATE.EDITOR;
 }
+function edSizes(){ return (ED && ED.mode==="platformer") ? PF_SIZES : ED_SIZES; }
 function edStartGrid(){
-  ED.mode=RULES[ED.modeIdx].id;
-  ED.cols=ED_SIZES[ED.sizeIdx].cols; ED.rows=ED_SIZES[ED.sizeIdx].rows; ED.half=ED.cols/2;
+  if(!ED.mode || ED.mode==="tdm") ED.mode=EDITOR_MODES[ED.modeIdx].id;
+  const sz=edSizes()[ED.sizeIdx];
+  ED.cols=sz.cols; ED.rows=sz.rows;
+  ED.pf=(ED.mode==="platformer");
+  ED.half=ED.pf ? ED.cols : ED.cols/2;                    // 플랫포머 = 미러 없음(전체 폭 편집)
   ED.cells=[]; for(let r=0;r<ED.rows;r++){ const row=[]; for(let c=0;c<ED.half;c++) row.push("."); ED.cells.push(row); }
-  ED.cells[Math.floor(ED.rows/2)][1]="*";                 // 기본 시작점(왼쪽 중단) — 이동 가능
-  ED.cur={c:2, r:Math.floor(ED.rows/2)}; ED.palIdx=1; ED.msg="";
+  if(ED.pf){
+    for(let c=0;c<ED.cols;c++) ED.cells[ED.rows-1][c]="#";   // 시작용 바닥 한 줄
+    ED.cells[ED.rows-2][1]="*"; ED.cells[ED.rows-2][ED.cols-2]="G";
+    ED.viewC=0; ED.fitAll=false; ED.testCleared=false;
+    ED.cur={c:2, r:ED.rows-2};
+  } else {
+    ED.cells[Math.floor(ED.rows/2)][1]="*";                 // 기본 시작점(왼쪽 중단) — 이동 가능
+    ED.cur={c:2, r:Math.floor(ED.rows/2)};
+  }
+  ED.palIdx=1; ED.msg="";
   ED.undo=[]; ED.mbtn=0;
   ED.step="edit"; edSaveDraft();
 }
 /* BIG-BATCH-1 C9: 에디터 마우스 — 좌클릭/드래그 배치·우클릭/드래그 지우기·팔레트 클릭. 그리드 지오메트리 공용. */
 function edGridGeom(){
-  const CS=STUDENT_CELL, panelW=250, gx0=panelW+30, availW=LOGW-gx0-24, availH=LOGH-150;
+  const CS=STUDENT_CELL, panelW=250, gx0=panelW+30, availW=LOGW-gx0-24, availH=LOGH-186;
+  if(ED.pf && !ED.fitAll){
+    // 플랫포머: 세로 맞춤 스케일 + 가로 스크롤 창(§3.8)
+    const sc=Math.min(0.9, availH/(ED.rows*CS));
+    const cs=CS*sc, viewCols=Math.max(4, Math.floor(availW/cs));
+    ED.viewC=clamp(ED.viewC||0, 0, Math.max(0, ED.cols-viewCols));
+    return { sc:sc, cs:cs, gx:gx0, gy:132, gw:Math.min(ED.cols,viewCols)*cs, gh:ED.rows*cs, viewC:ED.viewC, viewCols:viewCols, pf:true };
+  }
   const sc=Math.min(1, availW/(ED.cols*CS), availH/(ED.rows*CS));
   const gw=ED.cols*CS*sc, gh=ED.rows*CS*sc;
-  return { sc:sc, cs:CS*sc, gx:gx0+(availW-gw)/2, gy:96+(availH-gh)/2, gw:gw, gh:gh };
+  return { sc:sc, cs:CS*sc, gx:gx0+(availW-gw)/2, gy:ED.pf?132:96+(availH-gh)/2, gw:gw, gh:gh, viewC:0, viewCols:ED.cols, pf:!!ED.pf };
+}
+function edAutoScroll(){
+  if(!ED.pf || ED.fitAll) return;
+  const G=edGridGeom(), vc=G.viewCols;
+  if(ED.cur.c < G.viewC+2) ED.viewC=Math.max(0, ED.cur.c-2);
+  else if(ED.cur.c > G.viewC+vc-3) ED.viewC=Math.min(Math.max(0,ED.cols-vc), ED.cur.c-vc+3);
 }
 function edMouseDown(e){
   const p=canvasToLogical(e.clientX,e.clientY);
@@ -2186,9 +2631,9 @@ function edMouseDown(e){
 }
 function edPaintAt(p){
   const g=edGridGeom();
-  let c=Math.floor((p.x-g.gx)/g.cs), r=Math.floor((p.y-g.gy)/g.cs);
+  let c=(g.viewC||0)+Math.floor((p.x-g.gx)/g.cs), r=Math.floor((p.y-g.gy)/g.cs);
   if(r<0 || r>=ED.rows || c<0 || c>=ED.cols) return;
-  if(c>=ED.half) c=ED.cols-1-c;                            // 오른쪽(미러)을 눌러도 원본 칸 편집
+  if(!ED.pf && c>=ED.half) c=ED.cols-1-c;                  // 오른쪽(미러)을 눌러도 원본 칸 편집(플랫포머는 미러 없음)
   ED.cur={c:c, r:r};
   const ch=(ED.mbtn===2)?"." : edPalette()[ED.palIdx].ch;
   if(ED.cells[r][c]===ch) return;
@@ -2206,14 +2651,16 @@ function handleEditorKey(code){
   if(!ED) { gameState=STATE.START; return; }
   if(ED.step==="mode"){
     if(code==="Escape"){ goToStartScreen(); return; }
-    if(code==="ArrowUp"){ ED.modeIdx=(ED.modeIdx+RULES.length-1)%RULES.length; return; }
-    if(code==="ArrowDown"){ ED.modeIdx=(ED.modeIdx+1)%RULES.length; return; }
-    if(code==="Enter"||code==="NumpadEnter"){ ED.step="size"; return; }
+    if(code==="ArrowUp"){ ED.modeIdx=(ED.modeIdx+EDITOR_MODES.length-1)%EDITOR_MODES.length; return; }
+    if(code==="ArrowDown"){ ED.modeIdx=(ED.modeIdx+1)%EDITOR_MODES.length; return; }
+    if(code==="Enter"||code==="NumpadEnter"){ ED.mode=EDITOR_MODES[ED.modeIdx].id; ED.sizeIdx=0; ED.step="size"; return; }
     return;
   }
   if(ED.step==="size"){
+    const szs=edSizes();
     if(code==="Escape"){ ED.step="mode"; return; }
-    if(code==="ArrowUp"||code==="ArrowDown"){ ED.sizeIdx=1-ED.sizeIdx; return; }
+    if(code==="ArrowUp"){ ED.sizeIdx=(ED.sizeIdx+szs.length-1)%szs.length; return; }
+    if(code==="ArrowDown"){ ED.sizeIdx=(ED.sizeIdx+1)%szs.length; return; }
     if(code==="Enter"||code==="NumpadEnter"){ edStartGrid(); return; }
     return;
   }
@@ -2222,10 +2669,23 @@ function handleEditorKey(code){
   if(code==="Escape"){ goToStartScreen(); return; }         // C8: 초안 자동저장이 있어 나가도 소실 없음(다시 열면 복원)
   if(code==="ArrowUp"){ ED.cur.r=(ED.cur.r+ED.rows-1)%ED.rows; return; }
   if(code==="ArrowDown"){ ED.cur.r=(ED.cur.r+1)%ED.rows; return; }
-  if(code==="ArrowLeft"){ ED.cur.c=(ED.cur.c+ED.half-1)%ED.half; return; }
-  if(code==="ArrowRight"){ ED.cur.c=(ED.cur.c+1)%ED.half; return; }
+  if(code==="ArrowLeft"){ ED.cur.c=(ED.cur.c+ED.half-1)%ED.half; edAutoScroll(); return; }
+  if(code==="ArrowRight"){ ED.cur.c=(ED.cur.c+1)%ED.half; edAutoScroll(); return; }
+  if(ED.pf && code==="Tab"){ ED.fitAll=!ED.fitAll; return; }                     // §3.8 전체보기 토글
+  if(ED.pf && (code==="ArrowLeft"||code==="ArrowRight") && (keysDown.has("ShiftLeft")||keysDown.has("ShiftRight"))){
+    const G=edGridGeom(), vc=Math.max(4, Math.floor(G.viewCols||10));
+    ED.viewC=clamp((ED.viewC||0)+(code==="ArrowRight"?vc:-vc), 0, Math.max(0,ED.cols-vc));
+    ED.cur.c=clamp(ED.cur.c, ED.viewC, ED.viewC+vc-1);
+    return;
+  }
+  if(ED.pf && code==="KeyT"){                                                    // §3.8 테스트플레이 → 클리어해야 제출
+    const v=validateEditorMap();
+    if(!v.ok){ ED.msg="⚠ "+v.msg; return; }
+    pfStartLevel({ id:"__edtest", name:"테스트", rows:ED.cells.map(r=>r.join("")) }, {test:true});
+    return;
+  }
   if(code==="KeyQ"){ ED.palIdx=(ED.palIdx+pal.length-1)%pal.length; return; }
-  if(code==="KeyE"||code==="Tab"){ ED.palIdx=(ED.palIdx+1)%pal.length; return; }
+  if(code==="KeyE"||(!ED.pf&&code==="Tab")){ ED.palIdx=(ED.palIdx+1)%pal.length; return; }
   if(code==="KeyF"){ ED.floorIdx=(ED.floorIdx+1)%FLOOR_THEME_LIST.length; edSaveDraft(); return; }   // 바닥 테마 순환
   if(code==="KeyZ"||code==="Space"){ edSnapshot(); edPlace(pal[ED.palIdx].ch); edSaveDraft(); return; }
   if(code==="KeyX"||code==="Backspace"||code==="Delete"){ edSnapshot(); ED.cells[ED.cur.r][ED.cur.c]="."; edSaveDraft(); return; }
@@ -2235,6 +2695,17 @@ function handleEditorKey(code){
 }
 /* 검증(4-6): 시작점 1개 · 모드 요소 · 연결성(플러드필) · 벽≤25% · 풀숲≤15% */
 function validateEditorMap(){
+  if(ED.pf){   // GENRE-EXPAND-1 §3.8: 시작·골 각 1 필수(도달성은 테스트플레이 게이트가 보장)
+    let st=0, gl=0, fl=0;
+    for(let r=0;r<ED.rows;r++) for(let c=0;c<ED.half;c++){
+      const ch=ED.cells[r][c];
+      if(ch==="*") st++; else if(ch==="G") gl++; else if(ch==="F") fl++;
+    }
+    if(st!==1) return {ok:false, msg:"시작점(*)이 정확히 1개 필요해요"};
+    if(gl!==1) return {ok:false, msg:"골(G)이 정확히 1개 필요해요"};
+    if(ED.cols>=66 && fl===0) return {ok:true, warn:"긴 맵엔 깃발(F) 체크포인트를 추천해요"};
+    return {ok:true};
+  }
   let stars=0, walls=0, bushes=0, modeCh=0;
   const need={siege:"X", hotzone:"O", stargrab:"G"}[ED.mode]||null;
   for(let r=0;r<ED.rows;r++) for(let c=0;c<ED.half;c++){
@@ -2277,6 +2748,7 @@ function validateEditorMap(){
   return {ok:true};
 }
 function edFullGrid(){
+  if(ED.pf) return ED.cells;   // 플랫포머: 미러 없음
   const grid=[];
   for(let r=0;r<ED.rows;r++){ const row=[];
     for(let c=0;c<ED.cols;c++) row.push(c<ED.half ? ED.cells[r][c] : ED.cells[r][ED.cols-1-c]);
@@ -2287,6 +2759,8 @@ function edFullGrid(){
 function edSubmit(){
   const v=validateEditorMap();
   if(!v.ok){ ED.msg="⚠ "+v.msg; return; }
+  if(ED.pf && !ED.testCleared){ ED.msg="⚠ 테스트플레이(T)로 직접 클리어해야 제출할 수 있어요"; return; }
+  if(v.warn) showToast("💡 "+v.warn);
   let name=null; try{ name=window.prompt("맵 이름 (2~10자)"); }catch(e){ name=null; }
   if(!name) return; name=(""+name).trim().slice(0,10);
   if(name.length<2){ ED.msg="⚠ 이름은 2자 이상"; return; }
@@ -2343,6 +2817,7 @@ function applyApprovedMaps(){
   // BIG-BATCH-1 D11: 승인 목록과 MAPS를 완전 동기화 — 삭제·비활성된 에디터 맵은 목록에서 내려간다
   const want={};
   for(const rec of st.approved){
+    if(rec.mode==="platformer") continue;                // 플랫포머 레벨은 별빛 점프 레벨 선택이 직접 읽음(§3.8)
     if(rec.size[0]!==22) continue;                       // 대형 맵은 카메라(줌아웃) 작업 후 탑재
     if(rec.disabled) continue;                           // 비활성(교사가 잠시 내림)
     want[rec.id]=rec;
@@ -2548,18 +3023,19 @@ function changeMenuValue(row, dir){
   else if(row===3) cycleRule(dir);              // 빠른 대전 규칙(지금은 섬멸전 1종)
   else if(row===4) cycleMode(dir);              // 빠른 대전 팀(1대1·3대3)
   else if(row===5) cycleMap(dir);               // 빠른 대전 맵
-  else if(row>=8&&row<=11){                     // ②섹션 스트립·⚙설정: ←→로 가로 이동
-    menuIndex=row+dir; if(menuIndex<8)menuIndex=11; if(menuIndex>11)menuIndex=8;
+  else if(row>=9&&row<=12){                     // ②섹션 스트립·⚙설정: ←→로 가로 이동
+    menuIndex=row+dir; if(menuIndex<9)menuIndex=12; if(menuIndex>12)menuIndex=9;
   }
 }
 function activateMenuRow(row){
   if(row===0) startSoloCampaign();          // ⭐ 캠페인 도전(20스테이지)
   else if(row===2) startGame();             // ▶ 빠른 대전(단판)
-  else if(row===7) openOnlineMenu();        // 🌐 온라인 센터
-  else if(row===8) openShop();              // 🛒 상점(기존 STATE)
-  else if(row===9){ collectionIndex=0; gameState=STATE.COLLECTION; }  // 📖 수집(기존 STATE)
-  else if(row===10) openEditor();           // 🛠 맵공방(OVERNIGHT-1)
-  else if(row===11) openSettings();         // ⚙ 설정(로그아웃·교사용·별명)
+  else if(row===7) pfOpenSelect();          // 🦘 별빛 점프(GENRE-EXPAND-1 §3)
+  else if(row===8) openOnlineMenu();        // 🌐 온라인 센터
+  else if(row===9) openShop();              // 🛒 상점(기존 STATE)
+  else if(row===10){ collectionIndex=0; gameState=STATE.COLLECTION; }  // 📖 수집(기존 STATE)
+  else if(row===11) openEditor();           // 🛠 맵공방(OVERNIGHT-1)
+  else if(row===12) openSettings();         // ⚙ 설정(로그아웃·교사용·별명)
   else if(VALUE_ROWS[row]) changeMenuValue(row, +1);        // 값 행 Enter → 다음 값
 }
 function doLogout(){ logout(); gameState=STATE.LOGIN; loginIndex=0; loginMsg=""; showToast("로그아웃 되었습니다"); }
@@ -4312,6 +4788,7 @@ function update(dt){
   if(gameState===STATE.SPLASH){ splashTimer+=dt; if(splashTimer>1.4) goToLogin(); return; }  // 타이틀 1.4초 후 로그인
   if(confirmLeave) return;   // 나가기 확인 중에는 게임 진행 멈춤(입력이 밑에서 계속 먹지 않도록)
   if(gameState===STATE.ONLINE_PLAYING){ updateOnline(dt); return; }
+  if(gameState===STATE.PLATFORMER){ pfUpdate(dt); return; }   // GENRE-EXPAND-1 §3: 별도 루프(중력이 탑다운에 안 샘)
   if(gameState!==STATE.PLAYING) return;
   matchElapsed+=dt;
   for(const f of allFighters()){ f.displayHp=lerp(f.displayHp, f.hp, Math.min(1,dt*8)); tickStatus(f,dt); applyTrapTo(f); }   // 함정/상태(둔화·버프) — 성능(코드감사): 두 루프 병합(allFighters 배열 생성 1회)
@@ -4434,6 +4911,7 @@ function render(){
   const sx=canvas.width/LOGW, sy=canvas.height/LOGH;
   ctx.setTransform(sx,0,0,sy,0,0);
   ctx.clearRect(0,0,LOGW,LOGH);
+  if(gameState===STATE.PLATFORMER){ pfRender(); drawToast(); return; }
   drawBackground();
   // v1.26 배경 정돈: 실제 게임 맵(바닥·가시·바위·수풀·격자)은 플레이/온라인 화면에서만 렌더.
   // 로비·로그인·상점 등 메뉴 화면은 잔잔한 별밤(starfield)만. (플레이 화면 맵 렌더는 기존 그대로)
@@ -4467,6 +4945,7 @@ function render(){
   else if(gameState===STATE.ADMIN_LOGIN) drawAdminLoginScreen();
   else if(gameState===STATE.ADMIN) drawAdminScreen();
   else if(gameState===STATE.BALANCE) drawBalanceScreen();
+  else if(gameState===STATE.PF_SELECT) drawPfSelect();
   else if(gameState===STATE.SHOP) drawShopScreen();
   else if(gameState===STATE.EDITOR) drawEditorScreen();
   else if(gameState===STATE.MAP_REVIEW) drawMapReviewScreen();
@@ -5576,7 +6055,7 @@ function drawLobbyTopBar(){
   ctx.save(); ctx.font="bold 14px 'Malgun Gothic',sans-serif";
   const setTxt="⚙ 설정", setW=ctx.measureText(setTxt).width+26, setX=LOGW-64-setW;
   ctx.restore();
-  drawTopChip(setTxt, setX, y, h, menuIndex===11||settingsOpen);
+  drawTopChip(setTxt, setX, y, h, menuIndex===12||settingsOpen);
   const on=OnlineManager.available;
   const status=on?"● 온라인 준비됨":(FIREBASE_CONFIG?"○ 온라인 연결 중…":"○ 오프라인(로컬)");
   ctx.save(); ctx.textAlign="right"; ctx.textBaseline="middle";
@@ -5592,9 +6071,9 @@ function drawLobbySections(){
   ctx.save(); ctx.strokeStyle="#9fe0ff"; ctx.lineWidth=3;
   ctx.beginPath(); ctx.moveTo(276, y+h+5); ctx.lineTo(x-14, y+h+5); ctx.stroke(); ctx.restore();
   // 상점 비활성(SHOP_ENABLED=false) 동안엔 "준비 중"을 미리 표기 — 눌러도 토스트 안내(빈 화면 없음)
-  x=drawTopChip(SHOP_ENABLED?"🛒 상점":"🛒 상점 (준비 중)", x, y, h, menuIndex===8)+8;
-  x=drawTopChip("📖 수집", x, y, h, menuIndex===9)+8;
-  x=drawTopChip("🛠 맵공방", x, y, h, menuIndex===10)+8;   /* OVERNIGHT-1 Phase 4 */
+  x=drawTopChip(SHOP_ENABLED?"🛒 상점":"🛒 상점 (준비 중)", x, y, h, menuIndex===9)+8;
+  x=drawTopChip("📖 수집", x, y, h, menuIndex===10)+8;
+  x=drawTopChip("🛠 맵공방", x, y, h, menuIndex===11)+8;   /* OVERNIGHT-1 Phase 4 */
 }
 // ③ 플레이 메뉴: 혼자(캠페인 └난이도 · 빠른대전 └규칙·팀·맵·난이도) / 친구와(온라인 센터)
 function drawLobbyMenu(ch, w){
@@ -5608,12 +6087,13 @@ function drawLobbyMenu(ch, w){
     {type:"v", i:4, label:"팀", val:getMode(selectedModeId).name},
     {type:"v", i:5, label:"맵", val:getMap(selectedMapId).name},
     {type:"v", i:6, label:"난이도", val:getDifficulty(selectedDifficultyId).name},
+    {type:"i", i:7, label:"🦘 별빛 점프", note:"점프 맵 · 기록 도전", color:"#7dffb0"},
     {type:"h", t:"친구와"},
-    {type:"i", i:7, label:"🌐 온라인 센터", note:"방 만들기 · 참가", color:"#c79bff"}
+    {type:"i", i:8, label:"🌐 온라인 센터", note:"방 만들기 · 참가", color:"#c79bff"}
   ];
   // 별밤 위 가독성을 위한 반투명 패널
-  ctx.save(); ctx.fillStyle="rgba(10,14,36,0.55)"; roundRect(x-28,166,W+56,366,16); ctx.fill();
-  ctx.strokeStyle="rgba(90,123,176,0.35)"; ctx.lineWidth=1.5; roundRect(x-28,166,W+56,366,16); ctx.stroke(); ctx.restore();
+  ctx.save(); ctx.fillStyle="rgba(10,14,36,0.55)"; roundRect(x-28,166,W+56,408,16); ctx.fill();
+  ctx.strokeStyle="rgba(90,123,176,0.35)"; ctx.lineWidth=1.5; roundRect(x-28,166,W+56,408,16); ctx.stroke(); ctx.restore();
   let y=186;
   for(const e of entries){
     if(e.type==="h"){
@@ -5676,13 +6156,14 @@ function drawEditorScreen(){
     ctx.fillStyle="#9fe0ff"; ctx.font="bold 40px 'Malgun Gothic',sans-serif"; ctx.fillText("🛠 맵공방", LOGW/2, 110);
     ctx.fillStyle="#aab4e0"; ctx.font="16px 'Malgun Gothic',sans-serif"; ctx.fillText("어떤 모드의 맵을 만들까요? (모드에 따라 배치 요소가 달라져요)", LOGW/2, 156);
     // QUALITY-SWEEP-1 C-1: desc.slice(22) 하드컷이 문장을 자르던 문제 → 버튼은 모드명만, 설명은 선택된 모드 것을 아래 한 줄 전체 표시
-    for(let i=0;i<RULES.length;i++) drawButton(getRule(RULES[i].id).name, LOGW/2, 230+i*58, 360, 46, i===ED.modeIdx);
+    for(let i=0;i<EDITOR_MODES.length;i++) drawButton((EDITOR_MODES[i].id==="platformer"?"🦘 ":"")+EDITOR_MODES[i].name, LOGW/2, 216+i*54, 360, 44, i===ED.modeIdx);
     ctx.fillStyle="#9fe0ff"; ctx.font="bold 16px 'Malgun Gothic',sans-serif";
-    ctx.fillText(RULES[ED.modeIdx].desc, LOGW/2, 230+RULES.length*58+16);
-    ctx.fillStyle="#8893bb"; ctx.font="14px 'Malgun Gothic',sans-serif"; ctx.fillText("↑↓ 선택 · Enter 다음 · Esc 로비", LOGW/2, 230+RULES.length*58+48);
+    ctx.fillText(EDITOR_MODES[ED.modeIdx].desc, LOGW/2, 216+EDITOR_MODES.length*54+14);
+    ctx.fillStyle="#8893bb"; ctx.font="14px 'Malgun Gothic',sans-serif"; ctx.fillText("↑↓ 선택 · Enter 다음 · Esc 로비", LOGW/2, 216+EDITOR_MODES.length*54+44);
   } else if(ED.step==="size"){
     ctx.fillStyle="#9fe0ff"; ctx.font="bold 34px 'Malgun Gothic',sans-serif"; ctx.fillText("맵 크기", LOGW/2, 140);
-    for(let i=0;i<ED_SIZES.length;i++) drawButton(ED_SIZES[i].name, LOGW/2, 230+i*58, 560, 46, i===ED.sizeIdx);
+    const _szs=edSizes();
+    for(let i=0;i<_szs.length;i++) drawButton(_szs[i].name, LOGW/2, 230+i*58, 560, 46, i===ED.sizeIdx);
     ctx.fillStyle="#8893bb"; ctx.font="14px 'Malgun Gothic',sans-serif"; ctx.fillText("↑↓ 선택 · Enter 편집 시작 · Esc 뒤로", LOGW/2, 380);
   } else {
     drawEditorGrid();
@@ -5695,9 +6176,9 @@ function drawEditorGrid(){
   // 상단 정보
   ctx.textAlign="left"; ctx.textBaseline="middle";
   ctx.fillStyle="#9fe0ff"; ctx.font="bold 22px 'Malgun Gothic',sans-serif";
-  ctx.fillText("🛠 맵공방 — "+getRule(ED.mode).name+" · "+ED.cols+"×"+ED.rows, 24, 40);
+  ctx.fillText("🛠 맵공방 — "+(ED.pf?"🦘 별빛 점프":getRule(ED.mode).name)+" · "+ED.cols+"×"+ED.rows, 24, 40);
   ctx.fillStyle="#ffd23f"; ctx.font="bold 14px 'Malgun Gothic',sans-serif";
-  ctx.fillText("바닥: "+FLOOR_THEME_NAME[FLOOR_THEME_LIST[ED.floorIdx]]+" (F 변경)", 24, 66);
+  if(!ED.pf) ctx.fillText("바닥: "+FLOOR_THEME_NAME[FLOOR_THEME_LIST[ED.floorIdx]]+" (F 변경)", 24, 66);
   // 좌: 팔레트
   const pal=edPalette();
   ctx.fillStyle="rgba(16,22,52,0.9)"; roundRect(24, 88, panelW-24, pal.length*34+52, 12); ctx.fill();
@@ -5710,12 +6191,13 @@ function drawEditorGrid(){
     ctx.fillStyle=sel?"#ffe066":"#dfe6ff"; ctx.font="bold 14px 'Malgun Gothic',sans-serif";
     ctx.fillText(pal[i].name+(pal[i].ch!=="."?" ("+pal[i].ch+")":""), 68, py);
   }
-  // 그리드
+  // 그리드(플랫포머는 viewC부터 창 렌더 — §3.8 스크롤 편집)
   const grid=edFullGrid();
+  const G2=edGridGeom(), vC=G2.viewC||0, vCols=G2.viewCols||ED.cols;
   ctx.fillStyle="#1b2150"; ctx.fillRect(gx-2, gy-2, gw+4, gh+4);
-  for(let r=0;r<ED.rows;r++) for(let c=0;c<ED.cols;c++){
-    const x=gx+c*CS*sc, y=gy+r*CS*sc, s=CS*sc;
-    const mirror=(c>=ED.half);
+  for(let r=0;r<ED.rows;r++) for(let c=vC;c<Math.min(ED.cols, vC+vCols);c++){
+    const x=gx+(c-vC)*CS*sc, y=gy+r*CS*sc, s=CS*sc;
+    const mirror=(!ED.pf && c>=ED.half);
     ctx.fillStyle=mirror?"rgba(30,36,80,0.9)":"rgba(38,46,96,0.9)";
     ctx.fillRect(x, y, s-1, s-1);
     const ch=grid[r][c];
@@ -5726,15 +6208,35 @@ function drawEditorGrid(){
       ctx.fillText(ch==="*"?"★":ch, x+s/2, y+s/2+1); ctx.textAlign="left";
     }
   }
-  // 중앙 대칭선 + 커서
-  ctx.strokeStyle="rgba(255,224,102,0.5)"; ctx.lineWidth=2;
-  ctx.beginPath(); ctx.moveTo(gx+ED.half*CS*sc, gy); ctx.lineTo(gx+ED.half*CS*sc, gy+gh); ctx.stroke();
-  const cx2=gx+ED.cur.c*CS*sc, cy2=gy+ED.cur.r*CS*sc, p=0.5+0.5*Math.sin(uiTime*6);
-  ctx.strokeStyle="rgba(159,224,255,"+(0.6+0.4*p)+")"; ctx.lineWidth=3;
-  ctx.strokeRect(cx2, cy2, CS*sc, CS*sc);
+  // 중앙 대칭선(전투 모드) + 커서
+  if(!ED.pf){
+    ctx.strokeStyle="rgba(255,224,102,0.5)"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(gx+ED.half*CS*sc, gy); ctx.lineTo(gx+ED.half*CS*sc, gy+gh); ctx.stroke();
+  }
+  if(ED.cur.c>=vC && ED.cur.c<vC+vCols){
+    const cx2=gx+(ED.cur.c-vC)*CS*sc, cy2=gy+ED.cur.r*CS*sc, p=0.5+0.5*Math.sin(uiTime*6);
+    ctx.strokeStyle="rgba(159,224,255,"+(0.6+0.4*p)+")"; ctx.lineWidth=3;
+    ctx.strokeRect(cx2, cy2, CS*sc, CS*sc);
+  }
+  // 플랫포머: 미니맵(§3.8) — 전체 축소 + 현재 뷰포트 + 테스트 상태
+  if(ED.pf){
+    const mw=Math.min(640, ED.cols*6), mh=ED.rows*3, mx=gx, my=84;
+    ctx.fillStyle="rgba(10,14,36,0.9)"; ctx.fillRect(mx-2,my-2,mw+4,mh+4);
+    const cw=mw/ED.cols, chh=mh/ED.rows;
+    for(let r=0;r<ED.rows;r++) for(let c=0;c<ED.cols;c++){
+      const ch=grid[r][c]; if(ch===".") continue;
+      ctx.fillStyle=ED_CELL_COLOR[ch]||"#888"; ctx.fillRect(mx+c*cw, my+r*chh, Math.max(1,cw), Math.max(1,chh));
+    }
+    if(!ED.fitAll){ ctx.strokeStyle="#ffe066"; ctx.lineWidth=1.5; ctx.strokeRect(mx+vC*cw, my, vCols*cw, mh); }
+    ctx.textAlign="left"; ctx.font="bold 13px 'Malgun Gothic',sans-serif";
+    ctx.fillStyle=ED.testCleared?"#7dffb0":"#ff9a9a";
+    ctx.fillText(ED.testCleared?"✅ 테스트 통과 — 제출 가능":"⛔ 미검증 — T 테스트플레이로 클리어해야 제출", mx+mw+16, my+mh/2);
+  }
   // 하단 안내 + 메시지
   ctx.textAlign="center"; ctx.fillStyle="#aab4e0"; ctx.font="14px 'Malgun Gothic',sans-serif";
-  ctx.fillText("🖱 클릭/드래그 배치 · 우클릭 지우기 · U 되돌리기 · N 새로 · F 바닥 · Enter 제출 · Esc 나가기(자동저장)  (왼쪽만 편집 — 오른쪽 자동 대칭)", LOGW/2, LOGH-40);
+  ctx.fillText(ED.pf
+    ? "🖱 클릭/드래그 배치 · 우클릭 지우기 · U 되돌리기 · Shift+←→ 화면 이동 · Tab 전체보기 · T 테스트플레이 · Enter 제출 · Esc 나가기(자동저장)"
+    : "🖱 클릭/드래그 배치 · 우클릭 지우기 · U 되돌리기 · N 새로 · F 바닥 · Enter 제출 · Esc 나가기(자동저장)  (왼쪽만 편집 — 오른쪽 자동 대칭)", LOGW/2, LOGH-40);
   if(ED.msg){ ctx.fillStyle="#ff9a9a"; ctx.font="bold 16px 'Malgun Gothic',sans-serif"; ctx.fillText(ED.msg, LOGW/2, LOGH-16); }
 }
 function drawMapReviewScreen(){
@@ -5761,7 +6263,7 @@ function drawMapReviewScreen(){
       ctx.fillText(it.kind==="pending"?("⏳ 승인 대기 "+st.pending.length+"개"):("✅ 승인됨 "+st.approved.length+"개"), lx, y); y+=26; }
     if(sel){ ctx.fillStyle="rgba(140,111,192,0.35)"; roundRect(lx-10, y-16, 470, 36, 8); ctx.fill(); }
     ctx.fillStyle=m.disabled?"#6b7398":(sel?"#ffe066":"#d6cdee"); ctx.font="bold 16px 'Malgun Gothic',sans-serif";
-    ctx.fillText((m.disabled?"⏸ ":"")+m.name+"  ·  "+(m.author||"?")+"  ·  "+getRule(m.mode).name+"  ·  "+m.size[0]+"×"+m.size[1], lx, y);
+    ctx.fillText((m.disabled?"⏸ ":"")+m.name+"  ·  "+(m.author||"?")+"  ·  "+((m.mode==="platformer")?"🦘 별빛 점프":getRule(m.mode).name)+"  ·  "+m.size[0]+"×"+m.size[1], lx, y);
     y+=40;
   }
   // 우: 선택 맵 미리보기(미니 그리드)
@@ -5771,7 +6273,7 @@ function drawMapReviewScreen(){
     const pw=560, s=Math.min(pw/cols, 300/rows), px=620, py=160;
     ctx.fillStyle="rgba(16,22,52,0.95)"; roundRect(px-12, py-12, cols*s+24, rows*s+24, 10); ctx.fill();
     for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){
-      const ch=(c<half)?m.cellsLeft[r][c]:m.cellsLeft[r][cols-1-c];
+      const ch=(m.mode==="platformer") ? m.cellsLeft[r][c] : ((c<half)?m.cellsLeft[r][c]:m.cellsLeft[r][cols-1-c]);
       ctx.fillStyle=(ch&&ch!==".")?(ED_CELL_COLOR[ch]||"#888"):"rgba(38,46,96,0.9)";
       ctx.fillRect(px+c*s, py+r*s, s-0.5, s-0.5);
     }

@@ -98,9 +98,10 @@ run("칠·덧칠·불가칸 판정", ()=>{
   let oc=-1, ox=0, oy=0;
   for(let r=0;r<10;r++){ for(let c=0;c<22;c++){ const i=r*22+c;
     if(!api.RULE.blocked[i]){ oc=i; ox=24+c*56+28; oy=70+r*56+28; break; } } if(oc>=0) break; }
-  check("칠 성공(무색→청)", api.paintCellBy(ox,oy,"player",true)===true && api.RULE.grid[oc]===1 && api.RULE.count[1]===1);
-  check("같은 색 덧칠 무시", api.paintCellBy(ox,oy,"player",true)===false && api.RULE.count[1]===1);
-  check("상대색 덮어씀(청→홍, 카운트 이동)", api.paintCellBy(ox,oy,"enemy",false)===true && api.RULE.grid[oc]===2 && api.RULE.count[1]===0 && api.RULE.count[2]===1);
+  const b1=api.RULE.count[1], b2=api.RULE.count[2];   // 봇이 시작 직후 칠했을 수 있어 증분 기준
+  check("칠 성공(무색→청)", api.paintCellBy(ox,oy,"player",true)===true && api.RULE.grid[oc]===1 && api.RULE.count[1]===b1+1);
+  check("같은 색 덧칠 무시", api.paintCellBy(ox,oy,"player",true)===false && api.RULE.count[1]===b1+1);
+  check("상대색 덮어씀(청→홍, 카운트 이동)", api.paintCellBy(ox,oy,"enemy",false)===true && api.RULE.grid[oc]===2 && api.RULE.count[1]===b1 && api.RULE.count[2]===b2+1);
   // 막힌 칸
   let bc=-1, bx=0, by=0;
   for(let r=0;r<10;r++){ for(let c=0;c<22;c++){ const i=r*22+c;

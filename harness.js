@@ -696,28 +696,33 @@ run("로비 행 매핑(캠페인/빠른대전/값행/상점/수집/설정)", ()=
   // W 키로 무기 변경 불가(로비)
   const w0=api.profile.selectedWeaponId; api.handleKeyPress("KeyW");
   check("W 키 무기 변경 없음", api.profile.selectedWeaponId===w0);
-  // row8 상점: 비활성(SHOP_ENABLED=false) → 토스트만(상태 유지)
-  api.setMenuIndex(8); api.handleKeyPress("Enter");
-  check("row8 상점(비활성) → 화면 이동 없음", api.state==="start");
-  // row9 수집 → COLLECTION 진입 후 Esc 복귀
+  // row7 별빛 점프(GENRE-EXPAND-1 §3) → 레벨 선택 진입 후 Esc 복귀
+  api.setMenuIndex(7); api.handleKeyPress("Enter");
+  check("row7 Enter → 별빛 점프(pf_select)", api.state==="pf_select");
+  api.handleKeyPress("Escape");
+  check("점프 Esc → 로비 복귀", api.state==="start");
+  // row9 상점: 비활성(SHOP_ENABLED=false) → 토스트만(상태 유지)
   api.setMenuIndex(9); api.handleKeyPress("Enter");
-  check("row9 Enter → 수집(collection)", api.state==="collection");
+  check("row9 상점(비활성) → 화면 이동 없음", api.state==="start");
+  // row9 수집 → COLLECTION 진입 후 Esc 복귀
+  api.setMenuIndex(10); api.handleKeyPress("Enter");
+  check("row10 Enter → 수집(collection)", api.state==="collection");
   api.handleKeyPress("Escape");
   check("수집 Esc → 로비 복귀", api.state==="start");
   // row10 맵공방(OVERNIGHT-1) → EDITOR 진입 후 Esc 복귀
-  api.setMenuIndex(10); api.handleKeyPress("Enter");
-  check("row10 Enter → 맵공방(editor)", api.state==="editor");
+  api.setMenuIndex(11); api.handleKeyPress("Enter");
+  check("row11 Enter → 맵공방(editor)", api.state==="editor");
   api.handleKeyPress("Escape");
   check("맵공방 Esc → 로비 복귀", api.state==="start");
   // row11 설정 오버레이(UPDATE-1: 0 조작방식 · 1 별명 · 2 로그아웃 · 3 교사용)
-  api.setMenuIndex(11); api.handleKeyPress("Enter");            // 설정 열림
+  api.setMenuIndex(12); api.handleKeyPress("Enter");            // 설정 열림
   api.handleKeyPress("ArrowRight");                             // 0 = 조작 방식 순환(키보드→마우스)
   check("설정 → 조작 방식 마우스로 전환", api.profile.controlMode==="mouse");
   api.handleKeyPress("ArrowLeft");                              // 되돌리기(키보드)
   check("설정 → 조작 방식 키보드 복귀", api.profile.controlMode==="keyboard");
   api.handleKeyPress("ArrowDown"); api.handleKeyPress("ArrowDown"); api.handleKeyPress("ArrowDown"); api.handleKeyPress("Enter"); // 3 = 로그아웃
   check("설정 → 로그아웃(로그인 화면)", api.state==="login");
-  api.setState("start"); api.setMenuIndex(11); api.handleKeyPress("Enter");
+  api.setState("start"); api.setMenuIndex(12); api.handleKeyPress("Enter");
   api.handleKeyPress("ArrowDown"); api.handleKeyPress("ArrowDown"); api.handleKeyPress("ArrowDown"); api.handleKeyPress("ArrowDown");
   let threw=false; try{ api.handleKeyPress("Enter"); }catch(e){ threw=true; }  // 4 = 교사용
   check("설정 → 교사용 로그인(admin_login)", !threw && api.state==="admin_login");
