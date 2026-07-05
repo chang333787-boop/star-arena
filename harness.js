@@ -690,13 +690,17 @@ run("로비 행 매핑(캠페인/빠른대전/값행/상점/수집/설정)", ()=
   check("row10 Enter → 맵공방(editor)", api.state==="editor");
   api.handleKeyPress("Escape");
   check("맵공방 Esc → 로비 복귀", api.state==="start");
-  // row11 설정 오버레이: 로그아웃(1)·교사용(2)
+  // row11 설정 오버레이(UPDATE-1: 0 조작방식 · 1 별명 · 2 로그아웃 · 3 교사용)
   api.setMenuIndex(11); api.handleKeyPress("Enter");            // 설정 열림
-  api.handleKeyPress("ArrowDown"); api.handleKeyPress("Enter"); // 1 = 로그아웃
+  api.handleKeyPress("ArrowRight");                             // 0 = 조작 방식 순환(키보드→마우스)
+  check("설정 → 조작 방식 마우스로 전환", api.profile.controlMode==="mouse");
+  api.handleKeyPress("ArrowLeft");                              // 되돌리기(키보드)
+  check("설정 → 조작 방식 키보드 복귀", api.profile.controlMode==="keyboard");
+  api.handleKeyPress("ArrowDown"); api.handleKeyPress("ArrowDown"); api.handleKeyPress("Enter"); // 2 = 로그아웃
   check("설정 → 로그아웃(로그인 화면)", api.state==="login");
   api.setState("start"); api.setMenuIndex(11); api.handleKeyPress("Enter");
-  api.handleKeyPress("ArrowDown"); api.handleKeyPress("ArrowDown");
-  let threw=false; try{ api.handleKeyPress("Enter"); }catch(e){ threw=true; }  // 2 = 교사용
+  api.handleKeyPress("ArrowDown"); api.handleKeyPress("ArrowDown"); api.handleKeyPress("ArrowDown");
+  let threw=false; try{ api.handleKeyPress("Enter"); }catch(e){ threw=true; }  // 3 = 교사용
   check("설정 → 교사용 로그인(admin_login)", !threw && api.state==="admin_login");
   api.setState("start");
 });

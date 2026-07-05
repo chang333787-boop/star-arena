@@ -785,6 +785,7 @@ const PLAYER_PROFILE_DEFAULT = {
   selectedWeaponId: "tool_01",
   selectedDifficultyId: "normal",
   selectedMapId: "training",
+  controlMode: "keyboard",     /* UPDATE-1 P3: 조작 방식(keyboard/mouse/touch) */
   selectedModeId: "solo",
   // 기본 해금 = 학생 6슬롯(캐릭터/도구). 보존 캐릭터·무기는 상점에서 추가 해금 가능.
   unlockedCharacters: STUDENT_CHARACTERS.filter(c=>c.unlockedByDefault).map(c=>c.id),
@@ -806,6 +807,7 @@ function mergeProfile(saved){
     }
   }
   // 배열/선택값 무결성 보정
+  if(["keyboard","mouse","touch"].indexOf(p.controlMode)<0) p.controlMode="keyboard";   // UPDATE-1 P3
   if(!Array.isArray(p.unlockedCharacters) || p.unlockedCharacters.length===0) p.unlockedCharacters = DEFAULT_UNLOCKED_CHARACTERS.slice();
   if(!Array.isArray(p.unlockedWeapons) || p.unlockedWeapons.length===0) p.unlockedWeapons = DEFAULT_UNLOCKED_WEAPONS.slice();
   // 학생 6종 전용 마이그레이션: 레거시 캐릭터/무기가 선택·해금돼 있으면 학생 세트로 교정
@@ -1133,7 +1135,8 @@ function loadScriptsSequential(urls, done){
   }
   next();
 }
-function emptyInput(){ return { up:false, down:false, left:false, right:false, attack:false, special:false, ultimate:false, super:false, reload:false, pick:-1 }; }
+function emptyInput(){ return { up:false, down:false, left:false, right:false, attack:false, special:false, ultimate:false, super:false, reload:false, pick:-1,
+  mvx:0, mvy:0, aim:null }; }   // UPDATE-1 P3: 아날로그 이동(mvx/mvy)·분리 조준(aim, 라디안) — 없으면 host가 기존 불리언으로 해석(하위호환)
 
 const OnlineManager = {
   available:false, status:"오프라인",
@@ -1524,6 +1527,129 @@ window.addEventListener("blur", ()=>{ keysDown.clear(); });
 document.addEventListener("visibilitychange", ()=>{ if(document.hidden) keysDown.clear(); });
 // 페이지를 닫으면 온라인 방을 정리한다(onDisconnect도 별도로 동작)
 window.addEventListener("beforeunload", ()=>{ try{ if(OnlineManager.role) OnlineManager.leaveRoom(); }catch(e){} });
+
+/* =======================================================================
+   UPDATE-1 P3 · 조작 3모드(키보드/마우스/터치) — 입력 추상화
+   세 입력 소스를 같은 '의도'로 변환: { mx,my(이동 -1..1), aim(라디안|null), aimPoint(커서 논리좌표|null),
+   fire, special, ult, reload }. 게임 로직·온라인 패킷은 의도만 소비한다.
+   키보드 모드는 기존 동작 그대로(기본값 — aim=null이면 이동 방향 조준·X/C는 keydown 경로 유지).
+   ======================================================================= */
+const CONTROL_MODES=[ {id:"keyboard",name:"키보드 (방향키 + Z/X/C)"},
+                      {id:"mouse",   name:"마우스 (WASD 이동 + 커서 조준)"},
+                      {id:"touch",   name:"터치 (태블릿 조이스틱)"} ];
+function controlMode(){ return (profile && profile.controlMode) || "keyboard"; }
+function controlModeName(){ const m=CONTROL_MODES.find(c=>c.id===controlMode()); return m?m.name:"키보드"; }
+const MOUSE={ x:LOGW/2, y:LOGH/2, down:false, rdown:false, seen:false };
+const TOUCH={ moveId:null, moveAnchor:null, moveVec:{x:0,y:0}, aimId:null, aimAnchor:null, aimVec:{x:0,y:0},
+              aiming:false, xTap:false, cTap:false, reloadTap:false, pickTap:-1 };
+function inPlayState(){ return gameState===STATE.PLAYING || gameState===STATE.ONLINE_PLAYING; }
+function canvasToLogical(clientX, clientY){
+  try{
+    const r=canvas.getBoundingClientRect();
+    if(!r || !r.width || !r.height) return {x:LOGW/2, y:LOGH/2};
+    return { x:(clientX-r.left)*(LOGW/r.width), y:(clientY-r.top)*(LOGH/r.height) };
+  }catch(e){ return {x:LOGW/2, y:LOGH/2}; }
+}
+// 가상 스틱: 앵커→현재점 벡터를 반경으로 정규화(-1..1, 밖은 클램프)
+function stickVec(anchor, p, rad){
+  let dx=(p.x-anchor.x)/rad, dy=(p.y-anchor.y)/rad;
+  const l=Math.hypot(dx,dy); if(l>1){ dx/=l; dy/=l; }
+  return {x:dx, y:dy};
+}
+function _touchDockTap(p){   // 하단 스킬독 탭(X/C=스킬, Z=장전) + PVE 강화 카드 탭
+  if(p.y>648){
+    if(dist(p.x,p.y,LOGW/2,685)<34){ TOUCH.xTap=true; return true; }
+    if(dist(p.x,p.y,LOGW/2+96,685)<34){ TOUCH.cTap=true; return true; }
+    if(dist(p.x,p.y,LOGW/2-96,685)<34){ TOUCH.reloadTap=true; return true; }
+  }
+  if(p.y>=436 && p.y<=562){   // 강화 3택1 카드 영역(drawUpgradeCards와 동일 좌표)
+    const cw=250, gap=24, total=cw*3+gap*2, x0=LOGW/2-total/2;
+    for(let i=0;i<3;i++){ const x=x0+i*(cw+gap); if(p.x>=x&&p.x<=x+cw){ TOUCH.pickTap=i; return true; } }
+  }
+  return false;
+}
+function handleTouchStart(e){
+  if(controlMode()!=="touch" || !inPlayState()) return;
+  e.preventDefault();
+  for(const t of e.changedTouches){
+    const p=canvasToLogical(t.clientX,t.clientY);
+    if(_touchDockTap(p)) continue;
+    if(p.x<LOGW/2 && TOUCH.moveId===null){ TOUCH.moveId=t.identifier; TOUCH.moveAnchor=p; TOUCH.moveVec={x:0,y:0}; }
+    else if(p.x>=LOGW/2 && TOUCH.aimId===null){ TOUCH.aimId=t.identifier; TOUCH.aimAnchor=p; TOUCH.aimVec={x:0,y:0}; TOUCH.aiming=true; }
+  }
+}
+function handleTouchMove(e){
+  if(controlMode()!=="touch") return;
+  e.preventDefault();
+  for(const t of e.changedTouches){
+    const p=canvasToLogical(t.clientX,t.clientY);
+    if(t.identifier===TOUCH.moveId) TOUCH.moveVec=stickVec(TOUCH.moveAnchor,p,60);
+    else if(t.identifier===TOUCH.aimId) TOUCH.aimVec=stickVec(TOUCH.aimAnchor,p,70);
+  }
+}
+function handleTouchEnd(e){
+  if(controlMode()!=="touch") return;
+  e.preventDefault();
+  for(const t of e.changedTouches){
+    if(t.identifier===TOUCH.moveId){ TOUCH.moveId=null; TOUCH.moveVec={x:0,y:0}; }
+    else if(t.identifier===TOUCH.aimId){ TOUCH.aimId=null; TOUCH.aiming=false; TOUCH.aimVec={x:0,y:0}; }
+  }
+}
+// 리스너 등록 — Node 하니스의 canvas 스텁에는 addEventListener가 없어 try로 감싼다(로직은 위 함수라 테스트 가능)
+try{
+  canvas.addEventListener("mousemove", (e)=>{ const p=canvasToLogical(e.clientX,e.clientY); MOUSE.x=p.x; MOUSE.y=p.y; MOUSE.seen=true; });
+  canvas.addEventListener("mousedown", (e)=>{
+    if(controlMode()!=="mouse" || !inPlayState()) return;
+    if(e.button===0) MOUSE.down=true; else if(e.button===2) MOUSE.rdown=true;
+    e.preventDefault();
+  });
+  window.addEventListener("mouseup", (e)=>{ if(e.button===0) MOUSE.down=false; else if(e.button===2) MOUSE.rdown=false; });
+  canvas.addEventListener("contextmenu", (e)=>{ if(controlMode()==="mouse") e.preventDefault(); });
+  canvas.addEventListener("touchstart", handleTouchStart, {passive:false});
+  canvas.addEventListener("touchmove", handleTouchMove, {passive:false});
+  canvas.addEventListener("touchend", handleTouchEnd, {passive:false});
+  canvas.addEventListener("touchcancel", handleTouchEnd, {passive:false});
+}catch(e){}
+// 현재 조작 모드의 '의도' — 프레임마다 소비. 탭 래치(xTap 등)는 읽는 순간 소모(1프레임 에지).
+function getLocalIntent(){
+  const m=controlMode();
+  if(m==="mouse"){
+    let mx=0,my=0;
+    if(keysDown.has("KeyW")||keysDown.has("ArrowUp")) my-=1;
+    if(keysDown.has("KeyS")||keysDown.has("ArrowDown")) my+=1;
+    if(keysDown.has("KeyA")||keysDown.has("ArrowLeft")) mx-=1;
+    if(keysDown.has("KeyD")||keysDown.has("ArrowRight")) mx+=1;
+    return { mx:mx, my:my, aim:null, aimPoint:{x:MOUSE.x,y:MOUSE.y},
+      fire:MOUSE.down||keysDown.has("KeyZ"), special:MOUSE.rdown, ult:keysDown.has("Space"), reload:false, pick:-1 };
+  }
+  if(m==="touch"){
+    const av=TOUCH.aimVec, al=Math.hypot(av.x,av.y);
+    const aiming=TOUCH.aiming && al>0.25;   // 데드존 — 살짝 닿기만 하면 발사 안 됨
+    const sp=TOUCH.xTap, ul=TOUCH.cTap, rl=TOUCH.reloadTap, pk=TOUCH.pickTap;
+    TOUCH.xTap=false; TOUCH.cTap=false; TOUCH.reloadTap=false; TOUCH.pickTap=-1;
+    return { mx:TOUCH.moveVec.x, my:TOUCH.moveVec.y,
+      aim: aiming?Math.atan2(av.y,av.x):null, aimPoint:null,
+      fire:aiming, special:sp, ult:ul, reload:rl, pick:pk };   // 우 스틱 = 조준+연사(브롤식 변형 — 홀드 중 발사)
+  }
+  // 키보드(기본): 기존 동작 그대로 — X/C/R은 keydown 경로가 담당하므로 여기선 false
+  let mx=0,my=0;
+  if(keysDown.has("ArrowUp")) my-=1;
+  if(keysDown.has("ArrowDown")) my+=1;
+  if(keysDown.has("ArrowLeft")) mx-=1;
+  if(keysDown.has("ArrowRight")) mx+=1;
+  return { mx:mx, my:my, aim:null, aimPoint:null, fire:keysDown.has("KeyZ"), special:false, ult:false, reload:false, pick:-1 };
+}
+// 내 위치 기준 커서 조준각(로컬/온라인 예측 위치 사용 — 온라인 패킷 전송용)
+function myAimAngle(it){
+  if(typeof it.aim==="number") return it.aim;
+  if(!it.aimPoint) return null;
+  let px=null, py=null;
+  if(gameState===STATE.PLAYING && player){ px=player.x; py=player.y; }
+  else if(isTeamOnline()){ const f=(OnlineManager.role==="host")?tFighters[OnlineManager.mySlot]:tPredict; if(f){ px=f.x; py=f.y; } }
+  else { const f=(OnlineManager.role==="host")?onlineFighters.host:onlinePredict; if(f){ px=f.x; py=f.y; } }
+  if(px===null) return null;
+  return Math.atan2(it.aimPoint.y-py, it.aimPoint.x-px);
+}
 
 function showToast(text){ toastText = text; toastTimer = 1.8; }
 
@@ -2136,14 +2262,23 @@ function handleMapReviewKey(code){
   }
 }
 function handleSettingsKey(code){
-  const N=3;   // 0 별명 변경 · 1 로그아웃 · 2 교사용 모드
+  const N=4;   // 0 조작 방식 · 1 별명 변경 · 2 로그아웃 · 3 교사용 모드
   if(code==="Escape"){ settingsOpen=false; return; }
   if(code==="ArrowUp"){ settingsIndex=(settingsIndex+N-1)%N; return; }
   if(code==="ArrowDown"){ settingsIndex=(settingsIndex+1)%N; return; }
+  if(settingsIndex===0 && (code==="ArrowLeft"||code==="ArrowRight"||code==="Enter"||code==="NumpadEnter")){
+    // UPDATE-1 P3: 조작 방식 순환(키보드/마우스/터치) — 프로필 저장
+    const dir=(code==="ArrowLeft")?-1:1;
+    const ids=CONTROL_MODES.map(c=>c.id);
+    let i=ids.indexOf(controlMode()); if(i<0)i=0;
+    profile.controlMode=ids[(i+dir+ids.length)%ids.length];
+    saveProfile(); showToast("조작 방식: "+controlModeName());
+    return;
+  }
   if(code==="Enter"||code==="NumpadEnter"){
-    if(settingsIndex===0) changeNickname();
-    else if(settingsIndex===1){ settingsOpen=false; doLogout(); }
-    else if(settingsIndex===2){ settingsOpen=false; gameState=STATE.ADMIN_LOGIN; }
+    if(settingsIndex===1) changeNickname();
+    else if(settingsIndex===2){ settingsOpen=false; doLogout(); }
+    else if(settingsIndex===3){ settingsOpen=false; gameState=STATE.ADMIN_LOGIN; }
   }
 }
 function goToLogin(){ loginIndex=0; loginMsg=""; gameState=STATE.LOGIN; }
@@ -2874,7 +3009,9 @@ function applyTrapTo(f){
       else { if(!(f.trapTimer>0)){
         let td=GAME_CONFIG.trapDamage;
         if(f.dmgReduceTimer>0) td*=getAbility("student_03").c.reduceMul;   // 시고니 C 후반: 함정 피해 절반
-        f.hp=Math.max(1, f.hp-td); f.hitFlash=0.12; f.trapTimer=GAME_CONFIG.trapCooldown; spawnHit(f.x,f.y,"#ff9a9a"); } }
+        f.hp=Math.max(1, f.hp-td); f.hitFlash=0.12; f.trapTimer=GAME_CONFIG.trapCooldown; spawnHit(f.x,f.y,"#ff9a9a");
+        f.lastCombatTime=matchElapsed;   // UPDATE-1 P1: 함정 피해 = 전투로 표시 — 밟는 동안 재생이 피해를 되돌리던 버그 수정
+      } }
     }
   }
 }
@@ -3541,18 +3678,26 @@ function updatePlayer(dt){
   tickThornTrail(player);                     // 시고니 X: 이동 경로 가시 생성
   tickMoaPassive(player, dt, envLocal);       // v1.21 모아 패시브(근처 팀원 회복)
   if(isFrozen(player)){ regen(player, dt); return; }   // 빙결: 이동·공격 불가(타이머는 tickStatus에서 진행)
-  let mx=0,my=0;
-  if(keysDown.has("ArrowUp")) my-=1;
-  if(keysDown.has("ArrowDown")) my+=1;
-  if(keysDown.has("ArrowLeft")) mx-=1;
-  if(keysDown.has("ArrowRight")) mx+=1;
+  // UPDATE-1 P3: 의도 기반 입력 — 키보드는 기존 동작 동일, 마우스/터치는 이동과 조준 분리(무빙샷)
+  const it=getLocalIntent();
+  let mx=it.mx, my=it.my;
   const ml=Math.hypot(mx,my);
-  if(ml>0){
-    mx/=ml; my/=ml;                          // 대각선 정규화
+  const aimSeparate = !!(it.aimPoint || typeof it.aim==="number");
+  if(ml>0.01){
+    if(ml>1){ mx/=ml; my/=ml; }              // 대각선/스틱 정규화(아날로그는 세기 유지)
     moveEntity(player, mx*effSpeed(player)*dt, my*effSpeed(player)*dt);
-    player.facing=Math.atan2(my,mx);          // 이동 방향을 바라봄
+    if(!aimSeparate) player.facing=Math.atan2(my,mx);   // 키보드: 이동 방향을 바라봄(기존 동작)
   }
-  if(keysDown.has("KeyZ") && player.cooldown<=0 && canFireAmmo(player)){
+  if(it.aimPoint) player.facing=Math.atan2(it.aimPoint.y-player.y, it.aimPoint.x-player.x);   // 마우스: 커서 조준
+  else if(typeof it.aim==="number") player.facing=it.aim;                                     // 터치: 우 스틱 조준
+  // 마우스/터치의 X·C·장전 — 에지(1회) 처리. 키보드는 keydown 경로(handleKeyPress)가 담당해 중복 없음.
+  if(controlMode()!=="keyboard"){
+    if(it.special && !player._pSp) useCharacterSpecial();
+    if(it.ult && !player._pUlt) useCharacterSuper();
+    if(it.reload && !player._pRl) reloadWeaponManual();
+    player._pSp=!!it.special; player._pUlt=!!it.ult; player._pRl=!!it.reload;
+  }
+  if(it.fire && player.cooldown<=0 && canFireAmmo(player)){
     firePlayerWeapon();
     consumeAmmo(player);
     player.cooldown=zCooldownOf(player, getWeapon(player.weaponId||selectedWeaponId));
@@ -3938,6 +4083,7 @@ function render(){
   else if(gameState===STATE.PAUSED) drawPauseScreen();
   else if(gameState===STATE.OVER) drawResultScreen();
 
+  drawControlOverlays();   // UPDATE-1 P3: 마우스 크로스헤어 / 터치 조이스틱(플레이 중에만)
   if(confirmLeave) drawLeaveConfirm();
   drawToast();
 }
@@ -4266,9 +4412,10 @@ function drawArenaFloor(){
       for(let ty=ARENA.y; ty<ARENA.y+ARENA.h; ty+=FT) ctx.drawImage(fimg, tx, ty, FT, FT);
     ctx.fillStyle="rgba(10,14,40,0.42)"; ctx.fillRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h);
   }
+  // UPDATE-1 P2: 격자선을 실제 셀 크기(STUDENT_CELL=56)와 통일 — 64px 레거시가 바닥·프롭·함정과 어긋나 보이던 문제 해결
   ctx.strokeStyle="rgba(150,180,255,0.10)"; ctx.lineWidth=2;
-  for(let gx=ARENA.x;gx<=ARENA.x+ARENA.w;gx+=64){ ctx.beginPath(); ctx.moveTo(gx,ARENA.y); ctx.lineTo(gx,ARENA.y+ARENA.h); ctx.stroke(); }
-  for(let gy=ARENA.y;gy<=ARENA.y+ARENA.h;gy+=64){ ctx.beginPath(); ctx.moveTo(ARENA.x,gy); ctx.lineTo(ARENA.x+ARENA.w,gy); ctx.stroke(); }
+  for(let gx=ARENA.x;gx<=ARENA.x+ARENA.w;gx+=STUDENT_CELL){ ctx.beginPath(); ctx.moveTo(gx,ARENA.y); ctx.lineTo(gx,ARENA.y+ARENA.h); ctx.stroke(); }
+  for(let gy=ARENA.y;gy<=ARENA.y+ARENA.h;gy+=STUDENT_CELL){ ctx.beginPath(); ctx.moveTo(ARENA.x,gy); ctx.lineTo(ARENA.x+ARENA.w,gy); ctx.stroke(); }
   ctx.strokeStyle="rgba(150,180,255,0.15)"; ctx.lineWidth=4; ctx.beginPath(); ctx.arc(LOGW/2,ARENA.y+ARENA.h/2,90,0,Math.PI*2); ctx.stroke();
   ctx.restore();
   drawSpawnMark(map.playerSpawn.x,map.playerSpawn.y,"#7fd6ff");
@@ -4787,8 +4934,43 @@ function drawHUD(){
   ctx.fillStyle="rgba(10,12,32,0.72)"; ctx.fillRect(0,656,LOGW,64);
   drawSkillDock(localCombatStatus());
   ctx.textAlign="right"; ctx.fillStyle="#aab4e0"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.textBaseline="middle";
-  ctx.fillText("방향키 이동 · Z 공격 · X 기술 · C 궁극기 · R 장전 · P 일시정지",LOGW-20,688);
+  ctx.fillText(controlHintText()+" · P 일시정지",LOGW-20,688);
   ctx.restore();
+}
+// UPDATE-1 P3-4: 모드별 조작 안내 문구
+function controlHintText(){
+  const m=controlMode();
+  if(m==="mouse") return "WASD 이동 · 마우스 조준 · 좌클릭 발사 · 우클릭 X · Space C · R 장전";
+  if(m==="touch") return "왼쪽 스틱 이동 · 오른쪽 스틱 조준+발사 · 아이콘 탭 X/C/장전";
+  return "방향키 이동 · Z 공격 · X 기술 · C 궁극기 · R 장전";
+}
+// UPDATE-1 P3: 플레이 중 조작 오버레이 — 마우스=크로스헤어(커서 숨김), 터치=가상 조이스틱
+let _cursorHidden=false;
+function drawControlOverlays(){
+  const m=controlMode(), playing=inPlayState();
+  const wantHide=(m==="mouse" && playing);
+  if(wantHide!==_cursorHidden){ _cursorHidden=wantHide; try{ canvas.style.cursor=wantHide?"none":"default"; }catch(e){} }
+  if(!playing) return;
+  if(m==="mouse" && MOUSE.seen){
+    ctx.save(); ctx.strokeStyle="rgba(255,240,170,0.9)"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(MOUSE.x,MOUSE.y,9,0,Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(MOUSE.x-14,MOUSE.y); ctx.lineTo(MOUSE.x-5,MOUSE.y); ctx.moveTo(MOUSE.x+5,MOUSE.y); ctx.lineTo(MOUSE.x+14,MOUSE.y);
+    ctx.moveTo(MOUSE.x,MOUSE.y-14); ctx.lineTo(MOUSE.x,MOUSE.y-5); ctx.moveTo(MOUSE.x,MOUSE.y+5); ctx.lineTo(MOUSE.x,MOUSE.y+14); ctx.stroke();
+    ctx.restore();
+  } else if(m==="touch"){
+    const stick=(anchor,vec,rad,color)=>{
+      if(!anchor) return;
+      ctx.globalAlpha=0.35; ctx.fillStyle="rgba(20,26,60,0.8)"; ctx.beginPath(); ctx.arc(anchor.x,anchor.y,rad,0,Math.PI*2); ctx.fill();
+      ctx.globalAlpha=0.6; ctx.strokeStyle=color; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(anchor.x,anchor.y,rad,0,Math.PI*2); ctx.stroke();
+      ctx.globalAlpha=0.85; ctx.fillStyle=color;
+      ctx.beginPath(); ctx.arc(anchor.x+vec.x*rad*0.7, anchor.y+vec.y*rad*0.7, 18, 0, Math.PI*2); ctx.fill();
+      ctx.globalAlpha=1;
+    };
+    ctx.save();
+    if(TOUCH.moveId!==null) stick(TOUCH.moveAnchor, TOUCH.moveVec, 60, "#7fd6ff");
+    if(TOUCH.aimId!==null) stick(TOUCH.aimAnchor, TOUCH.aimVec, 70, "#ff9a9a");
+    ctx.restore();
+  }
 }
 function drawRespawnCountdown(f){
   if(!f.dead) return;
@@ -5033,17 +5215,17 @@ function drawLobbyMenu(ch, w){
 function drawSettingsOverlay(){
   dimScreen(0.6);
   ctx.save();
-  const bw=460, bh=340, bx=LOGW/2-bw/2, by=LOGH/2-bh/2-10;
+  const bw=480, bh=376, bx=LOGW/2-bw/2, by=LOGH/2-bh/2-10;
   ctx.fillStyle="rgba(16,22,52,0.96)"; roundRect(bx,by,bw,bh,16); ctx.fill();
   ctx.strokeStyle="#9fe0ff"; ctx.lineWidth=2.5; roundRect(bx,by,bw,bh,16); ctx.stroke();
   ctx.textAlign="center"; ctx.textBaseline="alphabetic";
   ctx.fillStyle="#9fe0ff"; ctx.font="bold 28px 'Malgun Gothic',sans-serif"; ctx.fillText("⚙ 설정", LOGW/2, by+52);
   ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
   ctx.fillText(profile.nickname+(profile.id?(" · ID "+profile.id):""), LOGW/2, by+80);
-  const items=["✏️ 별명 변경","🚪 로그아웃","🧑‍🏫 교사용 모드"];
-  for(let i=0;i<items.length;i++) drawButton(items[i], LOGW/2, by+134+i*58, 340, 44, settingsIndex===i);
+  const items=["🎮 조작: "+controlModeName(),"✏️ 별명 변경","🚪 로그아웃","🧑‍🏫 교사용 모드"];
+  for(let i=0;i<items.length;i++) drawButton(items[i], LOGW/2, by+126+i*54, 400, 42, settingsIndex===i);
   ctx.fillStyle="#aab4e0"; ctx.font="14px 'Malgun Gothic',sans-serif";
-  ctx.fillText("↑↓ 선택 · Enter 실행 · Esc 닫기", LOGW/2, by+bh-24);
+  ctx.fillText("↑↓ 선택 · Enter 실행 · 조작 행에서 ←→ 변경 · Esc 닫기", LOGW/2, by+bh-24);
   ctx.restore();
 }
 
@@ -5380,16 +5562,21 @@ function makeOnlineFighter(slot, d){
 /* ---- 입력 송신(throttle + 변화 시 즉시) ---- */
 function readLocalInput(){
   if(confirmLeave) return emptyInput();   // 나가기 확인 중에는 이동/공격/기술 입력 무시
-  return { up:keysDown.has("ArrowUp"), down:keysDown.has("ArrowDown"),
-           left:keysDown.has("ArrowLeft"), right:keysDown.has("ArrowRight"),
-           attack:keysDown.has("KeyZ"),
-           special:keysDown.has("KeyX"),                    // X 특수기술(host가 edge 판정)
-           ultimate:keysDown.has("KeyC"),                   // C 궁극기(host가 edge 판정)
+  // UPDATE-1 P3: 세 조작 모드를 같은 패킷 형식으로 — 소스가 달라도 host 판정 로직은 동일(동기화 안전)
+  const it=getLocalIntent();
+  const a=myAimAngle(it);
+  const kbPick=(keysDown.has("Digit1")||keysDown.has("Numpad1"))?0
+             : (keysDown.has("Digit2")||keysDown.has("Numpad2"))?1
+             : (keysDown.has("Digit3")||keysDown.has("Numpad3"))?2 : -1;
+  return { up:it.my<-0.35, down:it.my>0.35, left:it.mx<-0.35, right:it.mx>0.35,   // 구형 필드(하위호환·판독용)
+           attack:!!it.fire,
+           special:!!it.special||keysDown.has("KeyX"),      // X 특수기술(host가 edge 판정)
+           ultimate:!!it.ult||keysDown.has("KeyC"),         // C 궁극기(host가 edge 판정)
            super:false,                                     // 구버전 필드(하위호환: host가 ultimate||super로 해석)
-           reload:keysDown.has("KeyR"),
-           pick: (keysDown.has("Digit1")||keysDown.has("Numpad1"))?0
-               : (keysDown.has("Digit2")||keysDown.has("Numpad2"))?1
-               : (keysDown.has("Digit3")||keysDown.has("Numpad3"))?2 : -1 };   // PVE 강화 3택1(host 판정)
+           reload:!!it.reload||keysDown.has("KeyR"),
+           pick: (it.pick>=0)?it.pick:kbPick,               // PVE 강화 3택1(host 판정 · 터치는 카드 탭)
+           mvx:Math.round(clamp(it.mx,-1,1)*10)/10, mvy:Math.round(clamp(it.my,-1,1)*10)/10,   // 아날로그 이동(0.1 양자화)
+           aim:(a===null)?null:Math.round(a*20)/20 };       // 분리 조준각(0.05rad 양자화 — 전송량 절제)
 }
 function sendMyInput(dt){
   const inp=readLocalInput(), str=JSON.stringify(inp);
@@ -5462,9 +5649,7 @@ function updateOnlineGuest(dt){
       onlinePredict={ x:mine.x, y:mine.y, facing:mine.facing||0, r:22, moveSpeed:GAME_CONFIG.playerMoveSpeed*ch.speedMul*TEMPO.playerMove };
     } else {
       const inp=readLocalInput();
-      let mx=0,my=0; if(inp.up)my-=1; if(inp.down)my+=1; if(inp.left)mx-=1; if(inp.right)mx+=1;
-      const ml=Math.hypot(mx,my);
-      if(ml>0){ mx/=ml; my/=ml; moveEntity(onlinePredict, mx*onlinePredict.moveSpeed*dt, my*onlinePredict.moveSpeed*dt); onlinePredict.facing=Math.atan2(my,mx); }
+      predictMoveAim(onlinePredict, inp, dt);   // UPDATE-1 P3: 예측도 의도 공용(아날로그+분리 조준)
       if(Math.hypot(mine.x-onlinePredict.x, mine.y-onlinePredict.y) > 70){ onlinePredict.x=mine.x; onlinePredict.y=mine.y; } // 큰 차이만 스냅(연속 보정 X → 가속 없음)
     }
   }
@@ -5472,7 +5657,7 @@ function updateOnlineGuest(dt){
   // 발사 예측: 내 총알을 로컬에서 즉시 보여준다(시각용; 실제 피해 판정은 호스트가 함)
   onlinePredictCd -= dt;
   const myAmmoOk = !mine || mine.am===undefined || (!mine.rl && mine.am>0);  // 탄창 0/장전중이면 예측 발사 안 함
-  if(onlinePredict && mine && !mine.dead && keysDown.has("KeyZ") && onlinePredictCd<=0 && myAmmoOk){
+  if(onlinePredict && mine && !mine.dead && getLocalIntent().fire && onlinePredictCd<=0 && myAmmoOk){   // UPDATE-1 P3: 모드 공용 발사 의도
     const w=getWeapon(selectedWeaponId), c=getCharacter(selectedCharacterId);
     const count=w.spreadCount, spread=deg2rad(w.spreadAngleDeg||0);
     const speed=GAME_CONFIG.playerBulletSpeed*c.bulletSpeedMul*w.bulletSpeedMul;
@@ -5513,11 +5698,31 @@ function updateOnlineFighter(f, input, dt){
   tickReload(f, dt);
   if(input.reload) startReload(f);
   if(isFrozen(f)) return;                                  // 빙결: 이동·공격 불가
-  let mx=0,my=0;
-  if(input.up)my-=1; if(input.down)my+=1; if(input.left)mx-=1; if(input.right)mx+=1;
-  const ml=Math.hypot(mx,my);
-  if(ml>0){ mx/=ml; my/=ml; moveEntity(f, mx*effSpeed(f)*dt, my*effSpeed(f)*dt); f.facing=Math.atan2(my,mx); }
+  applyIntentMoveAim(f, input, dt);                        // UPDATE-1 P3: 아날로그 이동 + 분리 조준(구형 불리언 하위호환)
   if(input.attack && f.cooldown<=0 && canFireAmmo(f)){ fireOnlineWeapon(f); consumeAmmo(f); f.cooldown=zCooldownOf(f, getWeapon(f.weaponId)); }
+}
+// UPDATE-1 P3: 게스트 자기 예측용(충돌 이동만 — moveEntity 사용, moveSpeed 프로퍼티 기반)
+function predictMoveAim(pr, inp, dt){
+  let mx=0,my=0;
+  if(typeof inp.mvx==="number" || typeof inp.mvy==="number"){ mx=clamp(inp.mvx||0,-1,1); my=clamp(inp.mvy||0,-1,1); }
+  else { if(inp.up)my-=1; if(inp.down)my+=1; if(inp.left)mx-=1; if(inp.right)mx+=1; }
+  const ml=Math.hypot(mx,my), hasAim=(typeof inp.aim==="number");
+  if(ml>0.01){ if(ml>1){mx/=ml;my/=ml;} moveEntity(pr, mx*pr.moveSpeed*dt, my*pr.moveSpeed*dt); if(!hasAim) pr.facing=Math.atan2(my,mx); }
+  if(hasAim) pr.facing=inp.aim;
+}
+// UPDATE-1 P3 공용: 입력 패킷 → 이동·조준. mvx/mvy(아날로그)가 있으면 우선, 없으면 구형 불리언.
+// aim(라디안)이 오면 조준을 이동과 분리(마우스/터치 무빙샷) — 키보드 패킷(aim=null)은 기존처럼 이동 방향.
+function applyIntentMoveAim(f, input, dt){
+  let mx=0,my=0;
+  if(typeof input.mvx==="number" || typeof input.mvy==="number"){ mx=clamp(input.mvx||0,-1,1); my=clamp(input.mvy||0,-1,1); }
+  else { if(input.up)my-=1; if(input.down)my+=1; if(input.left)mx-=1; if(input.right)mx+=1; }
+  const ml=Math.hypot(mx,my), hasAim=(typeof input.aim==="number");
+  if(ml>0.01){
+    if(ml>1){ mx/=ml; my/=ml; }
+    moveEntity(f, mx*effSpeed(f)*dt, my*effSpeed(f)*dt);
+    if(!hasAim) f.facing=Math.atan2(my,mx);
+  }
+  if(hasAim) f.facing=input.aim;
 }
 // ── env 어댑터: 온라인 1v1(host 판정) ──
 function envOnline1v1(){
@@ -5793,7 +5998,7 @@ function drawOnlineHUD(data){
   ctx.fillStyle="#aab4e0"; ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.fillText("온라인 1대1 (베타) · 방 "+(OnlineManager.roomCode||""),LOGW/2,52);
   ctx.fillStyle="rgba(10,12,32,0.72)"; ctx.fillRect(0,656,LOGW,64);
   ctx.textAlign="right"; ctx.fillStyle="#aab4e0"; ctx.font="bold 14px 'Malgun Gothic',sans-serif";
-  ctx.fillText("방향키 이동 · Z 기본공격 · X 특수기술 · C 궁극기 · R 장전 · Esc 나가기",LOGW-24,688);
+  ctx.fillText(controlHintText()+" · Esc 나가기",LOGW-24,688);
   ctx.restore();
 }
 function drawCenterBanner(text, color){
@@ -6130,9 +6335,7 @@ function tUpdateFighter(f, input, dt){
   tickReload(f, dt);
   if(input.reload) startReload(f);
   if(isFrozen(f)) return;                                  // 빙결: 이동·공격 불가
-  let mx=0,my=0; if(input.up)my-=1; if(input.down)my+=1; if(input.left)mx-=1; if(input.right)mx+=1;
-  const ml=Math.hypot(mx,my);
-  if(ml>0){ mx/=ml; my/=ml; moveEntity(f, mx*effSpeed(f)*dt, my*effSpeed(f)*dt); f.facing=Math.atan2(my,mx); }
+  applyIntentMoveAim(f, input, dt);                        // UPDATE-1 P3: 아날로그 이동 + 분리 조준(공용)
   if(input.attack && f.cooldown<=0 && canFireAmmo(f)){ tFire(f); consumeAmmo(f); f.cooldown=zCooldownOf(f, getWeapon(f.weaponId)); }
 }
 
@@ -6373,8 +6576,8 @@ function tUpdateGuest(dt){
     const p=s.fighters[slot];
     if(slot===myslot){
       if(!tPredict || p.dead){ const ch=getCharacter(p.charId||tRosterCharId(slot)); tPredict={ x:p.x,y:p.y,facing:p.facing||0,r:22,moveSpeed:GAME_CONFIG.playerMoveSpeed*ch.speedMul*TEMPO.playerMove }; }
-      else { const inp=readLocalInput(); let mx=0,my=0; if(inp.up)my-=1; if(inp.down)my+=1; if(inp.left)mx-=1; if(inp.right)mx+=1; const ml=Math.hypot(mx,my);
-        if(ml>0){ mx/=ml; my/=ml; moveEntity(tPredict, mx*tPredict.moveSpeed*dt, my*tPredict.moveSpeed*dt); tPredict.facing=Math.atan2(my,mx); }
+      else { const inp=readLocalInput();
+        predictMoveAim(tPredict, inp, dt);   // UPDATE-1 P3: 예측도 의도 공용
         if(Math.hypot(p.x-tPredict.x,p.y-tPredict.y)>70){ tPredict.x=p.x; tPredict.y=p.y; } }
     } else {
       if(!tRenderFighters[slot] || p.dead) tRenderFighters[slot]={ x:p.x,y:p.y,facing:p.facing||0 };
@@ -6453,7 +6656,7 @@ function tRender(){
   ctx.fillStyle="#aab4e0"; ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.fillText("온라인 3대3 (베타) · 방 "+(OnlineManager.roomCode||""),LOGW/2,52);
   ctx.fillStyle="rgba(10,12,32,0.72)"; ctx.fillRect(0,656,LOGW,64);
   ctx.textAlign="right"; ctx.fillStyle="#aab4e0"; ctx.font="bold 14px 'Malgun Gothic',sans-serif";
-  ctx.fillText("방향키 · Z 기본공격 · X 특수기술 · C 궁극기 · R 장전 · Esc 나가기",LOGW-24,688);
+  ctx.fillText(controlHintText()+" · Esc 나가기",LOGW-24,688);
   ctx.restore();
   drawCombatStrip();
   if(!OnlineManager.connected) drawCenterBanner("네트워크 연결 확인 중…","#ff7a7a");
@@ -6786,8 +6989,7 @@ function tPveUpdatePlayer(f,input,dt){
   tickReload(f, dt);
   if(input.reload) startReload(f);
   if(isFrozen(f)) return;                                  // 빙결: 이동·공격 불가
-  let mx=0,my=0; if(input.up)my-=1; if(input.down)my+=1; if(input.left)mx-=1; if(input.right)mx+=1;
-  const ml=Math.hypot(mx,my); if(ml>0){mx/=ml;my/=ml; moveEntity(f,mx*effSpeed(f)*dt,my*effSpeed(f)*dt); f.facing=Math.atan2(my,mx);}
+  applyIntentMoveAim(f, input, dt);                        // UPDATE-1 P3: 아날로그 이동 + 분리 조준(공용)
   if(input.attack && f.cooldown<=0 && canFireAmmo(f)){ tFire(f); consumeAmmo(f); f.cooldown=zCooldownOf(f, getWeapon(f.weaponId)); }
 }
 function tHurtPlayer(f,dmg){
@@ -7273,7 +7475,7 @@ function tPveRender(){
   ctx.fillStyle="#aab4e0"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.fillText(objTxt,24,46);
   ctx.textAlign="right"; ctx.fillStyle="#ff8f8f"; ctx.font="bold 20px 'Malgun Gothic',sans-serif"; ctx.fillText("팀 목숨 합계 ♥ "+pve.teamLives,LOGW-24,32);
   ctx.fillStyle="rgba(10,12,32,0.72)"; ctx.fillRect(0,656,LOGW,64);
-  ctx.textAlign="right"; ctx.fillStyle="#aab4e0"; ctx.font="bold 14px 'Malgun Gothic',sans-serif"; ctx.fillText("방향키 · Z 기본공격 · X 특수기술 · C 궁극기 · R 장전 · Esc 나가기",LOGW-24,688);
+  ctx.textAlign="right"; ctx.fillStyle="#aab4e0"; ctx.font="bold 14px 'Malgun Gothic',sans-serif"; ctx.fillText(controlHintText()+" · Esc 나가기",LOGW-24,688);
   ctx.restore();
   drawCombatStrip();
   let boss=null; for(const e of data.enemies){ if(e.boss){ boss=e; break; } }
