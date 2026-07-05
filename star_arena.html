@@ -730,6 +730,33 @@ function drawProjectileSprite(weaponId, x, y, r, facing){
    ======================================================================= */
 const LOGW = 1280, LOGH = 720;                 // 고정 논리 좌표
 const ARENA = { x:24, y:70, w:1232, h:576 };   // 전투 영역(위/아래는 정보줄)
+/* =======================================================================
+   BIG-BATCH-2 P4 · 줌아웃 카메라 (C6/C7)
+   - 월드 좌표(게임 로직·ARENA) ↔ 화면 좌표(HUD·마우스) 분리.
+   - 기본 22×10 = CAM.on=false, scale 1 (기존과 픽셀 동일 — 회귀 0 원칙).
+   - 대형 맵(36×16·48×22) = ARENA를 월드 크기로 확장 + 전체가 화면에 들어오는
+     고정 줌아웃(스크롤 없음 — 멀미 회피 방침). 추적 카메라는 백로그.
+   ======================================================================= */
+const ARENA_BASE = { x:24, y:70, w:1232, h:576 };
+let CAM = { on:false, scale:1, ox:0, oy:0 };
+function setCameraForMap(map){
+  const c=(map && map.gridCols)||STUDENT_COLS, r=(map && map.gridRows)||STUDENT_ROWS;
+  if(c<=STUDENT_COLS && r<=STUDENT_ROWS){
+    ARENA.x=ARENA_BASE.x; ARENA.y=ARENA_BASE.y; ARENA.w=ARENA_BASE.w; ARENA.h=ARENA_BASE.h;
+    CAM.on=false; CAM.scale=1; CAM.ox=0; CAM.oy=0;
+    return;
+  }
+  ARENA.x=ARENA_BASE.x; ARENA.y=ARENA_BASE.y;
+  ARENA.w=c*STUDENT_CELL; ARENA.h=r*STUDENT_CELL+16;   // 기본 맵과 동일한 하단 여유 16px 유지
+  const s=Math.min(ARENA_BASE.w/ARENA.w, ARENA_BASE.h/ARENA.h);
+  CAM.on=true; CAM.scale=s;
+  CAM.ox=ARENA_BASE.x + (ARENA_BASE.w-ARENA.w*s)/2 - ARENA.x*s;   // 월드 ARENA가 기본 화면 틀 안에 중앙 정렬
+  CAM.oy=ARENA_BASE.y + (ARENA_BASE.h-ARENA.h*s)/2 - ARENA.y*s;
+}
+let _camPushed=false;
+function worldBegin(){ if(CAM.on && !_camPushed){ ctx.save(); ctx.translate(CAM.ox,CAM.oy); ctx.scale(CAM.scale,CAM.scale); _camPushed=true; } }
+function worldEnd(){ if(_camPushed){ ctx.restore(); _camPushed=false; } }
+function logicalToWorld(p){ if(!CAM.on||!p) return p; return { x:(p.x-CAM.ox)/CAM.scale, y:(p.y-CAM.oy)/CAM.scale }; }
 const canvas = document.getElementById("game");
 let ctx = canvas.getContext("2d");   // 정적 월드 레이어 프리렌더 시 잠깐 오프스크린으로 교체(v1.21 성능)
 
@@ -1754,7 +1781,7 @@ function getLocalIntent(){
     if(keysDown.has("KeyS")||keysDown.has("ArrowDown")) my+=1;
     if(keysDown.has("KeyA")||keysDown.has("ArrowLeft")) mx-=1;
     if(keysDown.has("KeyD")||keysDown.has("ArrowRight")) mx+=1;
-    return { mx:mx, my:my, aim:null, aimPoint:{x:MOUSE.x,y:MOUSE.y},
+    return { mx:mx, my:my, aim:null, aimPoint:logicalToWorld({x:MOUSE.x,y:MOUSE.y}),   // P4: 줌아웃 맵에서도 커서=월드 좌표
       fire:MOUSE.down||keysDown.has("KeyZ"), special:MOUSE.rdown, ult:keysDown.has("Space"), reload:false, pick:-1 };
   }
   if(m==="touch"){
@@ -3047,7 +3074,8 @@ function drawBalanceScreen(){
    - 제출 → localStorage pending → 교사용 패널(G)에서 승인 → MAPS에 반영되어 플레이 가능
    - 22×10 기본 + 36×16 대형(제작·승인 가능, 플레이 탑재는 카메라 작업 후)
    ======================================================================= */
-const ED_SIZES=[ {cols:22, rows:10, name:"기본 22×10"}, {cols:36, rows:16, name:"대형 36×16 (제작만 · 플레이는 카메라 후속)"} ];
+const ED_SIZES=[ {cols:22, rows:10, name:"기본 22×10"}, {cols:36, rows:16, name:"대형 36×16 (줌아웃 카메라)"},
+                 {cols:48, rows:22, name:"초대형 48×22 (줌아웃 카메라)"} ];   /* BIG-BATCH-2 P4: 대형 맵 실플레이 탑재 */
 const ED_PAL_COMMON=[
   { ch:".", name:"지우개",       color:"#44507e" },
   { ch:"W", name:"벽(바위)",     color:"#878da8" },
@@ -3449,6 +3477,7 @@ function compileEditorMap(rec){
   return { id:rec.id, name:"🛠"+rec.name, desc:"맵공방 · "+(rec.author||"학생")+" · "+(getRule(rec.mode).name),
     floorColor:"#222a52", strokeColor:"#5b74b8", floor:rec.floor||"basic",
     playerSpawn:spawn, enemySpawn:{ x:OX+cols*CS-(spawn.x-OX), y:spawn.y },
+    gridCols:cols, gridRows:rows,   // P4: 줌아웃 카메라가 맵 크기를 읽는 필드
     obstacles:obstacles, bushes:bushes, traps:traps, rulePoints:rulePoints, editorMode:rec.mode };
 }
 function applyApprovedMaps(){
@@ -3457,8 +3486,7 @@ function applyApprovedMaps(){
   const want={};
   for(const rec of st.approved){
     if(rec.mode==="platformer") continue;                // 플랫포머 레벨은 별빛 점프 레벨 선택이 직접 읽음(§3.8)
-    if(rec.size[0]!==22) continue;                       // 대형 맵은 카메라(줌아웃) 작업 후 탑재
-    if(rec.disabled) continue;                           // 비활성(교사가 잠시 내림)
+    if(rec.disabled) continue;                           // 비활성(교사가 잠시 내림)  — P4: 대형 맵도 탑재(줌아웃 카메라)
     want[rec.id]=rec;
   }
   for(let i=MAPS.length-1;i>=0;i--){                     // editorMode 필드 = 에디터 산(産) 맵 표식(내장 맵은 없음)
@@ -3496,7 +3524,7 @@ function handleMapReviewKey(code){
       it.rec._synced=true;
       st.approved.push(it.rec); saveEditorStore(st); applyApprovedMaps();
       try{ MapStore.mirrorApprove(it.rec); }catch(e){}        // P3: 클라우드 반영(전 클라이언트 공유)
-      showToast("승인: "+it.rec.name+(it.rec.size[0]===22?" — 맵 목록에 추가됨":" — 대형(카메라 후속)"));
+      showToast("승인: "+it.rec.name+" — 맵 목록에 추가됨"+(it.rec.size[0]>22?" (줌아웃 카메라)":""));
     } else if(code==="KeyX"||code==="Delete"){                // 거절(삭제)
       const i=st.pending.indexOf(it.rec); st.pending.splice(i,1);
       saveEditorStore(st); showToast("거절: "+it.rec.name);
@@ -3877,6 +3905,7 @@ function applyProfileSelections(){
 
 function resetMatch(){
   MATCH=getMatchConfig();
+  setCameraForMap(MATCH.map);                   // P4: 대형 맵 = ARENA 확장 + 고정 줌아웃(기본 맵은 no-op)
   // 사본: 규칙 구조물(탑·벽)을 밀어 넣어도 원본 맵 불변. 구조물(에디터 쿠션벽 등)은 HP까지 새로(이전 판 파괴 상태 리셋)
   OBSTACLES=MATCH.map.obstacles.map(o=>o.structure?Object.assign({},o,{hp:o.maxHp}):o);
   BUSHES=MATCH.map.bushes;
@@ -3931,19 +3960,19 @@ function setupRuleState(){
     }
   } else if(id==="hotzone"){
     // BIG-BATCH-2 P1: 거점 이동 — 내장맵은 moveEvery초마다 중심선 위 3지점 순환(단조로움 해소). 에디터 배치 거점은 제작자 의도 존중 = 고정.
-    RULE={ id:id, winner:null, x:(rp.zone&&rp.zone.x)||LOGW/2, y:(rp.zone&&rp.zone.y)||ARENA.y+ARENA.h/2,
+    RULE={ id:id, winner:null, x:(rp.zone&&rp.zone.x)||(ARENA.x+ARENA.w/2), y:(rp.zone&&rp.zone.y)||ARENA.y+ARENA.h/2,
            radius:RULE_CONFIG.hotzone.radius, gauge:{player:0, enemy:0}, holder:null,
            fixed:!!rp.zone, moveT:0, posIdx:0, warn:0 };
   } else if(id==="stargrab"){
     RULE={ id:id, winner:null, stars:[], spawnAcc:RULE_CONFIG.stargrab.spawnEvery-1, countdown:{player:-1, enemy:-1},
-           cx:(rp.vein&&rp.vein.x)||LOGW/2, cy:(rp.vein&&rp.vein.y)||ARENA.y+ARENA.h/2 };
+           cx:(rp.vein&&rp.vein.x)||(ARENA.x+ARENA.w/2), cy:(rp.vein&&rp.vein.y)||ARENA.y+ARENA.h/2 };
   } else if(id==="tag"){
     // GENRE-EXPAND-1 §1: 파이터 생성 후 첫 틱에서 술래를 뽑는다(needInit)
     RULE={ id:id, winner:null, needInit:true, phase:"reveal", phaseT:RULE_CONFIG.tag.reveal,
            survivors:0, myInfections:0, mySurvival:0 };
   } else if(id==="paint"){
     // GENRE-EXPAND-1 §2: 56px 셀 페인트 그리드 + 칠 불가 마스크(벽·수풀·함정·구조물 — 1회 계산)
-    const cols=STUDENT_COLS, rows=STUDENT_ROWS, map=MATCH.map;
+    const map=MATCH.map, cols=(map.gridCols||STUDENT_COLS), rows=(map.gridRows||STUDENT_ROWS);   // P4: 대형 맵 그리드 확장
     const grid=new Uint8Array(cols*rows), blocked=new Uint8Array(cols*rows);
     const markRects=(rects)=>{ for(const o of (rects||[])){
       const c0=Math.max(0,Math.floor((o.x-ARENA.x)/STUDENT_CELL)), c1=Math.min(cols-1,Math.floor((o.x+o.w-1-ARENA.x)/STUDENT_CELL));
@@ -4372,7 +4401,7 @@ function drawRuleHUD(){
 
 function startGame(){ applyProfileSelections(); resetMatch(); gameState=STATE.PLAYING; }
 function goToStartScreen(){ gameState=STATE.START; keysDown.clear(); settingsOpen=false; restoreLocalArena(); }
-function restoreLocalArena(){ OBSTACLES=getMap(selectedMapId).obstacles; BUSHES=getMap(selectedMapId).bushes; }
+function restoreLocalArena(){ OBSTACLES=getMap(selectedMapId).obstacles; BUSHES=getMap(selectedMapId).bushes; setCameraForMap(getMap(selectedMapId)); }
 function setPaused(p){
   if(p && gameState===STATE.PLAYING){ gameState=STATE.PAUSED; keysDown.clear(); }
   else if(!p && gameState===STATE.PAUSED){ gameState=STATE.PLAYING; keysDown.clear(); }
@@ -5699,7 +5728,7 @@ function render(){
   // v1.26 배경 정돈: 실제 게임 맵(바닥·가시·바위·수풀·격자)은 플레이/온라인 화면에서만 렌더.
   // 로비·로그인·상점 등 메뉴 화면은 잔잔한 별밤(starfield)만. (플레이 화면 맵 렌더는 기존 그대로)
   const _worldVisible = gameState===STATE.PLAYING||gameState===STATE.PAUSED||gameState===STATE.OVER||isOnlineState();
-  if(_worldVisible) drawStaticWorld();   // v1.21 성능: 바닥/함정/풀숲/장애물을 프리렌더 1장으로 합성(기존 4함수 매 프레임 호출 대체)
+  if(_worldVisible){ worldBegin(); drawStaticWorld(); }   // P4: 대형 맵 = 줌아웃 변환(기본 맵 no-op)
   else drawMenuStarfield();
   if(_worldVisible && gameState!==STATE.ONLINE_PLAYING) drawPaintGrid();   // GENRE-EXPAND-1 §2.5: 페인트(바닥 위·유닛 아래)
   if(gameState===STATE.PLAYING||gameState===STATE.PAUSED||gameState===STATE.OVER||gameState===STATE.ONLINE_PLAYING) drawPowerups(powerupsView());
@@ -5714,10 +5743,12 @@ function render(){
     drawFighter(player);
     drawEffects();
     drawDamageNumbers();
+    worldEnd();                            // P4: HUD부터는 화면 좌표
     drawHUD();
   }
 
   if(gameState===STATE.ONLINE_PLAYING) renderOnlineMatch();
+  worldEnd();                              // P4: 안전망(온라인 로비/결과 등 — 미사용 시 무해)
 
   if(gameState===STATE.SPLASH) drawSplashScreen();
   else if(gameState===STATE.START) drawStartScreen();
@@ -6038,6 +6069,7 @@ function drawStaticWorld(){
     const si=(OnlineManager.role==="host")?tPve.stageIndex:((OnlineManager.onlineState&&OnlineManager.onlineState.pve)?OnlineManager.onlineState.pve.stageIndex:0);
     key+="|z"+campZoneIdx(si||0)+"|t"+tCampTraps.length;    // CAMPAIGN-2: 구역 바닥·함정이 바뀌면 재합성
   }
+  if(CAM.on){ drawArenaFloor(); drawTraps(); drawBushes(); drawObstacles(); return; }   // P4: 줌아웃 맵은 캐시(LOGW 크기) 대신 직접 그림
   if(_worldLayerKey!==key){
     if(_worldLayer===null){
       try{ const cv=document.createElement("canvas");
@@ -6077,7 +6109,7 @@ function drawArenaFloor(){
     ctx.fillStyle="rgba(10,14,40,0.22)"; ctx.fillRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h);   // BIG-BATCH-1 F19: 42%→22% — 바닥 테마 아트를 살림
   }
   // BIG-BATCH-1 A3: 플레이 화면 격자선 제거(그래프용지 인상) — 격자는 에디터(drawEditorGrid)에서만.
-  ctx.strokeStyle="rgba(150,180,255,0.15)"; ctx.lineWidth=4; ctx.beginPath(); ctx.arc(LOGW/2,ARENA.y+ARENA.h/2,90,0,Math.PI*2); ctx.stroke();
+  ctx.strokeStyle="rgba(150,180,255,0.15)"; ctx.lineWidth=4; ctx.beginPath(); ctx.arc(ARENA.x+ARENA.w/2,ARENA.y+ARENA.h/2,90,0,Math.PI*2); ctx.stroke();
   ctx.restore();
   drawSpawnMark(map.playerSpawn.x,map.playerSpawn.y,"#7fd6ff");
   drawSpawnMark(map.enemySpawn.x,map.enemySpawn.y,"#c98bff");
@@ -7310,6 +7342,7 @@ function onRoomMetaChanged(){
 function resetOnlineMatchFromRoom(){
   const meta=OnlineManager.meta||{};
   RULE=null;   // P2: 1대1은 섬멸전 고정 — 이전 매치 규칙 잔재 제거
+  setCameraForMap(getMap(onlineMapId()));   // P4
   OBSTACLES=getMap(onlineMapId()).obstacles; BUSHES=getMap(onlineMapId()).bushes;
   const map=getMap(onlineMapId());
   onlineFighters.host  = makeOnlineFighter("host",  { x:map.playerSpawn.x, y:map.playerSpawn.y, facing:0,
@@ -7723,6 +7756,7 @@ function renderOnlineMatch(){
   drawOnlineFighter(data.host, OnlineManager.role==="host");
   drawOnlineFighter(data.guest, OnlineManager.role==="guest");
   drawEffects();
+  worldEnd();                              // P4
   drawOnlineHUD(data);
   drawCombatStrip();
   if(!OnlineManager.opponentConnected) drawCenterBanner("상대 연결 끊김…", "#ff7a7a");
@@ -8029,6 +8063,7 @@ function resetTeamMatchFromRoom(){
   RULE=null;   // P2: 이전 매치(로컬/팀) 규칙 잔재 제거 — PVE·tdm은 규칙 없음, PVP는 아래 tSetupRule이 재구성
   if(mode.modeType==="pve"){
     const stage=PVE_STAGES[0]; tMapId=stage.mapId;
+    setCameraForMap(getMap(tMapId));                       // P4: 직전 대형 3v3의 줌아웃 잔재 제거(PVE 맵=기본 크기)
     tPve={ stageIndex:0, waveIndex:0, teamLives:stage.teamLives, status:"playing", phase:"wave", phaseTimer:0, enemiesRemaining:0, checkpoint:null, retryUsed:false };   /* v1.24 PRD 12.6 */
     tBuildFighters();
     tPveSetupStructures();                                 // v1.22: 구조물 생성+충돌(호스트/게스트 공통)
@@ -8037,6 +8072,7 @@ function resetTeamMatchFromRoom(){
     if(OnlineManager.role==="host") tPveStartWave();
   } else {
     tMapId=(OnlineManager.meta&&OnlineManager.meta.mapId)||"training";   // 3v3: host가 고른 맵(게스트도 meta로 동일)
+    setCameraForMap(getMap(tMapId));                       // P4: 대형 맵 줌아웃(양 역할 공통)
     tBuildFighters();
     tSetupRule();                                          // BIG-BATCH-2 P2: 방 규칙(meta.rule) 상태·구조물·그리드(호스트/게스트 공통·결정적)
     tMyTagRole=false;
@@ -8224,16 +8260,16 @@ function tSetupRule(){
       }
     }
   } else if(rid==="hotzone"){
-    RULE={ id:"hotzone", winner:null, x:(rp.zone&&rp.zone.x)||LOGW/2, y:(rp.zone&&rp.zone.y)||ARENA.y+ARENA.h/2,
+    RULE={ id:"hotzone", winner:null, x:(rp.zone&&rp.zone.x)||(ARENA.x+ARENA.w/2), y:(rp.zone&&rp.zone.y)||ARENA.y+ARENA.h/2,
            radius:RULE_CONFIG.hotzone.radius, gauge:{player:0, enemy:0}, holder:null,
            fixed:!!rp.zone, moveT:0, posIdx:0, warn:0 };
   } else if(rid==="stargrab"){
     RULE={ id:"stargrab", winner:null, stars:[], spawnAcc:RULE_CONFIG.stargrab.spawnEvery-1, countdown:{player:-1, enemy:-1},
-           cx:(rp.vein&&rp.vein.x)||LOGW/2, cy:(rp.vein&&rp.vein.y)||ARENA.y+ARENA.h/2 };
+           cx:(rp.vein&&rp.vein.x)||(ARENA.x+ARENA.w/2), cy:(rp.vein&&rp.vein.y)||ARENA.y+ARENA.h/2 };
   } else if(rid==="tag"){
     RULE={ id:"tag", winner:null, needInit:true, phase:"reveal", phaseT:RULE_CONFIG.tag.reveal, survivors:0, runnerMul:1 };
   } else if(rid==="paint"){
-    const cols=STUDENT_COLS, rows=STUDENT_ROWS;
+    const cols=(map.gridCols||STUDENT_COLS), rows=(map.gridRows||STUDENT_ROWS);   // P4: 대형 맵 그리드 확장
     const grid=new Uint8Array(cols*rows), blocked=new Uint8Array(cols*rows);
     const markRects=(rects)=>{ for(const o of (rects||[])){
       const c0=Math.max(0,Math.floor((o.x-ARENA.x)/STUDENT_CELL)), c1=Math.min(cols-1,Math.floor((o.x+o.w-1-ARENA.x)/STUDENT_CELL));
@@ -8912,6 +8948,7 @@ function tRender(){
   for(const b of data.bullets) drawOnlineBullet(b);
   for(const f of data.fighters) tDrawFighter(f);
   drawEffects();
+  worldEnd();                              // P4: HUD부터는 화면 좌표
   // HUD
   ctx.save();
   ctx.fillStyle="rgba(10,12,32,0.72)"; ctx.fillRect(0,0,LOGW,64); ctx.textBaseline="middle";
