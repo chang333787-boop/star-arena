@@ -2,16 +2,20 @@
   "rules": {
     ".read": false,
     ".write": false,
-
     "starArenaOnline": {
       "rooms": {
         "$roomCode": {
           ".read": "auth != null",
           ".write": "auth != null"
         }
+      },
+      "editorMaps": {
+        "$classCode": {
+          ".read": "auth != null",
+          ".write": "auth != null"
+        }
       }
     },
-
     "classes": {
       "$classCode": {
         "students": {
@@ -20,30 +24,78 @@
             ".read": "auth != null",
             ".write": "auth != null",
             ".validate": "!newData.exists() || newData.hasChildren(['id','pinHash','lastUpdated'])",
-            "id":                  { ".validate": "newData.isString() && newData.val() == $studentId" },
-            "name":                { ".validate": "newData.isString() && newData.val().length <= 20" },
-            "pinHash":             { ".validate": "newData.isString() && newData.val().length <= 64" },
-            "level":               { ".validate": "newData.isNumber()" },
-            "exp":                 { ".validate": "newData.isNumber()" },
-            "gold":                { ".validate": "newData.isNumber() && newData.val() >= 0" },
-            "wins":                { ".validate": "newData.isNumber() && newData.val() >= 0" },
-            "losses":              { ".validate": "newData.isNumber() && newData.val() >= 0" },
-            "draws":               { ".validate": "newData.isNumber() && newData.val() >= 0" },
-            "totalPlays":          { ".validate": "newData.isNumber() && newData.val() >= 0" },
-            "totalKills":          { ".validate": "newData.isNumber() && newData.val() >= 0" },
-            "bossKills":           { ".validate": "newData.isNumber() && newData.val() >= 0" },
-            "selectedCharacterId": { ".validate": "newData.isString() || newData.val() == null" },
-            "selectedWeaponId":    { ".validate": "newData.isString() || newData.val() == null" },
-            "selectedDifficultyId":{ ".validate": "newData.isString() || newData.val() == null" },
-            "selectedMapId":       { ".validate": "newData.isString() || newData.val() == null" },
-            "selectedModeId":      { ".validate": "newData.isString() || newData.val() == null" },
-            "createdAt":           { ".validate": "newData.isNumber()" },
-            "lastLoginAt":         { ".validate": "newData.isNumber()" },
-            "lastUpdated":         { ".validate": "newData.isNumber()" },
-            "isActive":            { ".validate": "newData.isBoolean()" },
-            "unlockedCharacters":  { ".validate": true },
-            "unlockedWeapons":     { ".validate": true },
-            "$other":              { ".validate": true }
+            "id": {
+              ".validate": "newData.isString() && newData.val() == $studentId"
+            },
+            "name": {
+              ".validate": "newData.isString() && newData.val().length <= 20"
+            },
+            "pinHash": {
+              ".validate": "newData.isString() && newData.val().length <= 64"
+            },
+            "level": {
+              ".validate": "newData.isNumber()"
+            },
+            "exp": {
+              ".validate": "newData.isNumber()"
+            },
+            "gold": {
+              ".validate": "newData.isNumber() && newData.val() >= 0"
+            },
+            "wins": {
+              ".validate": "newData.isNumber() && newData.val() >= 0"
+            },
+            "losses": {
+              ".validate": "newData.isNumber() && newData.val() >= 0"
+            },
+            "draws": {
+              ".validate": "newData.isNumber() && newData.val() >= 0"
+            },
+            "totalPlays": {
+              ".validate": "newData.isNumber() && newData.val() >= 0"
+            },
+            "totalKills": {
+              ".validate": "newData.isNumber() && newData.val() >= 0"
+            },
+            "bossKills": {
+              ".validate": "newData.isNumber() && newData.val() >= 0"
+            },
+            "selectedCharacterId": {
+              ".validate": "newData.isString() || newData.val() == null"
+            },
+            "selectedWeaponId": {
+              ".validate": "newData.isString() || newData.val() == null"
+            },
+            "selectedDifficultyId": {
+              ".validate": "newData.isString() || newData.val() == null"
+            },
+            "selectedMapId": {
+              ".validate": "newData.isString() || newData.val() == null"
+            },
+            "selectedModeId": {
+              ".validate": "newData.isString() || newData.val() == null"
+            },
+            "createdAt": {
+              ".validate": "newData.isNumber()"
+            },
+            "lastLoginAt": {
+              ".validate": "newData.isNumber()"
+            },
+            "lastUpdated": {
+              ".validate": "newData.isNumber()"
+            },
+            "isActive": {
+              ".validate": "newData.isBoolean()"
+            },
+            "unlockedCharacters": {
+              ".validate": true
+            },
+            "unlockedWeapons": {
+              ".validate": true
+            },
+            "$other": {
+              ".validate": true
+            }
           }
         }
       }

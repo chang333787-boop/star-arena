@@ -771,8 +771,10 @@ function resizeCanvas(){
   canvas.style.height = cssH+"px";
   canvas.width = Math.floor(cssW*dpr);                 // 고해상도 대응
   canvas.height = Math.floor(cssH*dpr);
+  try{ _canvasRect=null; }catch(e){}                   // PERF-2: 좌표 변환 캐시 무효화
 }
 window.addEventListener("resize", resizeCanvas);
+window.addEventListener("scroll", function(){ try{ _canvasRect=null; }catch(e){} }, {passive:true});   // PERF-2
 resizeCanvas();
 
 /* =======================================================================
@@ -1109,13 +1111,19 @@ const MapStore = {
   mirrorDisable(rec){ this.pushRec("approved", rec, null); },
   loadCloud(cb){
     if(!this.cloudReady()){ cb(undefined); return; }
-    try{ this._ref().once("value").then(function(s){ cb(s.val()||{pending:{},approved:{}}); }).catch(function(){ cb(undefined); }); }
+    try{ this._ref().once("value").then(function(s){ cb(s.val()||{pending:{},approved:{}}); }).catch(function(e){ cb(undefined, e&&e.code); }); }
     catch(e){ cb(undefined); }
   },
   sync(cb){
     const self=this;
-    this.loadCloud(function(cloud){
-      if(cloud===undefined){ cloudMapStatus="오프라인 — 이 기기 목록"; if(cb) cb(false); return; }
+    this.loadCloud(function(cloud, errCode){
+      if(cloud===undefined){
+        // PERF-2에서 발견: 라이브 DB 규칙에 editorMaps 경로가 없어 PERMISSION_DENIED — 명확히 안내(database.rules.json 참조)
+        cloudMapStatus=(errCode==="PERMISSION_DENIED")
+          ? "⚠ DB 규칙에 editorMaps 추가 필요 — database.rules.json을 Firebase 콘솔에 게시"
+          : "오프라인 — 이 기기 목록";
+        if(cb) cb(false); return;
+      }
       const st=loadEditorStore();
       const out={pending:[],approved:[]}, pushes=[];
       for(const kind of ["pending","approved"]){
@@ -1132,6 +1140,7 @@ const MapStore = {
         }
       }
       saveEditorStore(out);
+      _reviewSt=null; _adminPendingN=-1; _pfSel=null;   // PERF-2: 화면 캐시 무효화
       try{ applyApprovedMaps(); }catch(e){}
       for(const [kind, rec] of pushes){
         (function(k, r){ self.pushRec(k, r, function(ok){
@@ -1157,7 +1166,10 @@ function onCloudAccountsReady(){
     AccountStore.flushPending();
     const l=studentList(); if((!adminSelId||!accounts.students[adminSelId]) && l[0]) adminSelId=l[0].id;
   });
-  try{ MapStore.sync(); }catch(e){}   // BIG-BATCH-2 P3: 부팅 시 학급 맵공방 동기화(D10)
+  // BIG-BATCH-2 P3: 부팅 시 학급 맵공방 동기화(D10) — 일시 실패면 8초 후 1회 재시도(권한 거부는 재시도 무의미)
+  try{ MapStore.sync(function(ok){
+    if(!ok && cloudMapStatus.indexOf("규칙")<0){ setTimeout(function(){ try{ MapStore.sync(); }catch(e){} }, 8000); }
+  }); }catch(e){}
 }
 // 클라우드 우선 학생 로그인(비동기). 실패 유형별 메시지 분리.
 function studentLoginCloud(id, pin, cb){
@@ -1698,9 +1710,10 @@ const MOUSE={ x:LOGW/2, y:LOGH/2, down:false, rdown:false, seen:false };
 const TOUCH={ moveId:null, moveAnchor:null, moveVec:{x:0,y:0}, aimId:null, aimAnchor:null, aimVec:{x:0,y:0},
               aiming:false, xTap:false, cTap:false, reloadTap:false, pickTap:-1 };
 function inPlayState(){ return gameState===STATE.PLAYING || gameState===STATE.ONLINE_PLAYING; }
+let _canvasRect=null;   // PERF-2: mousemove마다 getBoundingClientRect(레이아웃 강제) 방지 — 리사이즈/스크롤 시 무효화
 function canvasToLogical(clientX, clientY){
   try{
-    const r=canvas.getBoundingClientRect();
+    const r=_canvasRect || (_canvasRect=canvas.getBoundingClientRect());
     if(!r || !r.width || !r.height) return {x:LOGW/2, y:LOGH/2};
     return { x:(clientX-r.left)*(LOGW/r.width), y:(clientY-r.top)*(LOGH/r.height) };
   }catch(e){ return {x:LOGW/2, y:LOGH/2}; }
@@ -2224,7 +2237,10 @@ function pfLevelList(){   // 내장 3 + 승인된 플랫포머 레벨(비활성 
     } }catch(e){}
   return out;
 }
-function pfOpenSelect(){ pfSelIdx=Math.min(pfUnlockedCount()-1, PF_LEVELS.length-1); gameState=STATE.PF_SELECT; }   // P1.5: 커서=이어할 스테이지
+/* PERF-2: 선택 화면 데이터 캐시 — 프레임마다 localStorage JSON.parse(레벨 목록·베스트·해금) 하던 것 제거 */
+let _pfSel=null;
+function pfSelRefresh(){ _pfSel={ list:pfLevelList(), best:pfLoadBest(), unlocked:pfUnlockedCount() }; }
+function pfOpenSelect(){ pfSelRefresh(); pfSelIdx=Math.min(_pfSel.unlocked-1, PF_LEVELS.length-1); gameState=STATE.PF_SELECT; }   // P1.5: 커서=이어할 스테이지
 function pfTileAt(c,r){
   if(c<0||c>=PF.cols) return "#";                 // 좌우 경계 = 벽
   if(r<0) return ".";
@@ -2305,6 +2321,8 @@ function pfClear(){
     best[id]=rec;
   }
   pfSaveBest(best);
+  PF.bestView=best[id];   // PERF-2: 클리어 오버레이가 프레임마다 localStorage 파싱하지 않게 스냅샷
+  _pfSel=null;            // PERF-2: 선택 화면 캐시 무효화(기록·해금 갱신)
   try{ saveProfile(); }catch(e){}
 }
 function pfJumpPressed(){   // keydown 에지(Z/Space) 또는 터치 점프 버튼
@@ -2628,7 +2646,7 @@ function pfRender(){
     ctx.fillStyle="#ffe14d"; ctx.font="bold 54px 'Malgun Gothic',sans-serif"; ctx.fillText("🏁 클리어!", LOGW/2, 240);
     ctx.fillStyle="#ffffff"; ctx.font="bold 26px 'Malgun Gothic',sans-serif";
     ctx.fillText(PF.time.toFixed(2)+"초 · ⭐ "+PF.stars+"/"+PF.starsTotal+" · 💀 "+PF.deaths, LOGW/2, 300);
-    const best=pfLoadBest()[PF.level.id];
+    const best=PF.bestView;   // PERF-2: pfClear에서 저장한 스냅샷(프레임당 JSON.parse 제거)
     if(!PF.test && best){ ctx.fillStyle="#9fe0ff"; ctx.font="16px 'Malgun Gothic',sans-serif"; ctx.fillText("베스트 "+best.time.toFixed(2)+"초 · ⭐ "+(best.stars||0), LOGW/2, 336); }
     ctx.fillStyle="#ffe066"; ctx.font="bold 18px 'Malgun Gothic',sans-serif";
     const hasNext=(PF.level.camp!==undefined && PF.level.camp+1<PF_LEVELS.length);
@@ -2656,14 +2674,15 @@ function drawPfSelect(){
   ctx.fillStyle="#7dffb0"; ctx.font="bold 36px 'Malgun Gothic',sans-serif"; ctx.fillText("🦘 별빛 점프 원정", LOGW/2, 78);
   ctx.fillStyle="#8893bb"; ctx.font="14px 'Malgun Gothic',sans-serif";
   ctx.fillText("초원→동굴→요새→심연 20스테이지 — 클리어하면 다음이 열려요 · 맵공방 승인 맵은 목록 아래에", LOGW/2, 112);
-  const list=pfLevelList(), best=pfLoadBest(), unlocked=pfUnlockedCount();
+  if(!_pfSel) pfSelRefresh();   // PERF-2: 캐시 사용(진입·클리어 시 갱신)
+  const list=_pfSel.list, best=_pfSel.best, unlocked=_pfSel.unlocked;
   if(pfSelIdx>=list.length) pfSelIdx=0;
   const SHOW=9, start=clamp(pfSelIdx-4, 0, Math.max(0,list.length-SHOW));
   let y=142;
   if(start>0){ ctx.fillStyle="#8893bb"; ctx.fillText("▲ 위로 "+start+"개", LOGW/2, y); }
   y+=18;
   for(let i=start;i<list.length && i<start+SHOW;i++){
-    const lv=list[i], sel=(i===pfSelIdx), b=best[lv.id], locked=pfLevelLocked(lv);
+    const lv=list[i], sel=(i===pfSelIdx), b=best[lv.id], locked=(lv.camp!==undefined && lv.camp>=unlocked);
     const camp=(lv.camp!==undefined);
     const label = locked
       ? "🔒 "+(lv.camp+1)+". ??? — 이전 스테이지를 클리어하면 열려요"
@@ -2678,7 +2697,8 @@ function drawPfSelect(){
   ctx.restore();
 }
 function handlePfSelectKey(code){
-  const list=pfLevelList();
+  if(!_pfSel) pfSelRefresh();
+  const list=_pfSel.list;   // PERF-2: 키 반복 입력마다 스토어 파싱 방지
   if(code==="Escape"){ goToStartScreen(); return; }
   if(code==="ArrowUp"){ pfSelIdx=(pfSelIdx+list.length-1)%list.length; return; }
   if(code==="ArrowDown"){ pfSelIdx=(pfSelIdx+1)%list.length; return; }
@@ -3117,6 +3137,8 @@ const ED_CELL_COLOR={ ".":null, W:"#878da8", B:"#5ad36b", S:"#ff6a6a", L:"#7fd88
 const EDITOR_STORE_KEY="starArena.editorMaps.v1";
 let ED=null;            // 에디터 상태
 let reviewIdx=0;        // 교사 승인 화면 선택
+let _adminPendingN=-1, _adminPendingT=-99;   // PERF-2: 관리자 푸터 대기 맵 수 캐시
+let _reviewSt=null;                          // PERF-2: 승인 화면 스토어 스냅샷(진입·조작·동기화 시 갱신)
 function loadEditorStore(){
   try{ const s=JSON.parse(localStorage.getItem(EDITOR_STORE_KEY)); if(s && s.pending && s.approved) return s; }catch(e){}
   return { pending:[], approved:[] };
@@ -3152,10 +3174,11 @@ function edSlotSave(i){
           cols:ED.cols, rows:ED.rows, half:ED.half, cells:ED.cells.map(r=>r.slice()), savedAt:Date.now() };
   edSaveSlots(sl);
   ED.slot.confirm=-1; ED.slot.flashIdx=i; ED.slot.flashUntil=uiTime+1.4;
+  ED.slot.list=sl;   // PERF-2: 오버레이 렌더 캐시 갱신
   showToast("💾 슬롯 "+(i+1)+"에 저장했어요!"); playSfx("buff");
 }
 function edSlotLoad(i){
-  const s=edLoadSlots()[i]; if(!s){ ED.slot.msg="빈 슬롯이에요"; return; }
+  const s=(ED.slot.list||edLoadSlots())[i]; if(!s){ ED.slot.msg="빈 슬롯이에요"; return; }
   ED.mode=s.mode; ED.modeIdx=s.modeIdx||0; ED.sizeIdx=s.sizeIdx||0; ED.floorIdx=s.floorIdx||0;
   ED.cols=s.cols; ED.rows=s.rows; ED.half=s.half; ED.cells=s.cells.map(r=>r.slice());
   ED.pf=(s.mode==="platformer"); ED.step="edit"; ED.undo=[]; ED.testCleared=false;
@@ -3164,7 +3187,7 @@ function edSlotLoad(i){
   showToast("📂 「"+(s.name||"맵")+"」 불러왔어요");
 }
 function handleSlotKey(code){
-  const S=ED.slot, sl=edLoadSlots();
+  const S=ED.slot, sl=S.list||(S.list=edLoadSlots());   // PERF-2
   if(code==="Escape"||code==="KeyS"){ ED.slot=null; return; }
   if(code==="ArrowUp"){ S.idx=(S.idx+4)%5; S.confirm=-1; S.msg=""; return; }
   if(code==="ArrowDown"){ S.idx=(S.idx+1)%5; S.confirm=-1; S.msg=""; return; }
@@ -3176,12 +3199,12 @@ function handleSlotKey(code){
   if(code==="KeyX"||code==="Delete"||code==="Backspace"){
     if(!sl[S.idx]) return;
     if(S.confirm!==100+S.idx){ S.confirm=100+S.idx; S.msg="⚠ 삭제하려면 한 번 더 X"; return; }
-    sl[S.idx]=null; edSaveSlots(sl); S.confirm=-1; S.msg=""; showToast("🗑 슬롯 "+(S.idx+1)+" 비웠어요");
+    sl[S.idx]=null; edSaveSlots(sl); S.list=sl; S.confirm=-1; S.msg=""; showToast("🗑 슬롯 "+(S.idx+1)+" 비웠어요");
     return;
   }
 }
 function drawSlotOverlay(){
-  const S=ED.slot, sl=edLoadSlots();
+  const S=ED.slot, sl=S.list||(S.list=edLoadSlots());   // PERF-2: 프레임당 JSON.parse 제거
   dimScreen(0.72);
   ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
   ctx.fillStyle="#9fe0ff"; ctx.font="bold 30px 'Malgun Gothic',sans-serif"; ctx.fillText("💾 저장 슬롯", LOGW/2, 84);
@@ -3319,7 +3342,7 @@ function handleEditorKey(code){
   // step === "edit"
   if(ED.slot){ handleSlotKey(code); return; }               // BIG-BATCH-2 P1-A: 저장 슬롯 열림 → 슬롯 키만
   const pal=edPalette();
-  if(code==="KeyS"){ ED.slot={idx:0, confirm:-1, msg:"", flashIdx:-1, flashUntil:0}; return; }   // P1-A: 저장 슬롯
+  if(code==="KeyS"){ ED.slot={idx:0, confirm:-1, msg:"", flashIdx:-1, flashUntil:0, list:edLoadSlots()}; return; }   // P1-A: 저장 슬롯(PERF-2: 목록은 열 때 1회 로드)
   if(code==="Escape"){ goToStartScreen(); return; }         // C8: 초안 자동저장이 있어 나가도 소실 없음(다시 열면 복원)
   if(code==="ArrowUp"){ ED.cur.r=(ED.cur.r+ED.rows-1)%ED.rows; return; }
   if(code==="ArrowDown"){ ED.cur.r=(ED.cur.r+1)%ED.rows; return; }
@@ -3437,6 +3460,7 @@ function edSubmit(){
   try{ MapStore.pushRec("pending", rec, function(ok){
     if(ok){ const cur=loadEditorStore(); const hit=cur.pending.find(x=>x.id===rec.id); if(hit){ hit._synced=true; saveEditorStore(cur); } } }); }catch(e){}
   edClearDraft();                                          // C8: 제출 성공 → 초안 정리
+  _reviewSt=null; _adminPendingN=-1; _pfSel=null;          // PERF-2: 화면 캐시 무효화
   showToast("제출 완료! 선생님 승인을 기다려요 🛠");
   goToStartScreen();
 }
@@ -3543,6 +3567,7 @@ function handleMapReviewKey(code){
       showToast((it.rec.disabled?"⏸ 비활성: ":"▶ 활성: ")+it.rec.name);
     } else return;
   }
+  _reviewSt=null; _adminPendingN=-1;   // PERF-2: 조작 후 캐시 무효화(다음 프레임 재로드)
   const n=reviewList(loadEditorStore()).length;
   if(reviewIdx>=n) reviewIdx=Math.max(0,n-1);
 }
@@ -3630,7 +3655,7 @@ function handleAdminKey(code){
   if(code==="KeyX"||code==="Delete"){ adminDeleteStudent(); return; } // 계정 삭제
   if(code==="KeyS"){ adminRefreshFromCloud(); return; }         // 클라우드 새로고침
   if(code==="KeyM"){ adminMigrateLocal(); return; }             // 로컬 계정 클라우드 이전
-  if(code==="KeyG"){ reviewIdx=0; gameState=STATE.MAP_REVIEW; try{ MapStore.sync(); }catch(e){} return; }   // OVERNIGHT-1: 학생 맵 승인 + P3: 열 때 클라우드 동기화
+  if(code==="KeyG"){ reviewIdx=0; _reviewSt=null; gameState=STATE.MAP_REVIEW; try{ MapStore.sync(); }catch(e){} return; }   // OVERNIGHT-1: 학생 맵 승인 + P3: 열 때 클라우드 동기화
   if(code==="KeyB"){ BAL.cat=0; BAL.idx=0; BAL.scroll=0; BAL.edit=null; BAL.confirmReset=0; gameState=STATE.BALANCE; return; }   // BALANCE-1: 밸런스 조정
 }
 function adminCreateStudent(){
@@ -6020,7 +6045,8 @@ function drawAdminScreen(){
   } else { ctx.fillStyle="#9a90b8"; ctx.font="16px 'Malgun Gothic',sans-serif"; ctx.fillText("왼쪽에서 학생을 선택하세요 (없으면 A 로 생성)", rx+24, ry2+50); }
   // 하단 액션 안내
   ctx.fillStyle="#d6cdee"; ctx.font="bold 15px 'Malgun Gothic',sans-serif";
-  ctx.fillText("A 만들기 · P PIN재설정 · R 초기화 · X 삭제 · S 새로고침 · M 클라우드이전 · G 맵승인("+loadEditorStore().pending.length+") · B 밸런스 조정 · ↑↓ · Esc", rx+24, ry2+440);
+  if(_adminPendingN<0 || uiTime-_adminPendingT>2){ _adminPendingN=loadEditorStore().pending.length; _adminPendingT=uiTime; }   // PERF-2: 프레임당 파싱 → 2초 캐시
+  ctx.fillText("A 만들기 · P PIN재설정 · R 초기화 · X 삭제 · S 새로고침 · M 클라우드이전 · G 맵승인("+_adminPendingN+") · B 밸런스 조정 · ↑↓ · Esc", rx+24, ry2+440);
   ctx.fillStyle="#6f6a80"; ctx.font="12px 'Malgun Gothic',sans-serif";
   ctx.fillText("생성/변경은 로컬+클라우드에 저장. PIN은 해시 저장(원문 미저장). 다른 기기 로그인은 M(이전) 후 가능.", rx+24, ry2+470);
   ctx.restore();
@@ -6058,6 +6084,7 @@ function drawMenuStarfield(){
 /* v1.21 성능: 정적 월드(바닥+함정+풀숲+장애물) 프리렌더.
    맵이 바뀌거나 월드 이미지가 새로 로드되면 키가 바뀌어 자동 재생성. 그 외에는 매 프레임 drawImage 1회. */
 let _worldLayer=null, _worldLayerKey="";
+let _worldLayerBig=null, _worldLayerBigKey="";   // PERF-2: 대형맵(줌아웃) 월드 크기 프리렌더
 function _worldImgKey(){
   let n=0; for(const k of ["tile_floor","tile_grass","tile_snow","tile_sand","tile_wood","tile_void","bush","bush_tiles","ob_crystal","ob_box","ob_rock","trap_damage","trap_slow","ice_field"]) if(worldImage(k)) n++;
   return n;
@@ -6069,7 +6096,28 @@ function drawStaticWorld(){
     const si=(OnlineManager.role==="host")?tPve.stageIndex:((OnlineManager.onlineState&&OnlineManager.onlineState.pve)?OnlineManager.onlineState.pve.stageIndex:0);
     key+="|z"+campZoneIdx(si||0)+"|t"+tCampTraps.length;    // CAMPAIGN-2: 구역 바닥·함정이 바뀌면 재합성
   }
-  if(CAM.on){ drawArenaFloor(); drawTraps(); drawBushes(); drawObstacles(); return; }   // P4: 줌아웃 맵은 캐시(LOGW 크기) 대신 직접 그림
+  if(CAM.on){   // P4+PERF-2: 줌아웃 맵은 월드 크기 오프스크린에 1회 합성 → 프레임당 스케일 blit 1회(약한 GPU에서 바닥 타일·clip 반복 비용 제거)
+    const bw=Math.ceil(ARENA.x+ARENA.w+24), bh=Math.ceil(ARENA.y+ARENA.h+24);
+    const bkey="big|"+key+"|"+bw+"x"+bh;
+    if(_worldLayerBigKey!==bkey){
+      if(_worldLayerBig===null){
+        try{ const cv=document.createElement("canvas");
+          if(cv && typeof cv.getContext==="function") _worldLayerBig=cv; else _worldLayerBig=false;
+        }catch(e){ _worldLayerBig=false; }
+      }
+      if(_worldLayerBig){
+        _worldLayerBig.width=bw; _worldLayerBig.height=bh;
+        const real=ctx, lc=_worldLayerBig.getContext("2d");
+        ctx=lc;
+        try{ drawArenaFloor(); drawTraps(); drawBushes(); drawObstacles(); }
+        finally{ ctx=real; }
+      }
+      _worldLayerBigKey=bkey;
+    }
+    if(_worldLayerBig) ctx.drawImage(_worldLayerBig,0,0);
+    else { drawArenaFloor(); drawTraps(); drawBushes(); drawObstacles(); }
+    return;
+  }
   if(_worldLayerKey!==key){
     if(_worldLayer===null){
       try{ const cv=document.createElement("canvas");
@@ -7093,7 +7141,7 @@ function drawEditorGrid(){
 }
 function drawMapReviewScreen(){
   dimScreen(0.85);
-  const st=loadEditorStore();
+  const st=_reviewSt||(_reviewSt=loadEditorStore());   // PERF-2: 프레임당 JSON.parse 제거
   ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
   ctx.fillStyle="#c79bff"; ctx.font="bold 34px 'Malgun Gothic',sans-serif"; ctx.fillText("🛠 학생 맵 승인 (교사)", LOGW/2, 70);
   ctx.fillStyle="#b0a0d0"; ctx.font="14px 'Malgun Gothic',sans-serif";
@@ -8843,8 +8891,11 @@ function tUpdateGuest(dt){
   // PVE: host가 보낸 현재 스테이지 맵으로 장애물/풀숲을 맞춘다(보이는 벽=실제 충돌)
   if(s.pve && s.pve.mapId && s.pve.mapId!==tMapId){ tMapId=s.pve.mapId; const m=getMap(tMapId); OBSTACLES=m.obstacles.slice(); BUSHES=m.bushes; tGuestStructSig=""; }
   if(s.structs) tGuestApplyStructs(s.structs);                       // v1.22: 구조물 상태+충돌 동기화
-  if(getOnlineMode(OnlineManager.mode).modeType==="pvp") tGuestApplyRule(s);   // BIG-BATCH-2 P2: 규칙 뷰 동기화
-  if(s!==tLastStateRef){ tLastStateRef=s; tBulletsView=(s.bullets||[]).map(b=>({ x:b.x,y:b.y,vx:b.vx||0,vy:b.vy||0,r:b.r,c:b.c,w:b.w||null })); }
+  if(s!==tLastStateRef){
+    tLastStateRef=s;
+    tBulletsView=(s.bullets||[]).map(b=>({ x:b.x,y:b.y,vx:b.vx||0,vy:b.vy||0,r:b.r,c:b.c,w:b.w||null }));
+    if(getOnlineMode(OnlineManager.mode).modeType==="pvp") tGuestApplyRule(s);   // P2+PERF-2: 새 패킷일 때만(페인트 RLE 디코드 60→15Hz)
+  }
   for(const b of tBulletsView){ b.x+=b.vx*dt; b.y+=b.vy*dt; }
   const myslot=OnlineManager.mySlot, k=Math.min(1,dt*18);
   for(const slot in s.fighters){
