@@ -12,7 +12,7 @@ const canvasStub={width:1280,height:720,style:{},getContext:()=>ctxStub};
 const listeners={}; function addEventListener(t,cb){ (listeners[t]=listeners[t]||[]).push(cb); }
 const LS={}; const lsS={getItem:k=>(k in LS?LS[k]:null),setItem:(k,v)=>{LS[k]=String(v);},removeItem:k=>{delete LS[k];}};
 // ── 부팅 전에 교사 밸런스 저장값을 심는다: 함정 피해 30 · 럭키 체력 260(파생값→hpMul 환산 확인) ──
-LS["starArena.balance.v1"]=JSON.stringify({ "g.trapDamage":30, "char.student_01.hp":260, "r.siege.wallHp":60 });
+LS["starArena.balance.v1"]=JSON.stringify({ "g.trapDamage":30, "char.student_01.hp":260, "r.siege.wallHp":45 });
 globalThis.window={innerWidth:1366,innerHeight:768,devicePixelRatio:2,addEventListener,localStorage:lsS,prompt:()=>"t"};
 globalThis.document={getElementById:()=>canvasStub,addEventListener,hidden:false};
 globalThis.localStorage=lsS;
@@ -33,7 +33,7 @@ console.log("=== 1) 부팅 시 저장된 밸런스 적용 ===");
 run("직접값·파생값·규칙값 반영", ()=>{
   check("함정 피해 12→30 적용", api.GAME_CONFIG.trapDamage===30);
   check("럭키 체력 100→260 (hpMul=2.6 환산)", approx(api.getCharacter("student_01").hpMul, 2.6, 1e-6));
-  check("쿠션벽 HP 120→60 적용", api.RULE_CONFIG.siege.wallHp===60);
+  check("쿠션벽 HP 60→45 적용", api.RULE_CONFIG.siege.wallHp===45);
 });
 run("적용값이 실제 전투 생성에 반영", ()=>{
   api.setSel("student_01","tool_01"); api.startGame();
@@ -74,7 +74,7 @@ run("전체 초기화", ()=>{
   api.balResetAll();
   check("trapDamage 기본(12) 복원", api.GAME_CONFIG.trapDamage===12);
   check("럭키 hpMul 기본(1.0) 복원", approx(api.getCharacter("student_01").hpMul, 1.0, 1e-6));
-  check("쿠션벽 120 복원", api.RULE_CONFIG.siege.wallHp===120);
+  check("쿠션벽 기본(60) 복원", api.RULE_CONFIG.siege.wallHp===60);
   check("저장소 비움 + 수정 0개", Object.keys(api.loadBalanceStore()).length===0 && api.balModifiedCount()===0);
 });
 run("퍼센트 필드 입력(30 → 0.30)", ()=>{

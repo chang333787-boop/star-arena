@@ -67,6 +67,8 @@ script += `
   get bossActive(){return bossActive;},
   get bossDefeated(){return bossDefeated;},
   get matchGoldEarned(){return matchGoldEarned;},
+  get matchExpEarned(){return matchExpEarned;},
+  get matchIdle(){return matchIdle;},
   get matchRewardGiven(){return matchRewardGiven;},
   get shopItems(){return shopItems;},
   get superGauge(){return superGauge;},
@@ -239,8 +241,8 @@ run("수정부수기(siege): 3v3 강제·구조물·탑 파괴 즉시 승리", (
   check("3v3 강제", api.enemies.length===3 && api.allies.length===2);
   check("매치 180초·리스폰 5초", api.matchTimeLimit()===180 && api.MATCH.respawnDelay===5);
   const R=api.RULE;
-  check("팀 수정탑 2개(HP450 — OVERNIGHT-1 2-7)", R.towers.player.hp===450 && R.towers.enemy.hp===450);
-  check("건설 벽 6개(팀당 3·HP120)", api.obstacles.filter(o=>o.sid&&o.sid.indexOf("rwall_")===0&&o.hp===120).length===6);
+  check("팀 수정탑 2개(HP650 — BIG-BATCH-1 F18)", R.towers.player.hp===650 && R.towers.enemy.hp===650);
+  check("건설 벽 6개(팀당 3·HP60 — F18)", api.obstacles.filter(o=>o.sid&&o.sid.indexOf("rwall_")===0&&o.hp===60).length===6);
   // 포탑 자동 공격: 적을 사거리 안에 두고 tick → 포탑 탄 생성
   const tw=R.towers.player, e=api.enemies[0];
   e.x=tw.x-80; e.y=tw.y+tw.h/2; e.invincibleTimer=0;
@@ -317,7 +319,17 @@ run("맵공방 E2E(점령전 맵)", ()=>{
   api.setSel("student_01","tool_01","normal","ed_test1","solo"); api.startGame();
   check("에디터 맵으로 점령전 시작", api.state==="playing");
   check("거점 = 에디터 배치점(중심선 x=640·r4 y=322)", Math.abs(api.RULE.x-640)<1 && Math.abs(api.RULE.y-322)<1);
-  api.setRule("tdm"); api.setState("start");
+  api.setRule("tdm");
+  // BIG-BATCH-1 D11: 승인맵 운영 관리 — 비활성/재활성/삭제가 MAPS에 즉시 반영
+  api.setState("map_review");
+  api.handleKeyPress("KeyD");                                 // 첫 항목 = 방금 승인된 ed_test1
+  check("D 비활성 → 맵 목록에서 내려감", !api.MAPS.find(mm=>mm.id==="ed_test1"));
+  api.handleKeyPress("KeyD");
+  check("D 재활성 → 맵 목록 복귀", !!api.MAPS.find(mm=>mm.id==="ed_test1"));
+  api.handleKeyPress("KeyX");
+  check("X 삭제 → 승인 목록·맵 목록 모두 제거", api.loadEditorStore().approved.length===0 && !api.MAPS.find(mm=>mm.id==="ed_test1"));
+  check("선택 맵이 사라지면 훈련장으로 복귀", api.profile.selectedMapId==="training");
+  api.setState("start");
   api.saveEditorStore({pending:[],approved:[]});              // 정리(다음 테스트 오염 방지)
 });
 
@@ -379,6 +391,13 @@ run("시간 종료 → over + 보상 1회 + 골드 적립", ()=>{
   const goldAfterOver = api.profile.gold;
   frames(30); // over 상태에서 추가 프레임 → 보상 중복 없어야
   check("over 추가 프레임에도 골드 그대로", api.profile.gold===goldAfterOver);
+});
+run("BIG-BATCH-1 E16/E17: 경험치 지급 + 방치 보상 감소", ()=>{
+  // 위 매치는 플레이어 입력이 없어 '기여 0'(방치) — 경험치는 지급되되 30% 배율
+  check("경험치 지급됨(matchExpEarned>0)", api.matchExpEarned>0);
+  check("방치 판정(matchIdle=true)", api.matchIdle===true);
+  check("방치 배율 적용(패배 15의 30% 내외 ≤8)", api.matchExpEarned<=8);
+  check("프로필 exp/level 필드 반영", (api.profile.exp||0)>=0 && (api.profile.level||1)>=1);
 });
 run("여러 번 재시작해도 안전", ()=>{ api.startGame(); frames(10); api.startGame(); frames(10); api.startGame(); frames(10); check("재시작 후 playing", api.state==="playing"); });
 
@@ -696,11 +715,11 @@ run("로비 행 매핑(캠페인/빠른대전/값행/상점/수집/설정)", ()=
   check("설정 → 조작 방식 마우스로 전환", api.profile.controlMode==="mouse");
   api.handleKeyPress("ArrowLeft");                              // 되돌리기(키보드)
   check("설정 → 조작 방식 키보드 복귀", api.profile.controlMode==="keyboard");
-  api.handleKeyPress("ArrowDown"); api.handleKeyPress("ArrowDown"); api.handleKeyPress("Enter"); // 2 = 로그아웃
+  api.handleKeyPress("ArrowDown"); api.handleKeyPress("ArrowDown"); api.handleKeyPress("ArrowDown"); api.handleKeyPress("Enter"); // 3 = 로그아웃
   check("설정 → 로그아웃(로그인 화면)", api.state==="login");
   api.setState("start"); api.setMenuIndex(11); api.handleKeyPress("Enter");
-  api.handleKeyPress("ArrowDown"); api.handleKeyPress("ArrowDown"); api.handleKeyPress("ArrowDown");
-  let threw=false; try{ api.handleKeyPress("Enter"); }catch(e){ threw=true; }  // 3 = 교사용
+  api.handleKeyPress("ArrowDown"); api.handleKeyPress("ArrowDown"); api.handleKeyPress("ArrowDown"); api.handleKeyPress("ArrowDown");
+  let threw=false; try{ api.handleKeyPress("Enter"); }catch(e){ threw=true; }  // 4 = 교사용
   check("설정 → 교사용 로그인(admin_login)", !threw && api.state==="admin_login");
   api.setState("start");
 });
