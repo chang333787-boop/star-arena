@@ -1435,7 +1435,8 @@ const STATE = { START:"start", SHOP:"shop",
   PLAYING:"playing", PAUSED:"paused", OVER:"over", ASSET_CHECK:"asset_check",
   PROFILE:"profile", COLLECTION:"collection", LOGIN:"login", ADMIN:"admin",
   SPLASH:"splash", ADMIN_LOGIN:"admin_login",
-  EDITOR:"editor", MAP_REVIEW:"map_review" };   /* OVERNIGHT-1 Phase 4: 맵공방 + 교사 맵 승인 */
+  EDITOR:"editor", MAP_REVIEW:"map_review",     /* OVERNIGHT-1 Phase 4: 맵공방 + 교사 맵 승인 */
+  BALANCE:"balance" };                          /* BALANCE-1: 교사용 밸런스 조정 콘솔 */
 let gameState = STATE.SPLASH;
 let splashTimer = 0;
 let loginMsg = "";          // 로그인 안내/오류
@@ -1551,6 +1552,7 @@ function handleKeyPress(code){
   if(gameState === STATE.LOGIN){ handleLoginKey(code); return; }
   if(gameState === STATE.ADMIN_LOGIN){ handleAdminLoginKey(code); return; }
   if(gameState === STATE.ADMIN){ handleAdminKey(code); return; }
+  if(gameState === STATE.BALANCE){ handleBalanceKey(code); return; }   // BALANCE-1: 교사용 밸런스 콘솔
   if(gameState === STATE.START){ handleStartKey(code); return; }
   if(gameState === STATE.EDITOR){ handleEditorKey(code); return; }        // OVERNIGHT-1: 맵공방
   if(gameState === STATE.MAP_REVIEW){ handleMapReviewKey(code); return; } // OVERNIGHT-1: 교사 맵 승인
@@ -1616,6 +1618,310 @@ function handleStartKey(code){
   if(code==="KeyQ"){ doLogout(); return; }                    // 로그아웃(단축키 유지 · 메뉴는 설정 안)
 }
 function openSettings(){ settingsOpen=true; settingsIndex=0; }
+
+/* =======================================================================
+   BALANCE-1 · 교사용 밸런스 조정 콘솔
+   - 게임의 모든 핵심 수치(전투 공통·캐릭터·도구·스킬·몬스터·규칙·성장·난이도)를
+     이름·사진과 함께 보면서 직접 입력(Enter) 또는 미세 조절(←→)
+   - 변경 즉시 이 기기에 저장(localStorage) + 게임 데이터에 반영(다음 매치부터 확실 적용)
+   - 기본값 = 코드 원본 값(부팅 시 캡처). R = 항목 복원 · F F = 전체 초기화
+   - 진입: 교사 패널에서 B
+   ======================================================================= */
+const BALANCE_STORE_KEY="starArena.balance.v1";
+let _balReg=null;
+let BAL={ cat:0, idx:0, scroll:0, edit:null, confirmReset:-99 };
+function loadBalanceStore(){ try{ const s=JSON.parse(localStorage.getItem(BALANCE_STORE_KEY)); if(s && typeof s==="object") return s; }catch(e){} return {}; }
+function saveBalanceStore(st){ try{ localStorage.setItem(BALANCE_STORE_KEY, JSON.stringify(st)); }catch(e){} }
+function balanceFields(){
+  if(_balReg) return _balReg;
+  const cats=[];
+  // mk: 값 접근자 기반 필드(파생값 — 예: 캐릭터 '실제 체력'을 편집하면 내부 배율로 환산 저장)
+  const mk=(id,label,get,set,min,max,step,opt)=>Object.assign({id,label,get,set,min,max,step,dec:0,def:get()},opt||{});
+  const num=(id,label,obj,prop,min,max,step,opt)=>mk(id,label,()=>obj[prop],v=>{obj[prop]=v;},min,max,step,opt);
+  const pct=(id,label,obj,prop,min,max,opt)=>num(id,label,obj,prop,min,max,0.01,Object.assign({fmt:"pct",dec:2},opt||{}));
+
+  // ── 1) 전투 공통 ──
+  const G=GAME_CONFIG;
+  cats.push({ name:"전투 공통", fields:[
+    num("g.playerMaxHp","플레이어 기본 체력",G,"playerMaxHp",40,400,5),
+    num("g.playerDamage","플레이어 기본 공격력",G,"playerDamage",4,60,1),
+    num("g.playerAttackCooldown","기본 공격 간격(초)",G,"playerAttackCooldown",0.2,1.5,0.02,{dec:2}),
+    num("g.playerMoveSpeed","플레이어 이동 속도",G,"playerMoveSpeed",120,400,5),
+    num("g.playerRange","기본 사거리",G,"playerRange",200,900,10),
+    num("g.regenRate","초당 회복량(전투 후)",G,"regenRate",0,40,1),
+    num("g.regenStartTime","회복 시작 시간(초)",G,"regenStartTime",1,8,0.5,{dec:1}),
+    num("g.respawnDelay","리스폰 시간(초)",G,"respawnDelay",1,10,0.5,{dec:1}),
+    num("g.invincibleTime","리스폰 무적(초)",G,"invincibleTime",0,5,0.5,{dec:1}),
+    num("g.gameTime","섬멸전 시간(초)",G,"gameTime",30,300,10),
+    num("g.superCharge","궁극기 게이지 최대",G,"superCharge",50,300,10),
+    num("g.superChargePerHit","명중당 게이지 충전",G,"superChargePerHit",5,50,1),
+    num("g.trapDamage","가시 함정 피해",G,"trapDamage",0,40,1),
+    pct("g.trapSlowMul","끈끈이 이동 배율",G,"trapSlowMul",0.2,1),
+    pct("g.trapIceMul","얼음 가속 배율",G,"trapIceMul",1,2),
+    num("g.enemyMaxHp","몬스터 기본 체력(구형)",G,"enemyMaxHp",40,300,5),
+    num("g.enemyDamage","몬스터 기본 공격력(구형)",G,"enemyDamage",4,40,1)
+  ]});
+
+  // ── 2) 캐릭터(실효값으로 편집 — 내부 배율 자동 환산) ──
+  const chf=[];
+  for(const ch of STUDENT_CHARACTERS){
+    const icon={kind:"char",id:ch.id,color:ch.color};
+    chf.push(mk("char."+ch.id+".hp","체력",
+      ()=>Math.round(GAME_CONFIG.playerMaxHp*ch.hpMul),
+      v=>{ ch.hpMul=v/GAME_CONFIG.playerMaxHp; },30,500,5,{group:ch.name,icon:icon}));
+    chf.push(mk("char."+ch.id+".speed","이동 속도",
+      ()=>Math.round(GAME_CONFIG.playerMoveSpeed*ch.speedMul),
+      v=>{ ch.speedMul=v/GAME_CONFIG.playerMoveSpeed; },100,400,5,{group:ch.name}));
+    chf.push(num("char."+ch.id+".dmgMul","피해 배율",ch,"damageMul",0.5,2.5,0.05,{group:ch.name,dec:2}));
+  }
+  cats.push({ name:"캐릭터", fields:chf });
+
+  // ── 3) 도구(Z 기본공격 — 실효값 편집) ──
+  const wf=[];
+  for(const ch of STUDENT_CHARACTERS){
+    const w=getWeapon(getWeaponForCharacter(ch.id)), gname=ch.name+" · "+w.name;
+    const icon={kind:"char",id:ch.id,color:ch.color};
+    wf.push(mk("tool."+w.id+".dmg","한 발 피해",
+      ()=>Math.round(GAME_CONFIG.playerDamage*w.damageMul*10)/10,
+      v=>{ w.damageMul=v/GAME_CONFIG.playerDamage; },1,80,1,{group:gname,icon:icon,dec:1}));
+    wf.push(mk("tool."+w.id+".cd","공격 간격(초)",
+      ()=>Math.round(GAME_CONFIG.playerAttackCooldown*w.cooldownMul*100)/100,
+      v=>{ w.cooldownMul=v/GAME_CONFIG.playerAttackCooldown; },0.2,2,0.05,{group:gname,dec:2}));
+    wf.push(mk("tool."+w.id+".range","사거리",
+      ()=>Math.round(GAME_CONFIG.playerRange*w.rangeMul),
+      v=>{ w.rangeMul=v/GAME_CONFIG.playerRange; },100,1000,10,{group:gname}));
+  }
+  cats.push({ name:"도구(Z)", fields:wf });
+
+  // ── 4) 스킬(X/C — 캐릭터별 핵심 수치) ──
+  const A=ABILITY, sf=[];
+  const skl=(cid,gname,label,obj,prop,min,max,step,opt)=>sf.push(num("skill."+cid+"."+prop+"."+label,label,obj,prop,min,max,step,Object.assign({group:gname,icon:{kind:"char",id:cid}},opt||{})));
+  skl("student_01","럭키","X 쿨타임(초)",A.student_01.x,"cd",2,20,0.5,{dec:1});
+  skl("student_01","럭키","X 발당 피해",A.student_01.x,"dmg",2,30,1);
+  skl("student_01","럭키","X 대상당 최대 피해",A.student_01.x,"maxPerTarget",9,90,3);
+  skl("student_01","럭키","C 폭발 피해",A.student_01.c,"dmg",10,120,5);
+  skl("student_02","달이","X 쿨타임(초)",A.student_02.x,"cd",2,20,0.5,{dec:1});
+  skl("student_02","달이","X 강화탄 피해",A.student_02.x,"dmg",10,90,2);
+  skl("student_02","달이","C 저격 피해",A.student_02.c,"dmg",15,130,5);
+  skl("student_02","달이","C 시전 시간(초)",A.student_02.c,"wind",0.1,1,0.05,{dec:2});
+  skl("student_03","시고니","X 쿨타임(초)",A.student_03.x,"cd",2,25,0.5,{dec:1});
+  skl("student_03","시고니","가시 하나 피해",A.student_03.x,"dmg",2,30,1);
+  skl("student_03","시고니","C 질주 지속(초)",A.student_03.c,"dur",1,8,0.5,{dec:1});
+  skl("student_03","시고니","C 시작 무적(초)",A.student_03.c,"invuln",0,3,0.25,{dec:2});
+  skl("student_04","눈꽃","X 쿨타임(초)",A.student_04.x,"cd",2,20,0.5,{dec:1});
+  sf.push(num("skill.student_04.slowPct.서리 둔화","서리 둔화(%)",A.student_04.x,"slowPct",0,0.6,0.05,{group:"눈꽃",icon:{kind:"char",id:"student_04"},fmt:"pct",dec:2}));
+  skl("student_04","눈꽃","C 폭발 피해",A.student_04.c,"dmg",5,90,5);
+  skl("student_04","눈꽃","C 빙결 시간(초)",A.student_04.c,"freeze",0,2.5,0.25,{dec:2});
+  skl("student_05","모아","X 쿨타임(초)",A.student_05.x,"cd",2,25,0.5,{dec:1});
+  skl("student_05","모아","오라 초당 회복",A.student_05.x,"hps",2,30,1);
+  skl("student_05","모아","C 무적 시간(초)",A.student_05.c,"invuln",0.4,3,0.1,{dec:1});
+  skl("student_05","모아","패시브 초당 회복",A.student_05.passive,"hps",0,20,1);
+  skl("student_06","별골렘","X 쿨타임(초)",A.student_06.x,"cd",2,20,0.5,{dec:1});
+  skl("student_06","별골렘","젤리 방패 흡수량",A.student_06.x,"absorb",30,300,10);
+  sf.push(num("skill.student_06.flatReduce.상시 감소","상시 피해 감소(%)",A.student_06.passive,"flatReduce",0,0.3,0.02,{group:"별골렘",icon:{kind:"char",id:"student_06"},fmt:"pct",dec:2}));
+  skl("student_06","별골렘","C 초당 피해",A.student_06.c,"dps",0,30,1);
+  cats.push({ name:"스킬(X/C)", fields:sf });
+
+  // ── 5) 몬스터(새 캠페인 9종 + 보스 4종) ──
+  const mf=[];
+  const MONS=["soft_jelly","bounce_bubble","paper_drone","cushion_block","star_bug","cloud_ghost","heal_fairy","shield_block","ice_bubble","boss_robot","boss_turtle","boss_plane","boss_king"];
+  for(const t of MONS){
+    const e=PVE_ENEMY_TYPES[t]; if(!e) continue;
+    const gname=e.name||t, icon={kind:"monster",id:t,color:e.color};
+    const big=e.hp>=400;
+    mf.push(num("mon."+t+".hp","체력",e,"hp",10,3000,big?50:5,{group:gname,icon:icon}));
+    mf.push(num("mon."+t+".dmg","공격력",e,"dmg",0,60,1,{group:gname}));
+    mf.push(num("mon."+t+".speed","이동 속도",e,"speed",40,400,5,{group:gname}));
+  }
+  cats.push({ name:"몬스터", fields:mf });
+
+  // ── 6) 규칙 모드 ──
+  const R=RULE_CONFIG;
+  cats.push({ name:"규칙 모드", fields:[
+    num("r.matchTime","오브젝트 모드 시간(초)",R,"matchTime",30,600,10),
+    num("r.siege.towerHp","수정탑 체력",R.siege,"towerHp",100,3000,25,{group:"수정부수기"}),
+    num("r.siege.wallHp","쿠션벽 체력(에디터 공용)",R.siege,"wallHp",10,500,10,{group:"수정부수기"}),
+    num("r.siege.turretDmg","포탑 공격력",R.siege,"turretDmg",0,60,1,{group:"수정부수기"}),
+    num("r.siege.turretCd","포탑 공격 간격(초)",R.siege,"turretCd",0.3,3,0.1,{group:"수정부수기",dec:1}),
+    num("r.siege.turretRange","포탑 사거리",R.siege,"turretRange",100,500,10,{group:"수정부수기"}),
+    num("r.hotzone.capPerSec","거점 초당 게이지",R.hotzone,"capPerSec",1,30,1,{group:"점령전"}),
+    num("r.hotzone.goal","거점 목표 게이지",R.hotzone,"goal",20,300,10,{group:"점령전"}),
+    num("r.hotzone.radius","거점 반경",R.hotzone,"radius",60,250,10,{group:"점령전"}),
+    num("r.stargrab.goal","별 목표 개수",R.stargrab,"goal",3,30,1,{group:"별모으기"}),
+    num("r.stargrab.countdown","카운트다운(초)",R.stargrab,"countdown",5,60,1,{group:"별모으기"}),
+    num("r.stargrab.spawnEvery","별 생성 주기(초)",R.stargrab,"spawnEvery",1,15,1,{group:"별모으기"}),
+    num("r.stargrab.matchTime","별모으기 시간(초)",R.stargrab,"matchTime",30,300,10,{group:"별모으기"})
+  ]});
+
+  // ── 7) 성장 오브 ──
+  cats.push({ name:"성장 오브", fields:[
+    pct("gr.aspdPct","공속 오브(스택당 %)",GROWTH,"aspdPct",0,0.3),
+    pct("gr.atkPct","공격 오브(스택당 %)",GROWTH,"atkPct",0,0.3),
+    num("gr.hpAdd","체력 오브(스택당 +HP)",GROWTH,"hpAdd",0,60,5),
+    num("gr.max","종류별 최대 스택",GROWTH,"max",1,10,1)
+  ]});
+
+  // ── 8) 난이도 ──
+  const df=[];
+  for(const d of DIFFICULTIES){
+    df.push(num("dif."+d.id+".hp","몬스터 체력 배율",d,"enemyHpMul",0.2,3,0.05,{group:d.name,dec:2}));
+    df.push(num("dif."+d.id+".dmg","몬스터 공격 배율",d,"enemyDamageMul",0.2,3,0.05,{group:d.name,dec:2}));
+    df.push(num("dif."+d.id+".spd","몬스터 속도 배율",d,"enemySpeedMul",0.5,1.6,0.05,{group:d.name,dec:2}));
+    df.push(num("dif."+d.id+".cd","몬스터 공격간격 배율",d,"enemyCooldownMul",0.4,2.5,0.05,{group:d.name,dec:2}));
+    df.push(num("dif."+d.id+".botX","봇 X 시도(초당 확률)",d,"botSpecialProb",0,1,0.05,{group:d.name,fmt:"pct",dec:2}));
+    df.push(num("dif."+d.id+".botCg","봇 궁 초당 충전",d,"botUltChargeRate",0,20,1,{group:d.name}));
+    df.push(num("dif."+d.id+".botC","봇 C 시도(초당 확률)",d,"botUltProb",0,1,0.05,{group:d.name,fmt:"pct",dec:2}));
+  }
+  cats.push({ name:"난이도", fields:df });
+
+  const byId={};
+  for(const c of cats) for(const f of c.fields) byId[f.id]=f;
+  _balReg={ cats:cats, byId:byId };
+  return _balReg;
+}
+// 저장된 오버라이드를 게임 데이터에 적용(부팅 시 1회 — 이후 편집은 balSetValue가 즉시 반영)
+function applyBalanceOverrides(){
+  const reg=balanceFields(), st=loadBalanceStore();
+  for(const id in st){
+    const f=reg.byId[id]; if(!f) continue;
+    const v=Number(st[id]); if(!isFinite(v)) continue;
+    f.set(clamp(v, f.min, f.max));
+  }
+}
+function balSetValue(f, v){
+  if(!isFinite(v)) return;
+  v=clamp(Math.round(v*1000)/1000, f.min, f.max);
+  f.set(v);
+  const st=loadBalanceStore();
+  if(Math.abs(f.get()-f.def)<1e-9) delete st[f.id]; else st[f.id]=f.get();
+  saveBalanceStore(st);
+}
+function balResetAll(){
+  const reg=balanceFields();
+  for(const c of reg.cats) for(const f of c.fields) f.set(f.def);
+  saveBalanceStore({});
+}
+function balModifiedCount(){
+  const reg=balanceFields(); let n=0;
+  for(const c of reg.cats) for(const f of c.fields) if(Math.abs(f.get()-f.def)>1e-9) n++;
+  return n;
+}
+function balFmt(f, v){
+  if(v===undefined) v=f.get();
+  if(f.fmt==="pct") return Math.round(v*100)+"%";
+  const d=(f.dec!==undefined)?f.dec:0;
+  return d>0 ? (Math.round(v*Math.pow(10,d))/Math.pow(10,d)).toFixed(d).replace(/\.?0+$/,"") : String(Math.round(v));
+}
+function handleBalanceKey(code){
+  const reg=balanceFields(), fields=reg.cats[BAL.cat].fields;
+  if(BAL.idx>=fields.length) BAL.idx=0;
+  const f=fields[BAL.idx];
+  if(BAL.edit!==null){                                  // 숫자 직접 입력 모드
+    if(code==="Escape"){ BAL.edit=null; return; }
+    if(code==="Enter"||code==="NumpadEnter"){
+      let v=parseFloat(BAL.edit);
+      if(isFinite(v)){ if(f.fmt==="pct") v=v/100; balSetValue(f, v); showToast(f.label+" = "+balFmt(f)); }
+      BAL.edit=null; return;
+    }
+    if(code==="Backspace"){ BAL.edit=BAL.edit.slice(0,-1); return; }
+    const dm=code.match(/^(?:Digit|Numpad)(\d)$/);
+    if(dm){ if(BAL.edit.length<8) BAL.edit+=dm[1]; return; }
+    if((code==="Period"||code==="NumpadDecimal") && BAL.edit.indexOf(".")<0){ BAL.edit+="."; return; }
+    return;
+  }
+  if(code==="Escape"){ gameState=STATE.ADMIN; return; }
+  if(code==="KeyQ"){ BAL.cat=(BAL.cat+reg.cats.length-1)%reg.cats.length; BAL.idx=0; BAL.scroll=0; return; }
+  if(code==="KeyE"){ BAL.cat=(BAL.cat+1)%reg.cats.length; BAL.idx=0; BAL.scroll=0; return; }
+  if(code==="ArrowUp"){ BAL.idx=(BAL.idx+fields.length-1)%fields.length; return; }
+  if(code==="ArrowDown"){ BAL.idx=(BAL.idx+1)%fields.length; return; }
+  if(code==="ArrowLeft"||code==="ArrowRight"){ balSetValue(f, f.get()+(code==="ArrowRight"?1:-1)*f.step); return; }
+  if(code==="Enter"||code==="NumpadEnter"){ BAL.edit=""; return; }
+  if(code==="KeyR"){ balSetValue(f, f.def); showToast(f.label+" 기본값 복원 ("+balFmt(f,f.def)+")"); return; }
+  if(code==="KeyF"){
+    if(uiTime-BAL.confirmReset<2){ balResetAll(); BAL.confirmReset=-99; showToast("모든 수치를 기본값으로 초기화했어요"); }
+    else { BAL.confirmReset=uiTime; showToast("한 번 더 F를 누르면 전체 초기화"); }
+    return;
+  }
+}
+// 행 아이콘(캐릭터 스프라이트/몬스터 이미지 · 없으면 색 원)
+function balDrawIcon(icon, x, y, r){
+  if(!icon) return;
+  ctx.save(); ctx.translate(x,y);
+  let drew=false;
+  if(icon.kind==="char") drew=drawCharacterSprite(icon.id, r, 0, {});
+  else if(icon.kind==="monster"){
+    const img=getMonsterImage(icon.id);
+    if(img){ const iw=img.naturalWidth||1, ih=img.naturalHeight||1, dh=r*2.6, dw=dh*(iw/ih);
+      ctx.drawImage(img, -dw/2, r*0.9-dh, dw, dh); drew=true; }
+  }
+  if(!drew){ ctx.fillStyle=icon.color||"#8893bb"; ctx.beginPath(); ctx.arc(0,0,r*0.9,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle="#ffffff"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(0,0,r*0.9,0,Math.PI*2); ctx.stroke(); }
+  ctx.restore();
+}
+function drawBalanceScreen(){
+  const reg=balanceFields(), fields=reg.cats[BAL.cat].fields;
+  ctx.save();
+  ctx.fillStyle="rgba(8,10,28,0.94)"; ctx.fillRect(0,0,LOGW,LOGH);
+  // 헤더
+  ctx.textAlign="left"; ctx.textBaseline="middle";
+  ctx.fillStyle="#ffe066"; ctx.font="bold 30px 'Malgun Gothic',sans-serif"; ctx.fillText("⚖ 밸런스 조정 (교사용)", 40, 44);
+  const modN=balModifiedCount();
+  ctx.fillStyle=modN?"#ffd23f":"#8893bb"; ctx.font="bold 15px 'Malgun Gothic',sans-serif";
+  ctx.fillText(modN?("● 기본값과 다른 수치 "+modN+"개"):"모든 수치 = 기본값", 400, 44);
+  // 분류 탭
+  let tx=40;
+  for(let i=0;i<reg.cats.length;i++){ tx = drawTopChip(reg.cats[i].name, tx, 70, 34, i===BAL.cat) + 8; }   // drawTopChip은 오른쪽 끝 x를 반환
+  // 목록
+  const rowH=44, top=126, visible=Math.floor((LOGH-top-70)/rowH);
+  if(BAL.idx<BAL.scroll) BAL.scroll=BAL.idx;
+  if(BAL.idx>=BAL.scroll+visible) BAL.scroll=BAL.idx-visible+1;
+  BAL.scroll=clamp(BAL.scroll, 0, Math.max(0, fields.length-visible));
+  const xIcon=76, xGroup=104, xLabel=290, xVal=640, xDef=810, xBar=980;
+  ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#8893bb";
+  ctx.fillText("이름", xGroup, top-12); ctx.fillText("항목", xLabel, top-12); ctx.fillText("현재값 (기본값)", xVal, top-12);
+  for(let vi=0; vi<visible; vi++){
+    const i=BAL.scroll+vi; if(i>=fields.length) break;
+    const fd=fields[i], y=top+vi*rowH+rowH/2, sel=(i===BAL.idx);
+    const groupStart = fd.group && (i===0 || fields[i-1].group!==fd.group);
+    if(sel){ ctx.fillStyle="rgba(95,160,255,0.18)"; roundRect(40, y-rowH/2+2, LOGW-80, rowH-4, 8); ctx.fill();
+      ctx.strokeStyle="#5fa0ff"; ctx.lineWidth=2; roundRect(40, y-rowH/2+2, LOGW-80, rowH-4, 8); ctx.stroke(); }
+    if(groupStart){
+      if(fd.icon) balDrawIcon(fd.icon, xIcon, y+6, 13);
+      ctx.fillStyle="#dfe6ff"; ctx.font="bold 16px 'Malgun Gothic',sans-serif"; ctx.textAlign="left";
+      ctx.fillText(fd.group, xGroup, y);
+    } else if(fd.group){ ctx.fillStyle="#3a4470"; ctx.font="13px 'Malgun Gothic',sans-serif"; ctx.fillText("┆", xGroup+6, y); }
+    ctx.fillStyle=sel?"#ffffff":"#aab4e0"; ctx.font=(sel?"bold ":"")+"15px 'Malgun Gothic',sans-serif";
+    ctx.fillText(fd.label, fd.group?xLabel:xGroup, y);
+    // 값
+    const modified=Math.abs(fd.get()-fd.def)>1e-9;
+    if(sel && BAL.edit!==null){
+      ctx.fillStyle="rgba(255,225,80,0.15)"; roundRect(xVal-8, y-15, 150, 30, 6); ctx.fill();
+      ctx.strokeStyle="#ffe066"; ctx.lineWidth=2; roundRect(xVal-8, y-15, 150, 30, 6); ctx.stroke();
+      ctx.fillStyle="#ffe066"; ctx.font="bold 17px 'Malgun Gothic',sans-serif";
+      ctx.fillText(BAL.edit+((Math.floor(uiTime*2)%2)?"▏":" ")+(fd.fmt==="pct"?" %":""), xVal, y);
+    } else {
+      ctx.fillStyle=modified?"#ffd23f":"#ffffff"; ctx.font="bold 17px 'Malgun Gothic',sans-serif";
+      ctx.fillText(balFmt(fd)+(modified?" ●":""), xVal, y);
+    }
+    ctx.fillStyle="#6b7398"; ctx.font="13px 'Malgun Gothic',sans-serif";
+    ctx.fillText("(기본 "+balFmt(fd, fd.def)+")", xDef, y);
+    // min~max 게이지(현재 위치 감각)
+    const gw=200, gx=xBar, ratio=clamp((fd.get()-fd.min)/((fd.max-fd.min)||1),0,1);
+    ctx.fillStyle="rgba(255,255,255,0.10)"; roundRect(gx, y-4, gw, 8, 4); ctx.fill();
+    ctx.fillStyle=modified?"#ffd23f":"#5fa0ff"; roundRect(gx, y-4, Math.max(6,gw*ratio), 8, 4); ctx.fill();
+  }
+  // 스크롤 표시
+  if(fields.length>visible){
+    ctx.fillStyle="#8893bb"; ctx.font="12px 'Malgun Gothic',sans-serif"; ctx.textAlign="right";
+    ctx.fillText((BAL.idx+1)+" / "+fields.length, LOGW-44, top-12);
+  }
+  // 푸터
+  ctx.textAlign="center"; ctx.fillStyle="#aab4e0"; ctx.font="bold 14px 'Malgun Gothic',sans-serif";
+  ctx.fillText("↑↓ 항목 · ←→ 조절 · Enter 숫자 입력"+(BAL.edit!==null?"(입력 후 Enter 확정 · Esc 취소)":"")+" · Q/E 분류 · R 기본값 · F F 전체 초기화 · Esc 뒤로", LOGW/2, LOGH-46);
+  ctx.fillStyle="#7fd6a0"; ctx.font="13px 'Malgun Gothic',sans-serif";
+  ctx.fillText("변경은 이 기기에 즉시 저장돼요 · 진행 중인 판 말고 다음 매치부터 확실히 적용", LOGW/2, LOGH-24);
+  ctx.restore();
+}
 
 /* =======================================================================
    OVERNIGHT-1 Phase 4 · 맵공방(학생 맵 에디터) + 교사 승인 흐름
@@ -1888,6 +2194,7 @@ function handleAdminKey(code){
   if(code==="KeyS"){ adminRefreshFromCloud(); return; }         // 클라우드 새로고침
   if(code==="KeyM"){ adminMigrateLocal(); return; }             // 로컬 계정 클라우드 이전
   if(code==="KeyG"){ reviewIdx=0; gameState=STATE.MAP_REVIEW; return; }   // OVERNIGHT-1: 학생 맵 승인
+  if(code==="KeyB"){ BAL.cat=0; BAL.idx=0; BAL.scroll=0; BAL.edit=null; BAL.confirmReset=0; gameState=STATE.BALANCE; return; }   // BALANCE-1: 밸런스 조정
 }
 function adminCreateStudent(){
   let id=null,name=null,pin=null;
@@ -3611,6 +3918,7 @@ function render(){
   else if(gameState===STATE.LOGIN) drawLoginScreen();
   else if(gameState===STATE.ADMIN_LOGIN) drawAdminLoginScreen();
   else if(gameState===STATE.ADMIN) drawAdminScreen();
+  else if(gameState===STATE.BALANCE) drawBalanceScreen();
   else if(gameState===STATE.SHOP) drawShopScreen();
   else if(gameState===STATE.EDITOR) drawEditorScreen();
   else if(gameState===STATE.MAP_REVIEW) drawMapReviewScreen();
@@ -3870,7 +4178,7 @@ function drawAdminScreen(){
   } else { ctx.fillStyle="#9a90b8"; ctx.font="16px 'Malgun Gothic',sans-serif"; ctx.fillText("왼쪽에서 학생을 선택하세요 (없으면 A 로 생성)", rx+24, ry2+50); }
   // 하단 액션 안내
   ctx.fillStyle="#d6cdee"; ctx.font="bold 15px 'Malgun Gothic',sans-serif";
-  ctx.fillText("A 만들기 · P PIN재설정 · R 초기화 · X 삭제 · S 새로고침 · M 클라우드이전 · G 맵승인("+loadEditorStore().pending.length+") · ↑↓ · Esc", rx+24, ry2+440);
+  ctx.fillText("A 만들기 · P PIN재설정 · R 초기화 · X 삭제 · S 새로고침 · M 클라우드이전 · G 맵승인("+loadEditorStore().pending.length+") · B 밸런스 조정 · ↑↓ · Esc", rx+24, ry2+440);
   ctx.fillStyle="#6f6a80"; ctx.font="12px 'Malgun Gothic',sans-serif";
   ctx.fillText("생성/변경은 로컬+클라우드에 저장. PIN은 해시 저장(원문 미저장). 다른 기기 로그인은 M(이전) 후 가능.", rx+24, ry2+470);
   ctx.restore();
@@ -7009,6 +7317,7 @@ function startLoopOnce(){
   if(loopStarted) return;
   loopStarted=true;
   try{ applyApprovedMaps(); }catch(e){}   // 승인된 맵공방 맵 → MAPS 반영. loadProfile의 맵 id 검증보다 먼저 실행해야 선택 맵이 초기화되지 않음
+  try{ applyBalanceOverrides(); }catch(e){}   // BALANCE-1: 교사가 저장한 밸런스 수치 → 게임 데이터 반영
   loadProfile();               // 게스트 기본값(미로그인 시 화면 안 깨지게)
   loadAccounts();              // 학급 계정(별도 저장)
   loadSession();               // 로그인 세션
