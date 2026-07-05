@@ -1578,7 +1578,7 @@ const STATE = { START:"start", SHOP:"shop",
   EDITOR:"editor", MAP_REVIEW:"map_review",     /* OVERNIGHT-1 Phase 4: 맵공방 + 교사 맵 승인 */
   BALANCE:"balance",                            /* BALANCE-1: 교사용 밸런스 조정 콘솔 */
   PF_SELECT:"pf_select", PLATFORMER:"platformer",     /* GENRE-EXPAND-1 §3: 별빛 점프 */
-  RPG:"rpg" };                                        /* RPG모드_PRD §1.1: 별빛 마을(교사 게이트) */
+  RPG:"rpg", RPG_REVIEW:"rpg_review" };               /* RPG모드_PRD §1.1·§7.4: 별빛 마을 + 교사 콘텐츠 승인 */
 let gameState = STATE.SPLASH;
 let splashTimer = 0;
 let loginMsg = "";          // 로그인 안내/오류
@@ -1868,6 +1868,7 @@ function handleKeyPress(code){
   if(gameState === STATE.PF_SELECT){ handlePfSelectKey(code); return; }   // GENRE-EXPAND-1 §3
   if(gameState === STATE.PLATFORMER){ handlePlatformerKey(code); return; }
   if(gameState === STATE.RPG){ handleRpgKey(code); return; }              // RPG모드 §1.1
+  if(gameState === STATE.RPG_REVIEW){ handleRpgReviewKey(code); return; }  // RPG모드 §7.4: 교사 콘텐츠 승인
   if(gameState === STATE.EDITOR){ handleEditorKey(code); return; }        // OVERNIGHT-1: 맵공방
   if(gameState === STATE.MAP_REVIEW){ handleMapReviewKey(code); return; } // OVERNIGHT-1: 교사 맵 승인
   if(gameState === STATE.SHOP){ handleShopKey(code); return; }
@@ -2775,7 +2776,7 @@ const RPG_CONST={
    승인된 학생 콘텐츠는 T2 스토어(RPG-4)에서 부팅 병합. 데이터는 RPG-0 산출물(wiki/rpg_db.json 등)에서 주입. */
 const RPG_DB={"monsters":[{"id":"mob_jelly","name":"그림자 젤리","asset":"soft_jelly","hp":15,"atk":4,"speed":100,"pattern":["chase"],"patternArgs":{},"exp":6,"gold":[2,4],"drops":[{"itemId":"it_jelly_bit","chance":0.5}],"habitat":["rpg_field1"],"tier":1,"isBoss":false,"phases":null},{"id":"mob_hornhop","name":"뿔깡총","asset":"bounce_bubble","hp":26,"atk":6,"speed":70,"pattern":["hop"],"patternArgs":{"hopSpeed":240,"hopTime":0.35,"restTime":0.85},"exp":8,"gold":[3,6],"drops":[{"itemId":"it_horn_piece","chance":0.3}],"habitat":["rpg_field1"],"tier":1,"isBoss":false,"phases":null},{"id":"mob_seedgunner","name":"씨앗총사","asset":"paper_drone","hp":22,"atk":5,"speed":0,"pattern":["turret"],"patternArgs":{"fireCd":1.5,"bulletSpeed":220,"range":330},"exp":8,"gold":[3,6],"drops":[{"itemId":"it_seed_bundle","chance":0.4}],"habitat":["rpg_field1"],"tier":1,"isBoss":false,"phases":null},{"id":"mob_thorn","name":"가시딱지","asset":"shield_block","hp":60,"atk":7,"speed":70,"pattern":["chase","frontGuard"],"patternArgs":{"guardDeg":120,"guardReduce":0.6},"exp":12,"gold":[6,10],"drops":[{"itemId":"it_thorn_shell","chance":0.35}],"habitat":["rpg_field1"],"tier":1,"isBoss":false,"phases":null},{"id":"mob_busuri","name":"부슬이","asset":"star_bug","hp":38,"atk":8,"speed":150,"pattern":["dash"],"patternArgs":{"warn":0.7,"dashSpeed":420,"dashCd":3},"exp":11,"gold":[5,9],"drops":[{"itemId":"it_stardust_powder","chance":0.3}],"habitat":["rpg_field2"],"tier":2,"isBoss":false,"phases":null},{"id":"mob_moonowl","name":"달빛 부엉이","asset":"cloud_ghost","hp":48,"atk":6,"speed":115,"pattern":["ghost","fan"],"patternArgs":{"fanCount":3,"fanDeg":40,"fireCd":2.2,"bulletSpeed":300},"exp":14,"gold":[8,12],"drops":[{"itemId":"it_moon_feather","chance":0.25}],"habitat":["rpg_field2"],"tier":2,"isBoss":false,"phases":null},{"id":"mob_shade","name":"그늘 조각","asset":"cushion_block","hp":110,"atk":8,"speed":130,"pattern":["chase","blink"],"patternArgs":{"blinkCd":3,"blinkDist":160},"exp":28,"gold":[15,25],"drops":[{"itemId":"wp_toy_starbow","chance":0.15},{"itemId":"ar_wind_brooch","chance":0.2}],"habitat":["rpg_field2","rpg_den1","rpg_den2"],"tier":2,"isBoss":false,"elite":true,"phases":null},{"id":"mob_boss_munge","name":"뭉게대왕","asset":"boss_king","hp":900,"atk":12,"speed":95,"pattern":["fan"],"patternArgs":{"bulletDmg":8,"dashDmg":12,"fanCount":5,"fanDeg":50,"warn":0.7},"exp":150,"gold":[100,100],"drops":[],"habitat":["rpg_den3"],"tier":3,"isBoss":true,"phases":[{"hpAbove":0.66,"patterns":["fan"],"summon":{"monsterId":"mob_busuri","count":2,"cd":12}},{"hpAbove":0.33,"patterns":["fan","dash"],"summon":{"monsterId":"mob_busuri","count":2,"cd":15}},{"hpAbove":0.0,"patterns":["fan","dash","cloudVeil"],"summon":null}]}],"weapons":[{"id":"wp_fist","name":"맨손","kind":"melee","dmg":5,"cd":0.5,"range":60,"arcDeg":90,"bulletSpeed":0,"levelReq":1,"price":0,"source":"start"},{"id":"wp_hoe","name":"호미","kind":"melee","dmg":9,"cd":0.6,"range":80,"arcDeg":90,"bulletSpeed":0,"levelReq":1,"price":0,"source":"mq01"},{"id":"wp_old_boomerang","name":"낡은 부메랑","kind":"boomerang","dmg":7,"returnDmg":7,"cd":0.7,"range":300,"arcDeg":0,"bulletSpeed":320,"levelReq":3,"price":0,"source":"mq03"},{"id":"wp_star_dagger","name":"별조각 단검","kind":"melee","dmg":8,"cd":0.35,"range":70,"arcDeg":80,"bulletSpeed":0,"levelReq":3,"price":60,"source":"shop"},{"id":"wp_iron_starsword","name":"무쇠 별검","kind":"melee","dmg":16,"cd":0.75,"range":90,"arcDeg":110,"bulletSpeed":0,"levelReq":5,"price":0,"source":"mq04"},{"id":"wp_toy_starbow","name":"장난감 별활","kind":"ranged","dmg":13,"cd":0.85,"range":420,"arcDeg":0,"bulletSpeed":480,"levelReq":6,"price":200,"source":"elite_drop|shop"},{"id":"wp_sparkle_boomerang","name":"반짝 부메랑","kind":"boomerang","dmg":10,"returnDmg":10,"cd":0.6,"range":380,"arcDeg":0,"bulletSpeed":360,"levelReq":9,"price":0,"source":"craft","craft":{"base":"wp_old_boomerang","materials":[{"itemId":"it_starpiece","count":3}],"inheritEnhance":true}}],"armors":[{"id":"ar_cloth_vest","name":"천 조끼","slot":"body","hpAdd":12,"defAdd":0,"spdMul":1.0,"regenAdd":0,"price":40,"source":"shop"},{"id":"ar_starhide_vest","name":"별가죽 조끼","slot":"body","hpAdd":22,"defAdd":1,"spdMul":1.0,"regenAdd":0,"price":0,"source":"quest"},{"id":"ar_firefly_necklace","name":"반딧불 목걸이","slot":"charm","hpAdd":0,"defAdd":0,"spdMul":1.0,"regenAdd":4,"price":90,"source":"shop"},{"id":"ar_star_boots","name":"별빛 장화","slot":"charm","hpAdd":0,"defAdd":0,"spdMul":1.05,"regenAdd":0,"price":150,"source":"shop"},{"id":"ar_guard_necklace","name":"수호 목걸이","slot":"charm","hpAdd":15,"defAdd":0,"spdMul":1.0,"regenAdd":0,"price":250,"source":"shop"},{"id":"ar_wind_brooch","name":"바람 깃털 브로치","slot":"charm","hpAdd":0,"defAdd":0,"spdMul":1.08,"regenAdd":0,"price":0,"source":"elite_drop"}],"items":[{"id":"it_jelly_bit","name":"젤리 조각","kind":"재료","healAmt":0,"price":3,"desc":"말랑말랑 반짝이는 조각이에요. 그림자 젤리가 떨어뜨려요."},{"id":"it_horn_piece","name":"뿔조각","kind":"재료","healAmt":0,"price":4,"desc":"뿔깡총의 단단한 뿔 조각이에요."},{"id":"it_seed_bundle","name":"풀씨 뭉치","kind":"재료","healAmt":0,"price":4,"desc":"씨앗총사가 쏘다 남긴 폭신한 풀씨 뭉치예요."},{"id":"it_thorn_shell","name":"가시 껍질","kind":"재료","healAmt":0,"price":5,"desc":"가시딱지의 튼튼한 껍질이에요. 볼트가 아주 좋아해요."},{"id":"it_stardust_powder","name":"별조각 가루","kind":"재료","healAmt":0,"price":7,"desc":"반짝반짝 빛나는 별의 가루예요."},{"id":"it_moon_feather","name":"달빛 깃털","kind":"재료","healAmt":0,"price":9,"desc":"달빛 부엉이의 은은하게 빛나는 깃털이에요."},{"id":"it_starpiece","name":"별조각","kind":"퀘스트품","healAmt":0,"price":0,"desc":"반짝 부메랑을 만드는 소중한 재료예요. 팔 수 없어요."},{"id":"it_jelly_candy","name":"젤리 사탕","kind":"소모품","healAmt":25,"price":15,"maxCarry":5,"desc":"먹으면 기운이 나는 달콤한 사탕이에요. (Q키로 사용)"},{"id":"it_dim_starpiece","name":"빛나지 않는 별조각","kind":"퀘스트품","healAmt":0,"price":0,"desc":"빛을 잃은 이상한 별조각… 왜 빛나지 않을까요?"}],"skills":[{"id":"sk_spin_slash","name":"빙글 베기","type":"active","slot":"X","form":"around","dmgMul":1.2,"radius":110,"cd":5,"gauge":null,"acquire":{"by":"level","value":3}},{"id":"sk_starfall_smash","name":"별똥별 내리치기","type":"active","slot":"X","form":"front","dmgMul":2.0,"radius":120,"cd":8,"gauge":null,"knockback":true,"acquire":{"by":"job","value":"job_swordsman"}},{"id":"sk_triple_throw","name":"세갈래 던지기","type":"active","slot":"X","form":"throw","dmgMul":0.7,"radius":0,"cd":7,"gauge":null,"shots":3,"acquire":{"by":"job","value":"job_hunter"}},{"id":"sk_sparkle_dash","name":"반짝 질주","type":"active","slot":"C","form":"dash","dmgMul":0,"radius":0,"cd":null,"gauge":{"max":100,"perHit":12},"duration":0.8,"spdMul":1.45,"invincible":true,"acquire":{"by":"quest","value":"mq05"}},{"id":"sk_ambush","name":"기습","type":"passive","slot":null,"form":null,"dmgMul":0,"radius":0,"cd":null,"gauge":null,"backstabMul":1.2,"acquire":{"by":"level","value":1}},{"id":"sk_starlight_regen","name":"별빛 회복","type":"passive","slot":null,"form":null,"dmgMul":0,"radius":0,"cd":null,"gauge":null,"regenTo":12,"acquire":{"by":"level","value":7}}],"jobs":[{"id":"job_novice","name":"별빛 견습생","statMods":{},"grantSkills":[],"reqLevel":1,"reqQuest":null,"parent":null,"trial":null},{"id":"job_swordsman","name":"별빛 검사","statMods":{"hpAdd":15,"meleeDmgMul":1.15},"grantSkills":["sk_starfall_smash"],"reqLevel":5,"reqQuest":"mq05","parent":"job_novice","trial":{"target":"mob_thorn","count":3}},{"id":"job_hunter","name":"바람 사냥꾼","statMods":{"spdMul":1.08,"rangeMul":1.15},"grantSkills":["sk_triple_throw"],"reqLevel":5,"reqQuest":"mq05","parent":"job_novice","trial":{"target":"mob_seedgunner","count":5}}],"crops":[{"id":"crop_byeolmu","name":"별무","seedPrice":10,"growDays":1,"regrowDays":0,"sellPrice":18,"stages":2,"sellable":true,"reqQuest":null},{"id":"crop_galaxy_wheat","name":"은하밀","seedPrice":12,"growDays":2,"regrowDays":0,"sellPrice":30,"stages":3,"sellable":true,"reqQuest":null},{"id":"crop_sparkle_carrot","name":"반짝당근","seedPrice":15,"growDays":2,"regrowDays":0,"sellPrice":34,"stages":3,"sellable":true,"reqQuest":null},{"id":"crop_star_strawberry","name":"별딸기","seedPrice":35,"growDays":3,"regrowDays":2,"sellPrice":28,"stages":4,"sellable":true,"reqQuest":null},{"id":"crop_starbell_bean","name":"별방울 콩","seedPrice":40,"growDays":4,"regrowDays":0,"sellPrice":95,"stages":5,"sellable":true,"reqQuest":"mq05"},{"id":"crop_lightwood_sapling","name":"빛나무 묘목","seedPrice":25,"growDays":1,"regrowDays":0,"sellPrice":0,"stages":2,"sellable":false,"reqQuest":"mq05"}],"npcs":[{"id":"npc_onbyeol","name":"온별","role":"quest_hub","dialog":[],"speechTic":"어디까지 얘기했더라…?","shop":[],"secret":"마을 전설의 뒷부분을 사실은 기억하고 있을지도 모른다.","emoji":"👴","color":"#e8c07a"},{"id":"npc_momo","name":"모모","role":"general_shop","dialog":[],"speechTic":"오! 그거 내 수집 목록에 있는 건데!","shop":[{"itemRef":"it_jelly_candy"},{"itemRef":"ar_cloth_vest"},{"itemRef":"ar_firefly_necklace"},{"itemRef":"ar_star_boots"},{"itemRef":"ar_guard_necklace"}],"secret":"창고 깊은 곳에 아직 정리 못 한 수집품 상자가 있다.","emoji":"🛍️","color":"#ffa8c5"},{"id":"npc_bolt","name":"볼트","role":"blacksmith","dialog":[],"speechTic":"삐빅! 수리 완료!","shop":[{"itemRef":"wp_star_dagger"},{"itemRef":"wp_toy_starbow"}],"secret":"고쳐 준 도구마다 몰래 별 스티커를 붙인다.","emoji":"🤖","color":"#9aa7b8"},{"id":"npc_leaf","name":"리프","role":"seed_shop","dialog":[],"speechTic":"쉿! 지금 씨앗이 말하는 중이야.","shop":[{"itemRef":"crop_byeolmu"},{"itemRef":"crop_galaxy_wheat"},{"itemRef":"crop_sparkle_carrot"},{"itemRef":"crop_star_strawberry"},{"itemRef":"crop_starbell_bean","reqQuest":"mq05"},{"itemRef":"crop_lightwood_sapling","reqQuest":"mq05"}],"secret":"정말로 작물과 대화할 수 있는 걸까? 아무도 모른다.","emoji":"🌱","color":"#8fdba0"},{"id":"npc_meonbyeol","name":"먼별","role":"mystery","appears":"night","dialog":[],"speechTic":"…별은 밤에 더 잘 보이는 법이지.","shop":[],"secret":"정체 미공개 — 우리 반이 함께 채울 여백.","emoji":"🌒","color":"#b39ddb"},{"id":"npc_pico","name":"피코","role":"recorder","dialog":[],"speechTic":"잠깐! 그거 노트에 적어야 해!","shop":[],"secret":"피코의 관찰 노트가 바로 게임 속 '별의 도감'이 된다.","emoji":"📓","color":"#ffd93d"}],"quests":[{"id":"mq01","name":"별마중 마을 도착","giver":null,"goal":{"type":"talk","target":"npc_onbyeol","count":1,"item":null,"to":null},"reward":{"exp":15,"gold":0,"itemId":"crop_byeolmu","itemCount":5},"requires":[],"unlocks":["wp_hoe"],"dialogStart":"","dialogEnd":"","nextHint":""},{"id":"mq02","name":"밤손님","giver":"npc_onbyeol","goal":{"type":"harvest","target":"crop_byeolmu","count":3,"item":null,"to":null},"reward":{"exp":40,"gold":30,"itemId":null},"requires":["mq01"],"unlocks":[],"dialogStart":"","dialogEnd":"","nextHint":""},{"id":"mq03","name":"별조각 도둑","giver":"npc_onbyeol","goal":{"type":"collect","target":"it_stardust_powder","count":3,"item":null,"to":null},"reward":{"exp":60,"gold":40,"itemId":null},"requires":["mq02"],"unlocks":["wp_old_boomerang"],"dialogStart":"","dialogEnd":"","nextHint":""},{"id":"mq04","name":"마을의 부탁","giver":"npc_onbyeol","goal":{"type":"deliver","target":null,"count":3,"item":"crop_galaxy_wheat","to":"npc_momo"},"reward":{"exp":80,"gold":60,"itemId":null},"requires":["mq03"],"unlocks":["smith_open","wp_iron_starsword"],"dialogStart":"","dialogEnd":"","nextHint":""},{"id":"mq05","name":"안개 간부 보슬보슬","giver":"npc_onbyeol","goal":{"type":"kill","target":"mob_busuri","count":5,"item":null,"to":null},"reward":{"exp":100,"gold":80,"itemId":"it_dim_starpiece"},"requires":["mq04"],"unlocks":["job_change","crop_starbell_bean","crop_lightwood_sapling","sk_sparkle_dash"],"dialogStart":"","dialogEnd":"","nextHint":""},{"id":"mq06","name":"별광맥 방어전","giver":"npc_onbyeol","goal":{"type":"kill","target":"mob_moonowl","count":4,"item":null,"to":null},"reward":{"exp":130,"gold":100,"itemId":"it_starpiece","itemCount":3},"requires":["mq05"],"unlocks":["farm_expand"],"dialogStart":"","dialogEnd":"","nextHint":""},{"id":"mq07","name":"먹구름 요새 — 뭉게대왕","giver":"npc_onbyeol","goal":{"type":"kill","target":"mob_boss_munge","count":1,"item":null,"to":null},"reward":{"exp":175,"gold":150,"itemId":null,"title":"별빛 수호자"},"requires":["mq06","sq02"],"unlocks":["chapter1_clear"],"dialogStart":"","dialogEnd":"","nextHint":""},{"id":"sq01","name":"도망간 반딧별","giver":"npc_pico","goal":{"type":"collect","target":"it_stardust_powder","count":4,"item":null,"to":null},"reward":{"exp":30,"gold":40,"itemId":null},"requires":["mq02"],"unlocks":[],"dialogStart":"","dialogEnd":"","nextHint":""},{"id":"sq02","name":"콩 배달 대작전","giver":"npc_momo","goal":{"type":"deliver","target":null,"count":3,"item":"crop_starbell_bean","to":"npc_momo"},"reward":{"exp":60,"gold":80,"itemId":null},"requires":["mq05"],"unlocks":[],"dialogStart":"","dialogEnd":"","nextHint":""},{"id":"sq03","name":"껍질 수집가","giver":"npc_bolt","goal":{"type":"collect","target":"it_thorn_shell","count":5,"item":null,"to":null},"reward":{"exp":40,"gold":0,"itemId":null},"requires":["mq04"],"unlocks":["smith_discount20"],"dialogStart":"","dialogEnd":"","nextHint":""}],"maps":[{"id":"rpg_village","name":"별마중 마을","theme":"village_meadow","rows":["TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT","T..................................T","T..BBBBB.TT..BBBBB.TT..BBBBB.T.....T","T..BBBBB.....BBBBB.....BBBBB.EEE...T","T..BB1BB.....BB2BB.....BB3BB.EEE...T","T..................................T","T...............G..................T","T..BBBBB............N..............5","T..BBBBB....*.....W................5","T..BB4BB..................N........T","T..................................T","T..ffff....N.......................T","T..ffff.......TT.....EEEE....VVV...T","T..ffff..............EEEE.....V....T","T..................................T","TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT"],"portals":[{"at":[5,4],"to":"rpg_home","tx":11,"ty":8},{"at":[15,4],"to":"rpg_store","tx":11,"ty":8},{"at":[25,4],"to":"rpg_smith","tx":11,"ty":8},{"at":[5,9],"to":"rpg_chief","tx":11,"ty":8},{"at":[35,7],"to":"rpg_field1","tx":2,"ty":7},{"at":[35,8],"to":"rpg_field1","tx":2,"ty":8}],"npcs":[{"npcId":"npc_leaf","tx":11,"ty":11},{"npcId":"npc_pico","tx":20,"ty":7},{"npcId":"npc_meonbyeol","tx":26,"ty":9}],"monsters":[],"soil":[[3,11],[4,11],[5,11],[6,11],[3,12],[4,12],[5,12],[6,12],[3,13],[4,13],[5,13],[6,13]],"objects":[{"type":"board","tx":16,"ty":6},{"type":"well","tx":18,"ty":8},{"type":"vein","tx":29,"ty":12},{"type":"vein","tx":30,"ty":12},{"type":"vein","tx":31,"ty":12},{"type":"vein","tx":30,"ty":13}]},{"id":"rpg_home","name":"할머니의 농가","theme":"indoor_wood","rows":["TTTTTTTTTTTTTTTTTTTTTT","T.................D..T","T.bb...c.............T","T....................T","T....................T","T....................T","T....................T","T....................T","T....................T","TTTTTTTTTTT1TTTTTTTTTT"],"portals":[{"at":[11,9],"to":"rpg_village","tx":5,"ty":5}],"npcs":[],"monsters":[],"soil":[],"objects":[{"type":"cellar","tx":18,"ty":1},{"type":"bed","tx":2,"ty":2},{"type":"chest","tx":7,"ty":2}]},{"id":"rpg_store","name":"잡화점","theme":"indoor_wood","rows":["TTTTTTTTTTTTTTTTTTTTTT","T.ccc............ccc.T","T.........N..........T","T.......CCCCCC.......T","T....................T","T....................T","T....................T","T....................T","T....................T","TTTTTTTTTTT1TTTTTTTTTT"],"portals":[{"at":[11,9],"to":"rpg_village","tx":15,"ty":5}],"npcs":[{"npcId":"npc_momo","tx":10,"ty":2}],"monsters":[],"soil":[],"objects":[{"type":"chest","tx":2,"ty":1},{"type":"chest","tx":3,"ty":1},{"type":"chest","tx":4,"ty":1},{"type":"chest","tx":17,"ty":1},{"type":"chest","tx":18,"ty":1},{"type":"chest","tx":19,"ty":1}]},{"id":"rpg_smith","name":"대장간","theme":"indoor_wood","rows":["TTTTTTTTTTTTTTTTTTTTTT","T....................T","T................cc..T","T.........A.N........T","T....................T","T....................T","T....................T","T....................T","T....................T","TTTTTTTTTTT1TTTTTTTTTT"],"portals":[{"at":[11,9],"to":"rpg_village","tx":25,"ty":5}],"npcs":[{"npcId":"npc_bolt","tx":12,"ty":3}],"monsters":[],"soil":[],"objects":[{"type":"chest","tx":17,"ty":2},{"type":"chest","tx":18,"ty":2},{"type":"anvil","tx":10,"ty":3}]},{"id":"rpg_chief","name":"촌장집","theme":"indoor_wood","rows":["TTTTTTTTTTTTTTTTTTTTTT","T.cc.................T","T....................T","T..........N.........T","T....................T","T....................T","T....................T","T....................T","T....................T","TTTTTTTTTTT1TTTTTTTTTT"],"portals":[{"at":[11,9],"to":"rpg_village","tx":5,"ty":10}],"npcs":[{"npcId":"npc_onbyeol","tx":11,"ty":3}],"monsters":[],"soil":[],"objects":[{"type":"chest","tx":2,"ty":1},{"type":"chest","tx":3,"ty":1}]},{"id":"rpg_field1","name":"이슬별 들판","theme":"field_dew","rows":["TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT","T..................................T","T..................................T","T....TT....................tt......T","T....T..........m.............TT...T","T......m...........................T","T.................TT...............T","1..................................2","1..............T..............m....2","T...........m......................T","T.......~~~~............m..........T","T.......~~~~..........TT...........T","T.......~~~~........m.......m......T","T.............m....................T","T..................................T","TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT"],"portals":[{"at":[0,7],"to":"rpg_village","tx":33,"ty":7},{"at":[0,8],"to":"rpg_village","tx":33,"ty":8},{"at":[35,7],"to":"rpg_field2","tx":2,"ty":10},{"at":[35,8],"to":"rpg_field2","tx":2,"ty":11}],"npcs":[],"monsters":[{"monsterId":"mob_jelly","tx":7,"ty":5},{"monsterId":"mob_jelly","tx":12,"ty":9},{"monsterId":"mob_jelly","tx":20,"ty":12},{"monsterId":"mob_hornhop","tx":16,"ty":4},{"monsterId":"mob_hornhop","tx":24,"ty":10},{"monsterId":"mob_seedgunner","tx":14,"ty":13},{"monsterId":"mob_seedgunner","tx":28,"ty":12},{"monsterId":"mob_thorn","tx":30,"ty":8}],"soil":[],"objects":[{"type":"camp","tx":27,"ty":3},{"type":"camp","tx":28,"ty":3}]},{"id":"rpg_field2","name":"가랑비 숲길","theme":"forest_rain","rows":["TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT","T...................~~.........................T","T...................~~................BBBBBBBBBT","T...................~~..TT............BBBBBBBBBT","T.......TT..........~~................BBBBBBBBBT","T.......T...........~~....m...........BBBBBBBBBT","T...................~~................BBBB2BBBBT","T...................~~.........................T","T.............TT....~~............m............T","T...................~~....TT...................T","1..............................................T","1..............................................T","T...................~~..............TT..m......T","T...................~~.........................T","T...................~~........m................T","T...................~~...........TT............T","T............m......~~.........................T","T...................~~......................m..T","T.........TT........~~......m..................T","T...................~~.........................T","T...................~~.........................T","TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT"],"portals":[{"at":[0,10],"to":"rpg_field1","tx":33,"ty":7},{"at":[0,11],"to":"rpg_field1","tx":33,"ty":8},{"at":[42,6],"to":"rpg_den1","tx":11,"ty":8}],"npcs":[],"monsters":[{"monsterId":"mob_busuri","tx":26,"ty":5},{"monsterId":"mob_busuri","tx":30,"ty":14},{"monsterId":"mob_busuri","tx":13,"ty":16},{"monsterId":"mob_moonowl","tx":34,"ty":8},{"monsterId":"mob_moonowl","tx":28,"ty":18},{"monsterId":"mob_shade","tx":40,"ty":12},{"monsterId":"mob_shade","tx":44,"ty":17}],"soil":[],"objects":[]},{"id":"rpg_den1","name":"먹구름 요새 1번 방(전투)","theme":"den_cloud","rows":["TTTTTTTTTTTTTTTTTTTTTT","T....................T","T....T..........T....T","T.....m..............T","T..........m.........2","T....................T","T..............m.....T","T....T..........T....T","T....................T","TTTTTTTTTTT1TTTTTTTTTT"],"portals":[{"at":[11,9],"to":"rpg_field2","tx":42,"ty":7},{"at":[21,4],"to":"rpg_den2","tx":2,"ty":4}],"npcs":[],"monsters":[{"monsterId":"mob_busuri","tx":6,"ty":3},{"monsterId":"mob_busuri","tx":15,"ty":6},{"monsterId":"mob_shade","tx":11,"ty":4}],"soil":[],"objects":[]},{"id":"rpg_den2","name":"먹구름 요새 2번 방(수집)","theme":"den_cloud","rows":["TTTTTTTTTTTTTTTTTTTTTT","T....................T","T....c........c......T","T......m.............T","1....................T","T....................2","T...........m....c...T","T..~~...c............T","T....................T","TTTTTTTTTTTTTTTTTTTTTT"],"portals":[{"at":[0,4],"to":"rpg_den1","tx":19,"ty":4},{"at":[21,5],"to":"rpg_den3","tx":2,"ty":5}],"npcs":[],"monsters":[{"monsterId":"mob_busuri","tx":7,"ty":3},{"monsterId":"mob_shade","tx":12,"ty":6}],"soil":[],"objects":[{"type":"chest","tx":5,"ty":2},{"type":"chest","tx":14,"ty":2},{"type":"chest","tx":17,"ty":6},{"type":"chest","tx":8,"ty":7}]},{"id":"rpg_den3","name":"먹구름 요새 3번 방(보스)","theme":"den_cloud","rows":["TTTTTTTTTTTTTTTTTTTTTT","T....................T","T.............T......T","T....................T","T................e...T","1...........m........T","T....................T","T.............T......T","T....................T","TTTTTTTTTTTTTTTTTTTTTT"],"portals":[{"at":[0,5],"to":"rpg_den2","tx":19,"ty":5}],"npcs":[],"monsters":[{"monsterId":"mob_boss_munge","tx":12,"ty":5}],"soil":[],"objects":[{"type":"egg","tx":17,"ty":4}]}],"legend":{"solid":"T~BWGVbcDCAte","soil":"f","spawn":"*"},"dialogs":{"npcs":{"npc_onbyeol":{"default":["우리 마을 전설 말인데… 옛날에 큰 별이…","그다음이… 음… 분명 용이었나? 곰이었나?","지난번엔 용이라 했다고? 이번엔 곰일세.","할머니 일기의 마지막 장은 찢어져 있었지."],"questActive":{"mq01":["잘 왔네, 시고니! 할머니 밭을 부탁하네.","이 호미를 받게. 촌장의 선물이야!","내 40년 된 허리보다 튼튼한 호미라네!"],"mq04":["마을 부탁 세 가지만 들어주게나.","배달, 수확, 퇴치! 끝나면 대장간이 열려."],"mq05":["들판 야영지에 안개 간부가 있다는군.","먼별이라는 여행자가 잘 알던데… 수상해."],"mq06":["오늘 밤 별광맥에 야습이 온다네!","낮에 빛나무 묘목을 심게. 많이 심을수록","밤의 전장이 환해질 걸세!"],"mq07":["요새는 멀어. 원정 도시락이 필요하네.","별방울 콩 3개면 든든하지. 밭을 부탁해!"]},"questDone":{"mq01":["호미질이 제법인걸? 할머니를 닮았군.","할머니가 어디로 갔냐고? 그게… 음…"],"mq07":["전설이 맞았어! 큰 별이… 아니 곰이…","아무튼 자네가 영웅일세! 축제다!"]}},"npc_momo":{"default":["어서 와! 반짝이는 거라면 뭐든 좋아해.","어? 주머니 속 젤리 조각… 나한테 팔래?","'작물 전부 팔기' 버튼 편하지? 내 발명품!","찢어진 지도 반쪽을 주웠는데… 이거 살래?"],"questActive":{"mq03":["별조각 도둑이라니! 내 가게는 무사하지?","훔친 별빛으로 뭘 할까? 팔면 비쌀 텐데…"],"sq02":["별방울 콩이 필요해! 밭에서 길러다 줘.","배달은 신선도가 생명! 콩도 기분이 있거든."],"mq07":["원정 간다며? 젤리 사탕은 챙겼어? 안 사?","요새에서 반짝이는 거 보면… 나한테 팔래?"]},"questDone":{"sq02":["콩 도착! 흠… 향기 좋고, 최고급이야!","너 농사 재능 있다. 나랑 동업할래?"]}},"npc_bolt":{"default":["…뭐. 볼일 없으면 가라.","도구는 손질이 다다. 이리 줘 봐라. …흠.","네 호미에 별 스티커? …난 모르는 일이다.","삐걱… 요즘 무릎 나사가 시원찮군."],"questActive":{"mq04":["촌장 부탁이 끝나면 가게를 열라더군.","…기대하지 마라. 조금밖에 안 반짝인다."],"sq03":["가시 껍질을 모아 와라. 연마제로 쓴다.","왜 모으냐고 묻지 마라. …비밀이다."],"mq07":["낡은 부메랑과 별조각 셋을 내놔 봐라.","…반짝 부메랑이다. 강화도 그대로 살렸다.","스티커는… 서비스다. 아무한테도 말하지 마라."]},"questDone":{"sq03":["…수고했다. 강화 20% 할인권이다.","껍질로 뭘 만들었냐고? …인형은 아니다."],"mq07":["부메랑은 돌아온다. 너도 꼭 돌아와라.","…걱정한 거 아니다. 나사가 헐거울 뿐이다."]}},"npc_leaf":{"default":["쉿! 지금 별무가 얘기하는 중이야.","당근이 그러는데, 네 발소리 씩씩하대.","물 안 주면 작물이 삐져. 진짜라니까?","우물 밑에서 노랫소리 들어 봤어? 난 들었어."],"questActive":{"mq02":["젤리들이 밭을 습격했다고? 이상해…","원래 순한 애들인데. 작물들도 걱정하더라.","별무가 그러는데, 젤리 손이 간지럽대."],"mq05":["되찾은 별씨앗, 나한테 보여 줘!","별방울 콩이야! 심으면 노래도 불러 줘."],"mq06":["빛나무 묘목 있어! 한 그루 25G.","묘목이 그러는데, 밤에 힘낼 준비 됐대!"]},"questDone":{"mq06":["빛나무들이 자랑 중이야. 밤새 빛났다고!","나무가 그러는데… '파이팅!' …이래."]}},"npc_meonbyeol":{"default":["후후… 좋은 밤이야.","먹구름단? 글쎄… 나는 잘 모르… 후후.","농가의 지하실 문… 열쇠는 의외로 가깝지.","별이 흐려진 진짜 이유… 알고 싶나? 후후."],"questActive":{"mq04":["먹구름단의 버릇을 알려 주지. 후후.","왜 이리 잘 아느냐고? …좋은 질문이야."],"mq05":["안개 속에서는 소리를 따라가면 돼.","보슬보슬은 착한 아이… 아니, 못 들은 걸로."]},"questDone":{"mq05":["'그분'이라… 후후, 재미있어졌군.","빛나지 않는 별조각, 버리지 마. 꼭이야."]}},"npc_pico":{"default":["관찰 노트 12쪽! 오늘 구름은 양 세 마리!","시고니 발견! 특징: 꼬리가 씰룩씰룩!","젤리 한 마리가 자꾸 널 따라와. 적었음!","우물에 귀 대 봤는데… 노트에는 비밀이야."],"questActive":{"sq01":["반딧별들이 도망갔어! 노트가 심심해해!","반짝이는 쪽을 잘 봐! 관찰 포인트야!"],"mq06":["방어전 기록 담당은 나! 노트 준비 완료!","묘목 수 세는 중… 어? 하나가 움직였나?"]},"questDone":{"sq01":["반딧별 전원 귀환! 노트 별점 다섯 개!","답례로 극비 정보 하나: 볼트 아저씨가","도구에 몰래 스티커 붙이는 거 봤음!"]}}},"quests":{"mq01":{"start":["온별: 시고니! 할머니 밭을 물려받았구나.","온별: 자, 이 호미는 촌장의 선물이다!","온별: 잡초를 치우고 별무 씨앗을 심어 보렴."],"end":["온별: 첫 파종 축하! 별무 씨앗 5개 더 주마.","온별: 할머니? 어디로 갔는지는… 나도 몰라.","온별: 편지 한 장 없이 떠나실 분이 아닌데…"]},"mq02":{"start":["온별: 큰일이다! 밤에 그림자 젤리가 밭에!","온별: 호미로 살살 혼내서 돌려보내렴.","온별: 물 주고, 자고, 수확까지가 농부의 일!"],"end":["온별: 첫 수확이구나! 훌륭한 농부야!","온별: 그런데 순한 젤리들이 왜 내려왔을까?","온별: 산 위의 별빛이 흐려져서… 그런가."]},"mq03":{"start":["부슬이A: 별조각은 우리가 가져간다!","부슬이B: 별씨앗도! …반씩 말하기로 했잖아.","부슬이A: 아, 맞다. 나머지 반은 네 차례.","온별: 도둑이야! 창고에 뭐가 남았나 보게!"],"end":["온별: 창고에서 낡은 부메랑을 찾았다고?","온별: 할머니 물건이군. 던지면 돌아온단다.","온별: 훔친 별빛을 대체 어디에 쓰는 걸까…"]},"mq04":{"start":["온별: 마을 부탁 셋! 배달, 수확, 퇴치야.","온별: 수확 부탁은 밭에서 작물을 길러 오게.","온별: 다 끝나면 볼트가 대장간을 열 거야."],"end":["온별: 다 해냈군! 대장간이 열렸네!","볼트: …오라고 한 적 없다. 오면 고치지만.","온별: 근데 먼별은 먹구름단을 어찌 잘 알까?"]},"mq05":{"start":["온별: 들판 야영지에 안개 간부가 있다!","보슬보슬: 앞이 안 보이지? 나도 안 보여…","보슬보슬: 잠깐, 야영지가 어느 쪽이더라?"],"end":["보슬보슬: 씨앗 돌려줄게… 그분이 기다리셔…","온별: 되찾은 별씨앗을 심어 수확해 바치게.","온별: 근데 이 빛나지 않는 별조각은… 뭐지?"]},"mq06":{"start":["온별: 오늘 밤, 별광맥에 야습이 온다!","온별: 낮에 빛나무 묘목을 심어 두게!","온별: 심은 수만큼 밤에 조명이 켜질 거야!"],"end":["온별: 지켜냈다! 근데 왜 훔치기만 할까?","온별: 부수지도 않고, 아프게 하지도 않고…","온별: 옜다, 별조각 3개! 부메랑 재료란다."]},"mq07":{"start":["온별: 드디어 먹구름 요새로 간다!","온별: 먼 길이니 별방울 콩 3개를 준비하게.","온별: 볼트에게 부메랑도 완성해 달라 하고!"],"end":["온별: 뭉게대왕을 이겼다고! 축제다, 축제!","온별: 근데 그 알은… 분명 전설에서 봤는데…","온별: …까먹었다. 일단 축제부터 하자!"]},"sq01":{"start":["피코: 반딧별 5마리가 도망갔어! 찾아 줘!","피코: 노트 21쪽에 목격 위치 적어 놨어!"],"end":["피코: 반딧별 전원 귀환 완료! 기록, 기록!","피코: 보상 40G! 노트에는 '영웅'이라 적음!"]},"sq02":{"start":["모모: 콩 배달 대작전! 별방울 콩 길러 줘!","모모: 다 크면 가져와. 후하게 쳐줄게!"],"end":["모모: 향기 최고! 역시 내 눈은 정확해.","모모: 다음에 희귀한 거 생기면… 나한테 팔래?"]},"sq03":{"start":["볼트: 가시 껍질이 필요하다. 5개다.","볼트: 들판의 가시딱지가 떨군다. 조심해라."],"end":["볼트: …됐다. 강화 할인권이다. 가라.","볼트: (도구 뒤에 몰래 별 스티커를 붙였다)"]}},"tutorial":["야옹… 드디어 도착! 여기가 별마중 마을!","할머니, 밭은 제가 잘 돌볼게요… 야옹.","방향키나 WASD로 움직여 보자!","반짝이는 빛기둥까지 걸어가 볼까?","Space나 탭으로 사람들과 이야기해 보자.","촌장 온별 할아버지가 기다리고 있어!","Z를 꾹 누르면 공격! 젤리를 혼내 주자.","젤리는 별가루가 되어 하늘로 돌아가.","밭에서 ⛏ 버튼으로 땅을 갈아 보자!","🌱 버튼으로 별무 씨앗을 심어 보자!","💧 물주기! 물을 줘야 작물이 자라!","침대에서 자면 저장되고 하루가 지나가.","다 자란 작물은 🌾 버튼으로 수확하자!","첫 수확 성공! 이제 진짜 별빛 농부야!"],"boss":{"intro":["뭉게대왕: 누구냐, 내 요새에 들어온 자는!","뭉게대왕: 이 몸은 하늘을 덮는 뭉게대왕!","뭉게대왕: 별빛은 전부 우리가 가져간다!","시고니: 마을의 별빛을 돌려줘!"],"phase2":["뭉게대왕: 제법이군! 하지만 아직이다!","뭉게대왕: 부슬이들아, 나와라아… 에, 에취!","(재채기 소나기에 부슬이들이 흠뻑 젖었다)"],"phase3":["뭉게대왕: 크윽… 알을 지켜야 한다…!","뭉게대왕: 마지막이다! 먹구름 장막!","뭉게대왕: 에취! 에취! …소나기는 못 참아!"],"defeat":["뭉게대왕: 우리도… 빛이 필요했을 뿐이야.","뭉게대왕: 알이… 알이 기다리고 있는데…","(뭉게대왕은 작은 구름이 되어 떠나갔다)","(요새 깊은 곳, 알이 희미하게 반짝였다)"]},"ending":["온별: 별빛 축제를 시작하겠… 뭐부터더라?","모모: 축제 기념 풍선! 그거 나한테 팔래?","볼트: …잘 해냈다. 부메랑 잘 쓰고.","피코: 노트 27쪽! '오늘은 축제'라고 적음!","리프: 작물들도 춤추고 있어. 진짜라니까?","먼별: 후후… 이제 시작인걸.","온별: 시고니는 우리 마을의 별빛 수호자다!","시고니: 야옹! 근데 그 알은 대체 뭐였을까?","먼별: 알이 깨어나는 날, 다시 만나자.","피코: 어? 젤리 한 마리가 아직 따라오는데?","온별: 전설에 따르면… 아, 또 까먹었네.","(별마중 마을의 밤하늘이 환하게 반짝였다)"],"system":{"levelup":"레벨 업! 몸이 별빛처럼 가벼워졌어!","save":"별빛이 오늘을 기억해 두었어. (저장 완료)"}}};   /* RPG-0 산출물 주입: wiki/rpg_db.json+rpg_maps.json+대사_챕터1.json — 재주입: python3 wiki/tools/inject_db.py */
 let RPG_DB_LIVE=null;
-function rpgDb(){ return RPG_DB_LIVE||RPG_DB; }   // RPG-4: merge(RPG_DB, 승인분)로 교체
+function rpgDb(){ return RPG_DB_LIVE||RPG_DB; }   // merge(RPG_DB, 승인 학생분)
 function rpgFind(tbl,id){ const t=rpgDb()[tbl]; if(!t||!id) return null; for(const r of t){ if(r.id===id) return r; } return null; }
 function rpgItemAny(id){   // 인벤 표시/가격용 범용 조회 — seed_<cropId>는 씨앗 의사 아이템
   if(!id) return null;
@@ -2783,6 +2784,132 @@ function rpgItemAny(id){   // 인벤 표시/가격용 범용 조회 — seed_<cr
   return rpgFind("items",id)||rpgFind("weapons",id)||rpgFind("armors",id)||rpgFind("crops",id);
 }
 function rpgNameOf(id){ const it=rpgItemAny(id); return it?it.name:(""+id); }
+
+/* ── RPG-4 위키 파이프라인(§7.2·§7.4): 학생 콘텐츠 스토어·검증기 7단계·부팅 병합 ── */
+const RPG_CONTENT_KEY="starArena.rpgContent.v1";
+// ★ STUDENT_RPG_EDIT(교사): 금칙어 — 초등 부적합·개인정보(§7.4 ④). 정규화 후 부분일치.
+const RPG_BANNED=["바보","멍청","죽어","죽여","시발","존나","새끼","꺼져","병신"];
+function loadRpgContent(){ try{ const s=JSON.parse(localStorage.getItem(RPG_CONTENT_KEY)); if(s&&typeof s==="object"){ if(!s.pending)s.pending=[]; if(!s.approved)s.approved=[]; return s; } }catch(e){} return { pending:[], approved:[] }; }
+function saveRpgContent(st){ try{ localStorage.setItem(RPG_CONTENT_KEY, JSON.stringify(st)); }catch(e){} }
+// 타입별 상한표(§7.1 — 검증기와 단일 출처). [min,max,required]
+const RPG_SCHEMA={
+  monsters:{ hp:[5,500,1], atk:[1,25,1], speed:[0,260,1], exp:[1,30,1], tier:[0,3,0] },
+  weapons:{ dmg:[1,30,1], cd:[0.35,2.0,1], range:[40,420,1], levelReq:[1,10,0] },
+  armors:{ hpAdd:[0,40,0], defAdd:[0,15,0], regenAdd:[0,8,0], price:[0,400,0] },
+  crops:{ seedPrice:[1,60,1], growDays:[1,9,1], sellPrice:[1,300,1] },
+  skills:{ dmgMul:[0,2.5,0], radius:[0,160,0], cd:[1,30,0] } };
+function _rpgNorm(s){ return (""+(s||"")).replace(/[\s_.,!?~·]+/g,"").toLowerCase(); }   // 공백·문장부호만 제거(한글 유지 — \W는 한글까지 지워 금칙어 오탐)
+function rpgBannedHit(o){
+  const blob=_rpgNorm([o.name,o.desc,o.flavor,(o.dialog||[]).join("")].join(""));
+  for(const w of RPG_BANNED) if(blob.indexOf(_rpgNorm(w))>=0) return w;
+  return null;
+}
+function rpgBudgetCheck(type,o){   // §7.5 파워버짓 — 합법 ⭐배분은 자동 통과
+  if(type==="monsters"){ if(o.isBoss) return {ok:true,note:"보스=교사 검수"};
+    const s=o.hp/10+o.atk*2+(o.speed||0)/30, cap=20+(o.tier||0)*15;
+    return { ok:s<=cap+0.01, score:Math.round(s*10)/10, cap:cap, hint:"체력·공격·빠르기 별을 조금 낮춰봐" }; }
+  if(type==="weapons"){ const dps=o.dmg/o.cd, cap=15+(o.levelReq||1)*3;
+    return { ok:dps<=cap+0.01, score:Math.round(dps*10)/10, cap:cap, hint:"공격을 줄이거나 휘두르는 시간을 늘려봐" }; }
+  if(type==="crops"){ return { ok:o.sellPrice<=o.seedPrice*3+0.01, score:o.sellPrice, cap:o.seedPrice*3, hint:"파는 값을 씨앗값의 3배 안으로" }; }
+  if(type==="skills"){ if(!o.cd) return {ok:true,note:"게이지/패시브=교사 검수"};
+    const s=(o.dmgMul||0)*100/o.cd; return { ok:s<=60.01, score:Math.round(s*10)/10, cap:60, hint:"세기를 낮추거나 기다리는 시간을 늘려봐" }; }
+  return {ok:true};
+}
+function validateRpgContent(type, raw){   // 7단계(§7.4) → {ok, data(조정 반영), errors[], warnings[], budget}
+  const errors=[], warnings=[], o=JSON.parse(JSON.stringify(raw||{})), sc=RPG_SCHEMA[type];
+  if(!o.name) errors.push("이름이 필요해요");   // ① 필수·타입 (id는 시스템이 부여)
+  if(sc) for(const f in sc){ const req=sc[f][2];
+    if(req&&(o[f]===undefined||o[f]===null)) errors.push(f+" 값이 필요해요");
+    else if(o[f]!==undefined&&typeof o[f]!=="number") errors.push(f+"는 숫자여야 해요"); }
+  const bad=rpgBannedHit(o); if(bad) errors.push("쓸 수 없는 말이 있어요(\""+bad+"\") — 다른 말로 바꿔줘");   // ④ 금칙어
+  if(errors.length) return { ok:false, data:o, errors:errors, warnings:warnings };
+  if(sc) for(const f in sc){ if(o[f]===undefined) continue; const lo=sc[f][0], hi=sc[f][1];   // ② 범위 클램프
+    if(o[f]<lo){ warnings.push(f+" "+o[f]+"→"+lo+" 조정"); o[f]=lo; }
+    else if(o[f]>hi){ warnings.push(f+" "+o[f]+"→"+hi+" 조정"); o[f]=hi; } }
+  let bg=rpgBudgetCheck(type,o), guard=0;   // ③ 파워버짓 — 초과 시 스케일다운(클램프와 통합)
+  while(bg.ok===false&&guard++<300){
+    if(type==="monsters"){ if(o.atk>1)o.atk--; else if(o.hp>5)o.hp-=5; else if(o.speed>20)o.speed-=10; else break; }
+    else if(type==="weapons") o.dmg=Math.max(1,o.dmg-1);
+    else if(type==="crops") o.sellPrice=Math.max(1,o.sellPrice-1);
+    else if(type==="skills") o.dmgMul=Math.max(0.1,Math.round((o.dmgMul-0.1)*10)/10);
+    else break;
+    bg=rpgBudgetCheck(type,o);
+  }
+  if(guard>0) warnings.push("힘의 균형을 위해 살짝 낮췄어요 ("+bg.hint+")");
+  const refs=[];   // ⑤ 참조 무결성(제출 시 1차)
+  if(type==="monsters"&&Array.isArray(o.drops)) for(const d of o.drops) refs.push(d.itemId);
+  if(type==="quests"&&o.goal){ refs.push(o.goal.target); refs.push(o.goal.item); }
+  for(const r of refs){ if(r&&!rpgItemAny(r)&&!rpgFind("monsters",r)&&!rpgFind("npcs",r)) warnings.push("아직 없는 것을 가리켜요("+r+") — 나중에 만들면 이어져요"); }
+  return { ok:true, data:o, errors:errors, warnings:warnings, budget:bg };
+}
+function rpgContentMerge(){   // 부팅/승인 후: RPG_DB_LIVE = merge(RPG_DB, approved) + ⑦ 로드 재검증
+  const st=loadRpgContent(), live={};
+  for(const k in RPG_DB){ live[k]=Array.isArray(RPG_DB[k])?RPG_DB[k].slice():RPG_DB[k]; }
+  for(const rec of st.approved){
+    if(rec.disabled||!live[rec.type]) continue;
+    const v=validateRpgContent(rec.type, rec.data); if(!v.ok) continue;
+    const d=v.data; if(!d.id||d.id.indexOf("stu_")!==0) d.id="stu_"+rec.type+"_"+(rec.seq||0);
+    d._author=rec.author||"학생";
+    live[rec.type]=live[rec.type].filter(x=>x.id!==d.id).concat([d]);
+  }
+  RPG_DB_LIVE=live;
+}
+let _rpgSeq=0;
+function rpgSubmitContent(type, data, author){   // 학생 제출 → pending
+  const v=validateRpgContent(type, data);
+  if(!v.ok) return { ok:false, msg:v.errors.join(" · ") };
+  const st=loadRpgContent(), id="stu_"+type+"_"+(++_rpgSeq)+"_"+(st.approved.length+st.pending.length);
+  v.data.id=id;
+  st.pending.push({ id:id, type:type, data:v.data, author:author||"학생", seq:_rpgSeq, warnings:v.warnings, disabled:false });
+  saveRpgContent(st);
+  return { ok:true, id:id, warnings:v.warnings };
+}
+function rpgApproveContent(id){ const st=loadRpgContent(), i=st.pending.findIndex(r=>r.id===id); if(i<0) return false;
+  st.approved.push(st.pending.splice(i,1)[0]); saveRpgContent(st); rpgContentMerge(); return true; }
+function rpgRejectContent(id){ const st=loadRpgContent(), i=st.pending.findIndex(r=>r.id===id); if(i<0) return false;
+  st.pending.splice(i,1); saveRpgContent(st); return true; }
+function rpgExportApproved(){   // T3 승격용 JSON(교사가 wiki/rpg_db.json에 병합 → inject_db.py)
+  const st=loadRpgContent(), out={};
+  for(const rec of st.approved){ if(rec.disabled) continue; (out[rec.type]=out[rec.type]||[]).push(rec.data); }
+  return JSON.stringify(out, null, 2);
+}
+try{ rpgContentMerge(); }catch(e){}   // 부팅 시 승인 학생 콘텐츠 병합
+
+/* 교사 콘텐츠 승인 화면(§7.4 — MAP_REVIEW 패턴): pending 미리보기 → 승인/반려, E=T3 내보내기 */
+let rpgReviewIdx=0;
+function handleRpgReviewKey(code){
+  const st=loadRpgContent(), pend=st.pending;
+  if(code==="Escape"){ gameState=STATE.ADMIN; return; }
+  if(code==="KeyE"){ const json=rpgExportApproved();
+    try{ window.prompt("승인된 학생 콘텐츠 JSON — 복사해서 wiki/rpg_db.json에 병합 후 inject_db.py (T3 승격):", json); }catch(e){}
+    return; }
+  if(!pend.length) return;
+  if(code==="ArrowUp"){ rpgReviewIdx=(rpgReviewIdx+pend.length-1)%pend.length; return; }
+  if(code==="ArrowDown"){ rpgReviewIdx=(rpgReviewIdx+1)%pend.length; return; }
+  if(code==="Enter"||code==="NumpadEnter"){ const r=pend[rpgReviewIdx]; if(r){ rpgApproveContent(r.id); showToast("✅ 승인·반영: "+r.data.name); rpgReviewIdx=Math.max(0,rpgReviewIdx-1); } return; }
+  if(code==="KeyX"||code==="Delete"){ const r=pend[rpgReviewIdx]; if(r){ rpgRejectContent(r.id); showToast("↩ 아이디어 온실로 보류: "+r.data.name); rpgReviewIdx=Math.max(0,rpgReviewIdx-1); } return; }
+}
+function drawRpgReviewScreen(){
+  const st=loadRpgContent(), pend=st.pending;
+  ctx.fillStyle="rgba(10,8,26,0.98)"; ctx.fillRect(0,0,LOGW,LOGH);
+  ctx.fillStyle="#c79bff"; ctx.font="bold 28px 'Malgun Gothic',sans-serif"; ctx.fillText("📖 별의 도감 — 학생 콘텐츠 승인", 50, 56);
+  ctx.fillStyle="#b0a0d0"; ctx.font="15px 'Malgun Gothic',sans-serif";
+  ctx.fillText("대기 "+pend.length+"개 · 승인됨 "+st.approved.length+"개   |   ↑↓ 선택 · Enter 승인 · X 보류 · E 내보내기(T3) · Esc", 50, 84);
+  if(!pend.length){ ctx.fillStyle="#9a90b8"; ctx.font="17px 'Malgun Gothic',sans-serif";
+    ctx.fillText("승인 대기 중인 학생 콘텐츠가 없어요. (시트 → JSON 제출 시 여기 표시)", 60, 150); return; }
+  for(let i=0;i<Math.min(9,pend.length);i++){
+    const r=pend[i], y=120+i*50, on=(i===rpgReviewIdx);
+    ctx.fillStyle=on?"rgba(199,155,255,0.2)":"rgba(255,255,255,0.05)"; roundRect(50,y,LOGW-100,44,8); ctx.fill();
+    ctx.fillStyle="#ffffff"; ctx.font=(on?"bold ":"")+"16px 'Malgun Gothic',sans-serif";
+    ctx.fillText("["+r.type+"] "+r.data.name+"  · 설계 "+r.author, 68, y+27);
+    const bg=rpgBudgetCheck(r.type, r.data);
+    ctx.textAlign="right"; ctx.fillStyle=bg.ok!==false?"#8fdba0":"#ff9f9f";
+    ctx.fillText(bg.score!==undefined?("힘 "+bg.score+"/"+bg.cap):"검수 필요", LOGW-70, y+27); ctx.textAlign="left";
+  }
+  const cur=pend[rpgReviewIdx];
+  if(cur&&cur.warnings&&cur.warnings.length){ ctx.fillStyle="#ffd93d"; ctx.font="13px 'Malgun Gothic',sans-serif";
+    ctx.fillText("⚠ "+cur.warnings.join(" · "), 60, 120+Math.min(9,pend.length)*50+24); }
+}
 
 /* ── 저장(§7.3): profile.rpg 단일 서브트리 ── */
 function rpgExpNeed(L){ return Math.round(RPG_CONST.EXP_BASE*Math.pow(RPG_CONST.EXP_GROW, Math.max(1,L)-1)); }
@@ -2979,6 +3106,7 @@ function rpgInteract(){
 }
 function rpgUseObject(o){
   if(o.type==="bed") return rpgSleep();
+  if(o.type==="board"){ RPG.ui="codex"; RPG.codex={ tab:0 }; return; }   // 게시판=별의 도감(§8.1 피코의 관찰 노트)
   const flavor={ chest:"상자 속은 아직 비어 있다. 뭘 넣어둘까?",
     board:"게시판: 마을의 부탁이 여기 붙는다.",
     cellar:"잠긴 지하실 문… 안에서 희미하게 반짝인다.",
@@ -3432,6 +3560,12 @@ function handleRpgKey(code){
     if((code==="Enter"||code==="NumpadEnter"||code==="KeyZ")&&inv[RPG.inven.idx]){ rpgInvenUse(RPG.inven.idx); return; }
     return;
   }
+  if(RPG.ui==="codex"){   // 📖 별의 도감(§8.1 — 3탭: 몬스터/도구/작물)
+    if(code==="Escape"||code==="KeyB"){ RPG.ui="field"; RPG.codex=null; return; }
+    if(code==="ArrowLeft"){ RPG.codex.tab=(RPG.codex.tab+2)%3; return; }
+    if(code==="ArrowRight"||code==="Tab"){ RPG.codex.tab=(RPG.codex.tab+1)%3; return; }
+    return;
+  }
   if(RPG.ui==="seed"){   // 씨앗 선택 팝업(§5.2)
     const seeds=rpgSeedStacks();
     if(code==="Escape"){ RPG.ui="field"; RPG.seed=null; return; }
@@ -3461,6 +3595,7 @@ function handleRpgKey(code){
     showToast("✨ X 기술: "+rpgFind("skills",acts[i]).name); rpgPersist(); return;
   }
   if(code==="KeyI"||code==="Tab"){ RPG.ui="inven"; RPG.inven={idx:0}; return; }
+  if(code==="KeyB"){ RPG.ui="codex"; RPG.codex={ tab:0 }; return; }   // 📖 별의 도감(§8.1)
   if(code==="KeyQ"){ rpgUseCandy(); return; }
   if(code==="Escape"){ RPG.ui="confirm"; return; }
 }
@@ -3500,6 +3635,11 @@ function rpgTouchStart(id,p){
       if(RPG.seed.idx===i){ const tgt=RPG.seed.target, id=seeds[i].id; RPG.ui="field"; RPG.seed=null; rpgPlant(tgt,id); }
       else RPG.seed.idx=i;
     }
+    return;
+  }
+  if(RPG.ui==="codex"){
+    if(p.y<130){ for(let i=0;i<3;i++) if(p.x>=60+i*180&&p.x<=228+i*180){ RPG.codex.tab=i; return; } }
+    else if(p.y>LOGH-50||p.x<60){ RPG.ui="field"; RPG.codex=null; }
     return;
   }
   if(RPG.ui==="sleep") return;
@@ -3954,7 +4094,7 @@ function rpgDrawHUD(){
   ctx.textAlign="left";
   ctx.fillStyle="rgba(255,255,255,0.12)"; roundRect(LOGW-136,10,116,42,10); ctx.fill();
   ctx.font="bold 15px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#ffffff"; ctx.fillText("🎒 가방", LOGW-118, 37);
-  const hint=RPG.ctxTarget?((RPG.ctxTarget.kind==="npc")?"Space: 대화하기":(RPG.ctxTarget.kind==="farm"?("Space: "+RPG.ctxTarget.farm.label):"Space: 살펴보기")):"방향키 이동 · Z 공격 · X 기술 · Space 상호작용 · I 가방 · Q 사탕 · Esc 나가기";
+  const hint=RPG.ctxTarget?((RPG.ctxTarget.kind==="npc")?"Space: 대화하기":(RPG.ctxTarget.kind==="farm"?("Space: "+RPG.ctxTarget.farm.label):"Space: 살펴보기")):"방향키 이동 · Z 공격 · X 기술 · Space 상호작용 · I 가방 · B 도감 · Q 사탕 · Esc 나가기";
   ctx.fillStyle="rgba(10,12,32,0.6)"; ctx.fillRect(0,LOGH-28,LOGW,28);
   ctx.fillStyle="#bfb6dd"; ctx.font="13px 'Malgun Gothic',sans-serif"; ctx.fillText(hint, 24, LOGH-9);
   // 스킬 칩(키보드·터치 공통 표시): X 쿨다운 · C 게이지
@@ -4058,6 +4198,40 @@ function rpgDrawInven(){
   ctx.fillStyle="#9a90b8"; ctx.font="13px 'Malgun Gothic',sans-serif";
   ctx.fillText("Enter 사용(사탕) · Esc/I 닫기", PX+PW-260, PY+PH-24);
 }
+function rpgDrawCodex(){   // 📖 별의 도감(§8.1 — 몬스터/도구/작물 3탭, 크레딧·킬 카운트)
+  const cx=RPG.codex, tabs=[["monsters","👾 몬스터",RPG_MOB_FACE],["weapons","🗡 도구",null],["crops","🌱 작물",RPG_CROP_EMOJI]];
+  ctx.fillStyle="rgba(6,4,18,0.9)"; ctx.fillRect(0,0,LOGW,LOGH);
+  ctx.fillStyle="#ffe066"; ctx.font="bold 26px 'Malgun Gothic',sans-serif"; ctx.fillText("📖 별의 도감 — 피코의 관찰 노트", 60, 60);
+  for(let i=0;i<3;i++){ const on=cx.tab===i;
+    ctx.fillStyle=on?"rgba(255,224,102,0.9)":"rgba(255,255,255,0.1)"; roundRect(60+i*180,84,168,40,10); ctx.fill();
+    ctx.fillStyle=on?"#201a33":"#ffffff"; ctx.font="bold 17px 'Malgun Gothic',sans-serif"; ctx.textAlign="center";
+    ctx.fillText(tabs[i][1], 60+i*180+84, 110); ctx.textAlign="left"; }
+  const tbl=tabs[cx.tab][0], faceMap=tabs[cx.tab][2], list=rpgDb()[tbl];
+  let n=0;
+  for(let k=0;k<list.length;k++){
+    const o=list[k], col=n%3, row=Math.floor(n/3), x=60+col*400, y=150+row*118;
+    if(y>LOGH-120) break;
+    const known=(tbl==="monsters")?(RPG.save.kills[o.id]>0):(tbl==="weapons"?(o.id==="wp_fist"||o.id==="wp_hoe"||rpgInvCount(o.id)>0||RPG.save.equip.weapon===o.id):(RPG.save.flags["seen_"+o.id]||rpgInvCount(o.id)>0||rpgInvCount("seed_"+o.id)>0));
+    ctx.fillStyle="rgba(255,255,255,0.06)"; roundRect(x,y,380,104,12); ctx.fill();
+    const emoji=faceMap?((faceMap[o.id]&&faceMap[o.id][0])||faceMap[o.id]||"❔"):"🗡";
+    ctx.font="40px sans-serif"; ctx.textAlign="center";
+    ctx.fillStyle=known?"#ffffff":"rgba(120,110,150,0.9)";
+    ctx.fillText(known?emoji:"❔", x+44, y+62); ctx.textAlign="left";
+    ctx.fillStyle=known?"#ffe066":"#6a5f8a"; ctx.font="bold 18px 'Malgun Gothic',sans-serif";
+    ctx.fillText(known?o.name:"??? 연구 중", x+86, y+34);
+    ctx.fillStyle="#cfc7e8"; ctx.font="13px 'Malgun Gothic',sans-serif";
+    if(known){
+      if(tbl==="monsters") ctx.fillText("HP "+o.hp+" · 공격 "+o.atk+" · 만난 횟수 "+(RPG.save.kills[o.id]||0), x+86, y+58);
+      else if(tbl==="weapons") ctx.fillText("공격 "+o.dmg+" · "+(o.kind==="melee"?"근접":o.kind==="boomerang"?"부메랑":"원거리"), x+86, y+58);
+      else ctx.fillText("자라는 시간 "+o.growDays+"일 · 판매 "+(o.sellable===false?"—":o.sellPrice+"G"), x+86, y+58);
+      ctx.fillStyle="#9a90b8"; ctx.font="12px 'Malgun Gothic',sans-serif";
+      ctx.fillText(o._author?("설계: "+o._author):"설계: 별빛(기본)", x+86, y+80);
+    } else { ctx.fillStyle="#6a5f8a"; ctx.fillText("아직 만나지 못했어요", x+86, y+58); }
+    n++;
+  }
+  ctx.fillStyle="#9a90b8"; ctx.font="14px 'Malgun Gothic',sans-serif"; ctx.textAlign="center";
+  ctx.fillText("←→ 탭 이동 · B/Esc 닫기 · 빈 칸은 우리 반이 채워 나가요!", LOGW/2, LOGH-24); ctx.textAlign="left";
+}
 function rpgDrawSeed(){   // 씨앗 선택 팝업(§5.2 — 보유 씨앗만, 더블탭/Enter 심기)
   const seeds=rpgSeedStacks();
   ctx.fillStyle="rgba(0,0,0,0.45)"; ctx.fillRect(0,0,LOGW,LOGH);
@@ -4142,6 +4316,7 @@ function rpgRender(){
   else if(RPG.ui==="shop") rpgDrawShop();
   else if(RPG.ui==="inven") rpgDrawInven();
   else if(RPG.ui==="seed") rpgDrawSeed();
+  else if(RPG.ui==="codex") rpgDrawCodex();
   else if(RPG.ui==="confirm") rpgDrawConfirm();
   if(RPG.ui==="sleep"&&RPG.sleep){
     const t=RPG.sleep.t, a=(t<0.8)?(t/0.8):Math.max(0,(1.6-t)/0.8);
@@ -5072,6 +5247,7 @@ function handleAdminKey(code){
   if(code==="KeyG"){ reviewIdx=0; _reviewSt=null; gameState=STATE.MAP_REVIEW; try{ MapStore.sync(); }catch(e){} return; }   // OVERNIGHT-1: 학생 맵 승인 + P3: 열 때 클라우드 동기화
   if(code==="KeyB"){ BAL.cat=0; BAL.idx=0; BAL.scroll=0; BAL.edit=null; BAL.confirmReset=0; gameState=STATE.BALANCE; return; }   // BALANCE-1: 밸런스 조정
   if(code==="KeyJ"){ rpgEnter(); return; }   // RPG모드 §1.2 P1: 🌙 별빛 마을(교사 전용 진입)
+  if(code==="KeyK"){ rpgReviewIdx=0; gameState=STATE.RPG_REVIEW; return; }   // RPG모드 §7.4: 학생 콘텐츠 승인
 }
 function adminCreateStudent(){
   let id=null,name=null,pin=null;
@@ -7201,6 +7377,7 @@ function render(){
   else if(gameState===STATE.ADMIN_LOGIN) drawAdminLoginScreen();
   else if(gameState===STATE.ADMIN) drawAdminScreen();
   else if(gameState===STATE.BALANCE) drawBalanceScreen();
+  else if(gameState===STATE.RPG_REVIEW) drawRpgReviewScreen();
   else if(gameState===STATE.PF_SELECT) drawPfSelect();
   else if(gameState===STATE.SHOP) drawShopScreen();
   else if(gameState===STATE.EDITOR) drawEditorScreen();
@@ -7463,7 +7640,7 @@ function drawAdminScreen(){
   // 하단 액션 안내
   ctx.fillStyle="#d6cdee"; ctx.font="bold 15px 'Malgun Gothic',sans-serif";
   if(_adminPendingN<0 || uiTime-_adminPendingT>2){ _adminPendingN=loadEditorStore().pending.length; _adminPendingT=uiTime; }   // PERF-2: 프레임당 파싱 → 2초 캐시
-  ctx.fillText("A 만들기 · P PIN재설정 · R 초기화 · X 삭제 · S 새로고침 · M 클라우드이전 · G 맵승인("+_adminPendingN+") · B 밸런스 · J 🌙별빛마을 · ↑↓ · Esc", rx+24, ry2+440);
+  ctx.fillText("A 만들기 · P PIN · R 초기화 · X 삭제 · S 새로고침 · M 이전 · G 맵승인("+_adminPendingN+") · B 밸런스 · J 🌙별빛마을 · K 도감승인 · ↑↓ · Esc", rx+24, ry2+440);
   ctx.fillStyle="#6f6a80"; ctx.font="12px 'Malgun Gothic',sans-serif";
   ctx.fillText("생성/변경은 로컬+클라우드에 저장. PIN은 해시 저장(원문 미저장). 다른 기기 로그인은 M(이전) 후 가능.", rx+24, ry2+470);
   ctx.restore();

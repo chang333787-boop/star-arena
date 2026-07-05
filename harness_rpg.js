@@ -50,7 +50,9 @@ script += `
   rpgSeedStacks, rpgFarmCount, rpgSoil, rpgOnDayAdvance,
   rpgQuestRec, rpgQuestDone, rpgQuestActive, rpgQuestAccept, rpgQuestComplete, rpgQuestFulfilled,
   rpgQuestAvailFor, rpgQuestOnKill, rpgQuestOnHarvest, rpgStartRaid, rpgSpawnRaid, rpgRaidLights, rpgTrackText,
-  handleRpgKey, handleKeyPress, keysDown,
+  validateRpgContent, rpgBudgetCheck, rpgBannedHit, rpgSubmitContent, rpgApproveContent, rpgRejectContent,
+  rpgContentMerge, rpgExportApproved, loadRpgContent, RPG_CONTENT_KEY,
+  handleRpgKey, handleRpgReviewKey, handleKeyPress, keysDown,
   loadAccounts, createStudent, studentLogin, logout, resetStudent, accountToProfile, mergeProfile, saveProfile, loadProfile,
   AccountStore, PROFILE_KEY,
   get RPG(){return RPG;}, get profile(){return profile;}, get accounts(){return accounts;}, get state(){return gameState;},
@@ -558,5 +560,53 @@ run("T3 연속 완주 판정(§10.4)", ()=>{
   check("전직 1회+칭호+챕터클리어", sv.jobId!=="job_novice"&&sv.flags.title==="별빛 수호자"&&sv.flags.chapter1_clear===1);
 });
 
-console.log("\n결과: " + (fails===0 ? "RPG3B_PASS ✅ (T2 구간별+연속 완주 성립)" : (fails+"건 실패 ❌")));
+console.log("=== RPG-9) 위키 파이프라인: 검증기 7단계·제출/승인·병합·도감 (RPG-4 · §7.4) ===");
+run("검증기: 기본 콘텐츠 전량 자기 통과(§7.5 채점표)", ()=>{
+  const db=R.rpgDb(); let fail=[];
+  for(const mo of db.monsters){ const b=R.rpgBudgetCheck("monsters",mo); if(b.ok===false) fail.push("mon:"+mo.id); }
+  for(const w of db.weapons){ const b=R.rpgBudgetCheck("weapons",w); if(b.ok===false) fail.push("wp:"+w.id); }
+  for(const c of db.crops){ const b=R.rpgBudgetCheck("crops",c); if(b.ok===false) fail.push("crop:"+c.id); }
+  check("기본 몬스터8·도구7·작물6 버짓 통과(위반: "+(fail.join(",")||"없음")+")", fail.length===0);
+});
+run("검증기: 클램프·파워버짓 스케일다운·금칙어·필수", ()=>{
+  const over=R.validateRpgContent("monsters", { id:"stu_x", name:"쎈놈", hp:9999, atk:99, speed:999, exp:999, tier:1 });
+  check("상한 클램프(hp≤500·atk≤25·exp≤30)", over.data.hp<=500&&over.data.atk<=25&&over.data.exp<=30);
+  check("파워버짓 자동 스케일다운 → 통과", R.rpgBudgetCheck("monsters",over.data).ok!==false&&over.ok===true&&over.warnings.length>0);
+  const banned=R.validateRpgContent("monsters", { id:"stu_y", name:"바보몬스터", hp:20, atk:3, speed:60, exp:5, tier:1 });
+  check("금칙어 반려", banned.ok===false&&banned.errors.some(e=>e.indexOf("쓸 수 없는")>=0));
+  const noname=R.validateRpgContent("monsters", { hp:20, atk:3, speed:60, exp:5, tier:1 });
+  check("필수(이름) 누락 반려", noname.ok===false);
+  const legal=R.validateRpgContent("monsters", { id:"stu_z", name:"별토끼", hp:25, atk:4, speed:110, exp:8, tier:1 });   // ⭐예산 합법(hp3·atk2·spd3=8→7초과? 실제 버짓)
+  check("합법 몬스터 통과·경고 없음", legal.ok===true&&legal.warnings.length===0);
+});
+run("제출→승인→병합→rpgDb 반영→도감 노출", ()=>{
+  R.RPG_CONTENT_KEY;
+  const st0=R.loadRpgContent(); st0.pending=[]; st0.approved=[]; R.rpgContentMerge();
+  const sub=R.rpgSubmitContent("monsters", { name:"솜별 토끼", hp:22, atk:3, speed:120, exp:7, tier:1, drops:[{itemId:"it_jelly_bit",chance:0.3}] }, "3반 김민준");
+  check("학생 제출 → pending(id 부여)", sub.ok===true&&sub.id.indexOf("stu_monsters_")===0);
+  const before=R.rpgDb().monsters.length;
+  R.rpgApproveContent(sub.id);
+  check("승인 → RPG_DB_LIVE 병합(몬스터 +1)", R.rpgDb().monsters.length===before+1);
+  const merged=R.rpgFind("monsters",sub.id);
+  check("병합된 콘텐츠 조회·크레딧 보존", merged&&merged.name==="솜별 토끼"&&merged._author==="3반 김민준");
+});
+run("반려(아이디어 온실)·T3 내보내기", ()=>{
+  const sub=R.rpgSubmitContent("crops", { name:"무지개 감자", seedPrice:10, growDays:2, sellPrice:25 }, "2반 이서연");
+  const n0=R.rpgDb().crops.length;
+  R.rpgRejectContent(sub.id);
+  R.rpgContentMerge();
+  check("반려 → 병합 안 됨", R.rpgDb().crops.length===n0);
+  const json=R.rpgExportApproved();
+  check("T3 내보내기 JSON(승인분만·솜별 토끼 포함)", json.indexOf("솜별 토끼")>=0&&json.indexOf("무지개 감자")<0);
+});
+run("교사 승인 화면 진입/조작(RPG_REVIEW)", ()=>{
+  R.rpgSubmitContent("weapons", { name:"반짝 지팡이", dmg:10, cd:0.8, range:200, levelReq:3 }, "1반 박지후");
+  R.setState("rpg_review");
+  R.handleRpgReviewKey("Enter");   // 첫 항목 승인
+  check("승인 화면에서 Enter=승인", R.rpgFind("weapons","stu_weapons_"+"".length)||R.rpgDb().weapons.some(w=>w.name==="반짝 지팡이"));
+  R.handleRpgReviewKey("Escape");
+  check("Esc → admin 복귀", R.state==="admin");
+});
+
+console.log("\n결과: " + (fails===0 ? "RPG4_PASS ✅ (챕터1 전체 + 위키 파이프라인 완성)" : (fails+"건 실패 ❌")));
 process.exit(fails===0?0:1);
