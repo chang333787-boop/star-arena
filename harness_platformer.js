@@ -16,7 +16,7 @@ globalThis.localStorage=lsS;
 globalThis.requestAnimationFrame=(cb)=>{ globalThis.__rafCb=cb; return 1; };
 globalThis.cancelAnimationFrame=noop;
 script+=`;globalThis.__api={
-  PF_CONST, PF_LEVELS, pfStartLevel, pfUpdate, pfDie, pfLevelList, pfLoadBest, pfJumpPressed, handlePlatformerKey,
+  PF_CONST, PF_LEVELS, pfStartLevel, pfUpdate, pfDie, pfHurt, pfShoot, pfLevelList, pfLoadBest, pfJumpPressed, handlePlatformerKey, pfUnlockedCount,
   get PF(){return PF;}, keysDown, get profile(){return profile;}, get state(){return gameState;}, setState:v=>{gameState=v;},
   get ED(){return ED;}, setED:v=>{ED=v;}, edStartGrid, edSubmit, validateEditorMap, loadEditorStore, saveEditorStore,
   EDITOR_MODES, handleKeyPress, openEditor, STATE, expNeed, handleEditorKey, edLoadSlots
@@ -141,17 +141,19 @@ run("밟기=처치·바운스 / 옆 접촉=사망", ()=>{
   check("옆 접촉 → 사망", api.PF.deaths>d0);
 });
 
-console.log("=== 4) 내장 3레벨: 파스 + 도달성(그래프) ===");
+console.log("=== 4) 내장 캠페인 20레벨: 파스 + 도달성(그래프) — 실물리 클리어 검증은 harness_pfcamp.js ===");
 function reachable(level){
   const rows=level.rows, R=rows.length, C=rows[0].length;
-  const solid=(c,r)=>(c<0||c>=C)?true:(r<0||r>=R)?false:rows[r][c]==="#";
+  const SOLID="#ib";   // P1.5: 얼음·부서지는 블록도 솔리드
+  const solid=(c,r)=>(c<0||c>=C)?true:(r<0||r>=R)?false:SOLID.indexOf(rows[r][c])>=0;
   const stand=(c,r)=>{ if(r+1>=R) return false; const b=rows[r+1][c], h=rows[r][c];
-    return (b==="#"||b==="-"||b==="J") && h!=="#" && h!=="S"; };
+    return (SOLID.indexOf(b)>=0||b==="-"||b==="J") && SOLID.indexOf(h)<0 && h!=="S"; };
   let sc=-1,sr=-1,gc=-1,gr=-1;
   for(let r=0;r<R;r++) for(let c=0;c<C;c++){ if(rows[r][c]==="*"){sc=c;sr=r;} if(rows[r][c]==="G"){gc=c;gr=r;} }
   if(sc<0||gc<0) return false;
+  const upMax=level.rows.some(s=>s.indexOf("w")>=0)?6:3;   // P1.5: 🪶깃털 레벨은 점프 6칸 근사
   const seen=new Set(), q=[[sc,sr]]; seen.add(sc+","+sr);
-  const push=(c,r)=>{ const k=c+","+r; if(c<0||c>=C||r<0||r>=R||seen.has(k)) return; if(rows[r][c]==="#"||rows[r][c]==="S") return; seen.add(k); q.push([c,r]); };
+  const push=(c,r)=>{ const k=c+","+r; if(c<0||c>=C||r<0||r>=R||seen.has(k)) return; if(SOLID.indexOf(rows[r][c])>=0||rows[r][c]==="S") return; seen.add(k); q.push([c,r]); };
   while(q.length){
     const [c,r]=q.shift();
     if(Math.abs(c-gc)<=1 && Math.abs(r-gr)<=1) return true;
@@ -159,14 +161,14 @@ function reachable(level){
     for(let rr=r; rr<R; rr++){ if(stand(c,rr)){ push(c,rr); break; } if(solid(c,rr+0)) break; }
     // 좌우 걷기(발판 위에서)
     if(stand(c,r)){ push(c-1,r); push(c+1,r);
-      // 점프: 위로 최대 3칸, 좌우 최대 3칸(스프링이면 위로 6칸)
-      const up=(rows[r+1] && rows[r+1][c]==="J")?6:3;
+      const up=(rows[r+1] && rows[r+1][c]==="J")?6:upMax;
       for(let dy=0;dy<=up;dy++) for(let dx=-3;dx<=3;dx++) push(c+dx, r-dy);
     } else { push(c-1,r); push(c+1,r); }   // 공중 이동 근사
   }
   return false;
 }
-run("내장 레벨 무결성 + 골 도달 가능", ()=>{
+run("내장 레벨 무결성 + 골 도달 가능 (20스테이지)", ()=>{
+  check("캠페인 20스테이지", api.PF_LEVELS.length===20);
   for(const lv of api.PF_LEVELS){
     const C0=lv.rows[0].length, uni=lv.rows.every(s=>s.length===C0);
     const st=lv.rows.join("").split("*").length-1, gl=lv.rows.join("").split("G").length-1;
@@ -187,6 +189,75 @@ run("레벨 시작·별 집계·클리어·보상(E16 연동)", ()=>{
   check("첫 클리어 보상 +40G", api.profile.gold===g0+40);
   const best=api.pfLoadBest();
   check("베스트 기록 저장", !!best[api.PF_LEVELS[0].id]);
+});
+
+console.log("=== 4.5) P1.5 신규 기믹·파워업 ===");
+const GIM={ id:"__gim", name:"기믹 실험실", rows:[
+  "....................",
+  "....................",
+  "....................",
+  "....................",
+  "....................",
+  "....................",
+  ".........b..........",
+  "....................",
+  "....P...!...w...m...",
+  ".*....M.............",
+  "iiiii###############",
+  "####################" ] };
+run("⭐총: 획득 → 발사 → 몬스터 원거리 처치", ()=>{
+  api.pfStartLevel(GIM); const p=api.PF.p;
+  p.x=4.5*56; p.y=10*56-0.01; api.pfUpdate(DT);   // P 위치(9행이 아니라 발/몸 판정 — 8행 P는 y=9*56대)
+  // P는 r8: 몸 중심이 그 칸에 오도록 점프 없이 좌표 셋
+  p.x=4.5*56; p.y=(9)*56-0.01; api.pfUpdate(DT);
+  check("총 획득", p.gun===true);
+  const mon=api.PF.monsters[0]; p.x=mon.x-300; p.y=10*56-0.01; p.facing=1;
+  api.pfShoot();
+  check("발사체 생성", api.PF.shots.length>0);
+  ticks(60);
+  check("몬스터 원거리 처치", mon.dead===true);
+});
+run("피해 단계: 파워업 보유 시 사망 대신 상실+무적", ()=>{
+  const p=api.PF.p, d0=api.PF.deaths;
+  p.gun=true; p.inv=0;
+  api.pfHurt();
+  check("파워업 상실(사망 0)", p.gun===false && api.PF.deaths===d0 && p.inv>0);
+  p.inv=0; api.pfHurt();
+  check("맨몸 피해 = 사망", api.PF.deaths===d0+1);
+});
+run("🌟무적: 접촉 처치 · 🪶깃털: 점프력 증가 · 🧲자석: 별 자동 수집", ()=>{
+  api.pfStartLevel(GIM); const p=api.PF.p;
+  // 무적: 몬스터 위치로
+  p.starT=5; const mon=api.PF.monsters[0]; p.x=mon.x; p.y=10*56-0.01; api.pfUpdate(DT);
+  check("무적 접촉 → 몬스터 처치", mon.dead===true && api.PF.deaths===0);
+  // 깃털: 점프 높이 비교
+  const jumpH=(fe)=>{ api.pfStartLevel(GIM); const q=api.PF.p; q.x=16*56; q.y=10*56-0.01; q.featherT=fe?9:0;   // b블록(c9) 머리박기 회피 위치
+    api.keysDown.add("KeyZ"); api.pfJumpPressed();
+    let minY=q.y; for(let i=0;i<90;i++){ api.pfUpdate(DT); minY=Math.min(minY,q.y); if(q.onGround&&i>10) break; }
+    api.keysDown.delete("KeyZ"); return (10*56-0.01)-minY; };
+  const h0=jumpH(false), h1=jumpH(true);
+  check("깃털 점프가 더 높음(+15%↑)", h1>h0*1.15);
+  // 자석: 별 옆에서
+  api.pfStartLevel(GIM); const q=api.PF.p;
+  // 별 하나 심기
+  api.PF.grid[9][14]="o"; q.x=13*56; q.y=10*56-0.01; q.magnetT=5;
+  const s0=api.PF.stars; api.pfUpdate(DT);
+  check("자석 자동 수집", api.PF.stars===s0+1);
+});
+run("얼음: 마찰 급감(더 미끄러짐) · 부서지는 블록: 밟으면 붕괴", ()=>{
+  // 얼음 위 슬라이드 거리 vs 일반 바닥
+  const slide=(x0)=>{ api.pfStartLevel(GIM); const q=api.PF.p; q.x=x0; q.y=10*56-0.01;
+    api.keysDown.add("ArrowRight"); ticks(30); api.keysDown.delete("ArrowRight");
+    const px=q.x; ticks(40); return q.x-px; };
+  const iceSlide=slide(0.5*56), floorSlide=slide(8*56);
+  check("얼음 슬라이드 > 일반 ×2 (실측 "+iceSlide.toFixed(0)+"px vs "+floorSlide.toFixed(0)+"px)", iceSlide>floorSlide*2);
+  // 부서지는 블록: 위에 착지 → 0.45s 후 붕괴
+  api.pfStartLevel(GIM); const q=api.PF.p;
+  q.x=9.5*56; q.y=6*56-20; q.vy=100;   // b(r6,c9) 위로 낙하
+  for(let i=0;i<10;i++) api.pfUpdate(DT);
+  check("블록 위 착지", q.onGround===true && api.PF.grid[6][9]==="b");
+  ticks(40);
+  check("0.45s 후 붕괴(낙하 시작)", api.PF.grid[6][9]==="." );
 });
 
 console.log("=== 5) 에디터: 테스트플레이 제출 게이트(§3.8) ===");

@@ -1560,7 +1560,7 @@ window.addEventListener("beforeunload", ()=>{ try{ if(OnlineManager.role) Online
    assets/sfx/<이름>.mp3 파일을 넣으면 자동으로 로드·재생된다(없으면 완전 무음 no-op).
    브라우저 자동재생 정책: 첫 사용자 입력(keydown/mousedown)에서 AudioContext 초기화.
    ======================================================================= */
-const SFX_NAMES=["fire","hit","kill","special","ult","win","lose","buff","reload","infect","paint","jump","stomp","spring","checkpoint","clear"];   /* GENRE-EXPAND-1 §4.1 신설 이벤트 포함 */
+const SFX_NAMES=["fire","hit","kill","special","ult","win","lose","buff","reload","infect","paint","jump","stomp","spring","checkpoint","clear","powerup","shoot","break"];   /* GENRE-EXPAND-1 §4.1 + BIG-BATCH-2 P1.5(파워업·발사·블록 파괴) */
 const SFX={ _ctx:null, _buf:{}, _tried:false };
 function sfxVolume(){ const v=(profile && typeof profile.sfxVolume==="number")?profile.sfxVolume:0.7; return clamp(v,0,1); }
 function sfxInit(){
@@ -1818,54 +1818,301 @@ const PF_CONST={ GRAVITY:2200, HOLD_MUL:0.6, JUMP_V:-820, JUMP_CUT:0.45, MOVE_SP
   ACC_G:1800, ACC_A:1100, FRIC_G:2200, FRIC_A:200, TERM_VY:900,
   COYOTE:0.10, BUFFER:0.10, SPRING_V:-1300, STOMP_V:-500,
   MON_SPD:60, PW:32, PH:46,
-  LOOK:80, LOOK_SPD:240, LOOK_HOLD:0.3 };   // PW/PH = 플레이어 히트박스 · LOOK_* = 카메라 선행(멀미 방지: 방향 0.3s 유지 후에만 반전, 240px/s로 이동)
+  LOOK:80, LOOK_SPD:240, LOOK_HOLD:0.3,   // 카메라 선행(멀미 방지: 방향 0.3s 유지 후에만 반전, 240px/s로 이동)
+  /* BIG-BATCH-2 P1.5: 신규 기믹·파워업 — 얼음 바닥(미끄럼)·부서지는 블록·⭐총·🌟무적·🪶깃털·🧲자석 */
+  ICE_ACC:900, ICE_FRIC:280, GUN_CD:0.35, GUN_SPD:620, GUN_RANGE:520,
+  STAR_T:5, FEATHER_MUL:1.18, MAGNET_R:150, HURT_INV:1.5 };
 const PF_SIZES=[ {cols:33, rows:12, name:"연습 33×12 (1.5화면)"},
                  {cols:66, rows:12, name:"스탠다드 66×12 (3화면)"},
                  {cols:110, rows:14, name:"롱 110×14 (5화면)"} ];
 const PF_BEST_KEY="starArena.pfBest.v1";
 function pfLoadBest(){ try{ const s=JSON.parse(localStorage.getItem(PF_BEST_KEY)); if(s&&typeof s==="object") return s; }catch(e){} return {}; }
 function pfSaveBest(st){ try{ localStorage.setItem(PF_BEST_KEY, JSON.stringify(st)); }catch(e){} }
-/* 내장 레벨 3종 (§3.7) — 실물리로 클리어 검증됨(하니스) */
+/* P1.5 별빛 점프 원정 — 캠페인 20스테이지(테마 4구역×5 · 스테이지마다 새 기믹 도입 후 조합)
+   전 스테이지 실물리 몬테카를로 봇 클리어 검증(harness_pfcamp.js) — 못 깨는 스테이지 출시 금지(1.5-A) */
 const PF_LEVELS=[
-  { id:"pf_first", name:"첫 점프", author:"별빛", rows:[
+  { id:"pfc_01", name:"1. 첫 걸음", author:"별빛", camp:0, zone:0, rows:[
     ".................................",
     ".................................",
     ".................................",
     ".................................",
-    "..........................o...G..",
-    ".....................----........",
-    "................o................",
-    "............----.................",
-    ".......o.........................",
-    "....##....##..............#######",
-    ".*..##....##...o.....o....#######",
-    "#############..####..############" ] },
-  { id:"pf_hill", name:"별빛 언덕", author:"별빛", rows:[
-    "...................................................................",
-    "...................................................................",
-    "...............o.......................o...........................",
-    "..............---......................---.........................",
-    "........o..........................o.......................o...G...",
-    ".......---.....................----.....................#########..",
-    "..................o.....F................................#########.",
-    "..............#####...####........####..........J........#########.",
-    "......M.......#####...####..SS....####....M......#..SSSS..#########",
-    "....######....#####...####..##....############...#..####..#########",
-    ".*..######....#####...####..##....############...#..####..#########",
-    "##################################################################." ] },
-  { id:"pf_cloud", name:"구름 꼭대기", author:"별빛", rows:[
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".............o.......o...........",
+    ".*....o......#..o....#....o...G..",
+    "#################################"
+  ] },
+  { id:"pfc_02", name:"2. 폴짝 구덩이", author:"별빛", camp:1, zone:0, rows:[
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    "........oo........o........o.....",
+    ".*...........o.........o.......G.",
+    "########..#######...#######..####"
+  ] },
+  { id:"pfc_03", name:"3. 가시 조심", author:"별빛", camp:2, zone:0, rows:[
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    "......................o..........",
+    ".....................--..........",
+    "........o.....o..................",
+    ".*......S.....S.......SS...o..G..",
+    "#################################"
+  ] },
+  { id:"pfc_04", name:"4. 통통 스프링", author:"별빛", camp:3, zone:0, rows:[
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".........................o.......",
+    "...................oo............",
+    "..................----...........",
+    "................#................",
+    "................#................",
+    "................#................",
+    ".*...........J..#...o...J.....G..",
+    "#################################"
+  ] },
+  { id:"pfc_05", name:"5. 초원 종합 훈련", author:"별빛", camp:4, zone:0, rows:[
     "..................................................................",
-    "......................o....................o................o..G..",
-    "....................-----................-----...........########.",
-    "..........o..............................................########.",
-    "........-----.....o..........F....o.....................J########.",
-    "................-----......-----.....--------...........#.........",
-    "....o....................................................#........",
-    "...----..........J..............o..............SS.......#.........",
-    "..........o......#............------...........##.......#.........",
-    "........----.....#.....M................M................#........",
-    ".*................#...######......################........#.......",
-    "##################################################################" ] }
+    "..................................................................",
+    "..................................................................",
+    "..................................................................",
+    "..................................................................",
+    "..................................................................",
+    "..............................................oo..................",
+    "....................................o........#....................",
+    "...................................--........#....................",
+    "........o.......o.....o.....o................#o...................",
+    ".*......#...................SS.....SS..F..J..#......SS....o....G..",
+    "################..#####..#####################..##################"
+  ] },
+  { id:"pfc_06", name:"6. 젤리 순찰대", author:"별빛", camp:5, zone:1, rows:[
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".......o......o.......o..........",
+    ".*........M.......M.......M...G..",
+    "#################################"
+  ] },
+  { id:"pfc_07", name:"7. 구름 발판", author:"별빛", camp:6, zone:1, rows:[
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    "..................o...o..........",
+    "................---------........",
+    ".............o...................",
+    "............---.......o..........",
+    ".........o...........---.........",
+    "........---......................",
+    ".*............................G..",
+    "#######....................######"
+  ] },
+  { id:"pfc_08", name:"8. 미끌미끌 빙판", author:"별빛", camp:7, zone:1, rows:[
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    "....................o............",
+    "........o.....o..........o.......",
+    ".*..................S.........G..",
+    "######iiiiiiii..iiiiiiiii..######"
+  ] },
+  { id:"pfc_09", name:"9. 쿵쿵 블록 다리", author:"별빛", camp:8, zone:1, rows:[
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    "......................o..........",
+    "......................b..........",
+    "...........o..o..................",
+    "..........bbbbbb..........o......",
+    ".*..................M.........G..",
+    "##########......#################"
+  ] },
+  { id:"pfc_10", name:"10. 수정 동굴 돌파", author:"별빛", camp:9, zone:1, rows:[
+    "..................................................................",
+    "..................................................................",
+    "..................................................................",
+    "..................................................................",
+    "..................................................................",
+    "..................................................................",
+    "..................................................................",
+    "..................................................................",
+    ".............................o......o.............................",
+    ".....o........o....o........---....bbbb...........o....o..........",
+    ".*..............S.......M........F....SS......M.............o..G..",
+    "#########..iiiiiiii..####################..#########iiiiii########"
+  ] },
+  { id:"pfc_11", name:"11. ⭐총을 얻다", author:"별빛", camp:10, zone:2, rows:[
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".........o.....o.....o.....o.....",
+    ".*...P......M.....M.....M.....G..",
+    "#################################"
+  ] },
+  { id:"pfc_12", name:"12. 성벽 부수기", author:"별빛", camp:11, zone:2, rows:[
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    "......................o..........",
+    "..............o.......b..........",
+    "..............b.......b...o......",
+    ".*..P.........b...M...b.......G..",
+    "#################################"
+  ] },
+  { id:"pfc_13", name:"13. 가시 성벽", author:"별빛", camp:12, zone:2, rows:[
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".......................o.........",
+    "....................S............",
+    "..........o.........#............",
+    ".........--.........#............",
+    "....................#.....o......",
+    ".*......SSSS.....J..#.........G..",
+    "#################################"
+  ] },
+  { id:"pfc_14", name:"14. 젤리 부대 행진", author:"별빛", camp:13, zone:2, rows:[
+    "..................................................................",
+    "..................................................................",
+    "..................................................................",
+    "..................................................................",
+    "..................................................................",
+    "..................................................................",
+    "..................................................................",
+    "..................................................................",
+    "..................................................................",
+    "............o.........o...........o..........o..........o.........",
+    ".*...P....M....M....M....M.....F..#...M....M....M....M......o..G..",
+    "##################################################################"
+  ] },
+  { id:"pfc_15", name:"15. 요새 대돌파", author:"별빛", camp:14, zone:2, rows:[
+    "..................................................................",
+    "..................................................................",
+    "..................................................................",
+    "..................................................................",
+    "..................................................................",
+    "..................................................................",
+    "......................................oo..........................",
+    ".....................................#.............o..............",
+    "..........o..........................#.............b..............",
+    "..........b.......o..o....o..........#.......o.....b........o.....",
+    ".*...P....b...M...........SS...F..J..#...M.........b....M......G..",
+    "#####################..######################..###################"
+  ] },
+  { id:"pfc_16", name:"16. 🌟 무적 질주", author:"별빛", camp:15, zone:3, rows:[
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    "............o........o...........",
+    ".*....!..SSSSSSSS!SSSSSSS..M..G..",
+    "#################################"
+  ] },
+  { id:"pfc_17", name:"17. 🪶 깃털 상승", author:"별빛", camp:16, zone:3, rows:[
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    "................ooo..............",
+    "............o.--w--.....o........",
+    "............#...........#........",
+    "............#...........#........",
+    "............#...........#........",
+    "............#...........#...o....",
+    ".*...w......#...........#.....G..",
+    "#################################"
+  ] },
+  { id:"pfc_18", name:"18. 🧲 자석 별밭", author:"별빛", camp:17, zone:3, rows:[
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    "........ooo....ooo...ooo...oo....",
+    "............oo...........oo......",
+    ".*...m.......M.....m....M.....G..",
+    "#################################"
+  ] },
+  { id:"pfc_19", name:"19. 얼음 절벽 길", author:"별빛", camp:18, zone:3, rows:[
+    "..................................................................",
+    "..................................................................",
+    "..................................................................",
+    "..................................................................",
+    "..................................................................",
+    "..................................................................",
+    "..................................................................",
+    "..................................................................",
+    "........................o.........................................",
+    "........o....o....o.....................o...o..........o..........",
+    ".*......................S.......F...S.............M.........o..G..",
+    "########..iiiiiiii..iiiiiiii..iiiiiiiiiiiiii..####################"
+  ] },
+  { id:"pfc_20", name:"20. 심연 피날레", author:"별빛", camp:19, zone:3, rows:[
+    "..............................................................................................................",
+    "..............................................................................................................",
+    "..............................................................................................................",
+    "..............................................................................................................",
+    "..............................................................................................................",
+    "..............................................................................................................",
+    "..............................................................................................................",
+    "..............................................................................................................",
+    "..................................................................................oo..........................",
+    "..................................................................o..............#............................",
+    "..................................................o...............b..............#............................",
+    "......o.........o.....o............o.............bbbb.............b..............#....o........o.......o......",
+    ".*....#...............SS...M...F...........S..........M..P.....F..b...M...M...J..#.......!..SSSSSS..M.....G...",
+    "################..#################..###iiiiiii############..######################..#########################"
+  ] }
 ];
 let PF=null;   // 플랫포머 런타임 상태
 let pfSelIdx=0;
@@ -1878,14 +2125,14 @@ function pfLevelList(){   // 내장 3 + 승인된 플랫포머 레벨(비활성 
     } }catch(e){}
   return out;
 }
-function pfOpenSelect(){ pfSelIdx=0; gameState=STATE.PF_SELECT; }
+function pfOpenSelect(){ pfSelIdx=Math.min(pfUnlockedCount()-1, PF_LEVELS.length-1); gameState=STATE.PF_SELECT; }   // P1.5: 커서=이어할 스테이지
 function pfTileAt(c,r){
   if(c<0||c>=PF.cols) return "#";                 // 좌우 경계 = 벽
   if(r<0) return ".";
   if(r>=PF.rows) return ".";                      // 아래는 낙사 판정이 처리
   return PF.grid[r][c];
 }
-function pfSolid(ch){ return ch==="#"; }
+function pfSolid(ch){ return ch==="#"||ch==="i"||ch==="b"; }   // P1.5: 얼음(i)·부서지는 블록(b)도 솔리드
 function pfStartLevel(level, opts){
   opts=opts||{};
   const rows=level.rows.map(s=>s.split(""));
@@ -1899,7 +2146,9 @@ function pfStartLevel(level, opts){
   }
   PF={ level:level, test:!!opts.test, grid:rows, cols:cols, rows:rows.length,
        p:{ x:sx*56, y:sy*56+56-0.01, vx:0, vy:0, onGround:false, coyote:0, buffer:0, facing:1,
-           jumpHeld:false, cutDone:false, dropT:0 },
+           jumpHeld:false, cutDone:false, dropT:0,
+           gun:false, gunCd:0, starT:0, featherT:0, magnetT:0, inv:0 },   // P1.5 파워업 슬롯
+       shots:[], crumble:{},                                              // P1.5 ⭐총 발사체 · 부서지는 블록 타이머
        monsters:monsters, checkpoint:{x:sx*56, y:sy*56+56-0.01},
        time:0, deaths:0, stars:0, starsTotal:starsTotal, cleared:false, clearT:0,
        camX:0, camY:0, camGY:sy*56+56, touch:{l:false,r:false,j:false},
@@ -1913,7 +2162,26 @@ function pfDie(){
   playSfx("hit");
   const p=PF.p;
   p.x=PF.checkpoint.x; p.y=PF.checkpoint.y; p.vx=0; p.vy=0; p.onGround=false; p.dropT=0;
+  p.gun=false; p.starT=0; p.featherT=0; p.magnetT=0; p.inv=0; PF.shots.length=0;   // P1.5: 죽으면 파워업 소실
   PF.camGY=p.y; pfCamSnap();
+}
+/* P1.5: 피해 단계(마리오식) — 무적/별 중엔 무시, 파워업이 있으면 죽는 대신 전부 상실+짧은 무적 */
+function pfHurt(){
+  const p=PF.p;
+  if(p.inv>0 || p.starT>0) return;
+  if(p.gun || p.featherT>0 || p.magnetT>0){
+    p.gun=false; p.featherT=0; p.magnetT=0; p.inv=PF_CONST.HURT_INV;
+    playSfx("hit"); showToast("💢 파워업을 잃었다!");
+    return;
+  }
+  pfDie();
+}
+function pfShoot(){   // P1.5 ⭐총: X키 — 자기 무기 색의 수평탄(몬스터 원거리 처치·부서지는 블록 파괴)
+  const p=PF.p;
+  if(!PF || PF.cleared || !p.gun || p.gunCd>0) return;
+  p.gunCd=PF_CONST.GUN_CD;
+  PF.shots.push({ x:p.x+p.facing*20, y:p.y-PF_CONST.PH*0.55, dir:p.facing, traveled:0, alive:true });
+  playSfx("shoot");
 }
 function pfClear(){
   if(PF.cleared) return;
@@ -1925,9 +2193,10 @@ function pfClear(){
   // §4.1 보상: 첫 클리어 +40G·경험치30 / 기록 갱신 +10G
   // BIG-BATCH-2 P1: 별조각 연계 — 처음 모은 별조각 1개당 +2G(반복 파밍 방지: '최고 기록 초과분'만)
   if(!prev){
+    const zoneBonus=(PF.level.camp!==undefined && PF.level.camp%5===4)?30:0;   // P1.5: 구역 끝(5·10·15·20) 첫 클리어 +30G
     const sg=PF.stars*2;
-    addGold(40+sg); addExp(30);
-    showToast("🦘 첫 클리어! +"+(40+sg)+"G · 경험치 +30"+(sg?(" (별조각 ⭐"+PF.stars+")"):""));
+    addGold(40+sg+zoneBonus); addExp(30);
+    showToast("🦘 첫 클리어! +"+(40+sg+zoneBonus)+"G · 경험치 +30"+(zoneBonus?" · 구역 완주 🎉":""));
     best[id]=rec;
   } else {
     rec.time=Math.min(rec.time, prev.time);
@@ -1961,8 +2230,10 @@ function pfUpdate(dt){
   if(keysDown.has("ArrowLeft")||keysDown.has("KeyA")||PF.touch.l) dir-=1;
   if(keysDown.has("ArrowRight")||keysDown.has("KeyD")||PF.touch.r) dir+=1;
   const jumpHeld=keysDown.has("KeyZ")||keysDown.has("Space")||PF.touch.j;
-  // ── 수평 ──
-  const acc=p.onGround?C.ACC_G:C.ACC_A, fric=p.onGround?C.FRIC_G:C.FRIC_A;
+  // ── 수평 ── (P1.5: 얼음 위에선 가속·마찰 급감 = 미끄럼)
+  let onIce=false;
+  if(p.onGround){ const rI=Math.floor((p.y+2)/56), cI=Math.floor(p.x/56); onIce=(pfTileAt(cI,rI)==="i"); }
+  const acc=p.onGround?(onIce?C.ICE_ACC:C.ACC_G):C.ACC_A, fric=p.onGround?(onIce?C.ICE_FRIC:C.FRIC_G):C.FRIC_A;
   if(dir!==0){ p.vx+=dir*acc*dt; p.vx=clamp(p.vx,-C.MOVE_SPD,C.MOVE_SPD); p.facing=dir; }
   else { const s=Math.sign(p.vx); p.vx-=s*fric*dt; if(Math.sign(p.vx)!==s) p.vx=0; }
   // x 이동 + 충돌(솔리드만)
@@ -1994,18 +2265,24 @@ function pfUpdate(dt){
         const ch=pfTileAt(c,r);
         const top=r*56;
         if(pfSolid(ch) || (ch==="-" && p.dropT<=0 && prevFeet<=top+1)){
-          if(p.y>=top){ p.y=top-0.01; p.vy=0; p.onGround=true; p.coyote=C.COYOTE; p.cutDone=false; PF.camGY=p.y; break; }
+          if(p.y>=top){ p.y=top-0.01; p.vy=0; p.onGround=true; p.coyote=C.COYOTE; p.cutDone=false; PF.camGY=p.y;
+            if(ch==="b"){ const bk=r+","+c; if(PF.crumble[bk]===undefined) PF.crumble[bk]=0.45; }   // P1.5: 밟으면 0.45s 후 붕괴
+            break; }
         }
       }
-    } else {       // 상승: 머리 박기(솔리드만)
+    } else {       // 상승: 머리 박기(솔리드만) — P1.5: 부서지는 블록(b)은 아래에서 박으면 파괴
       const r=Math.floor((p.y-C.PH)/56);
-      for(let c=c0;c<=c1;c++) if(pfSolid(pfTileAt(c,r))){ p.y=(r+1)*56+C.PH+0.01; p.vy=0; break; }
+      for(let c=c0;c<=c1;c++){ const hch=pfTileAt(c,r);
+        if(pfSolid(hch)){
+          if(hch==="b"){ PF.grid[r][c]="."; playSfx("break"); }
+          p.y=(r+1)*56+C.PH+0.01; p.vy=0; break; }
+      }
     }
   }
   if(!p.onGround) p.coyote=Math.max(0,p.coyote-dt);
-  // 점프(버퍼+코요테)
+  // 점프(버퍼+코요테) — P1.5: 깃털 파워업 = 점프력 증가
   if(p.buffer>0){ p.buffer-=dt;
-    if(p.onGround||p.coyote>0){ p.vy=C.JUMP_V; p.onGround=false; p.coyote=0; p.buffer=0; p.cutDone=false; playSfx("jump"); }
+    if(p.onGround||p.coyote>0){ p.vy=C.JUMP_V*(p.featherT>0?C.FEATHER_MUL:1); p.onGround=false; p.coyote=0; p.buffer=0; p.cutDone=false; playSfx("jump"); }
   }
   // ── 타일 상호작용(몸 중심·발 기준) ──
   {
@@ -2013,13 +2290,58 @@ function pfUpdate(dt){
     const cells=[[cc,rF],[cc,rM]];
     for(const [c,r] of cells){
       const ch=pfTileAt(c,r);
-      if(ch==="S"){ pfDie(); return; }
+      if(ch==="S"){ if(p.starT>0||p.inv>0){} else { pfHurt(); if(PF.p.inv<=0){ return; } } }   // P1.5: 가시 = 피해 단계 적용
       else if(ch==="J" && p.vy>=0){ p.vy=C.SPRING_V; p.cutDone=true; playSfx("spring"); }
       else if(ch==="o"){ PF.grid[r][c]="."; PF.stars++; playSfx("buff"); }
       else if(ch==="F"){ if(PF.checkpoint.x!==(c+0.5)*56){ PF.checkpoint={x:(c+0.5)*56, y:r*56+56-0.01}; playSfx("checkpoint"); showToast("🚩 체크포인트!"); } }
       else if(ch==="G"){ pfClear(); return; }
+      else if(ch==="P"){ PF.grid[r][c]="."; p.gun=true; playSfx("powerup"); showToast("⭐ 총 파워업! X로 발사"); }
+      else if(ch==="!"){ PF.grid[r][c]="."; p.starT=C.STAR_T; playSfx("powerup"); showToast("🌟 무적! ("+C.STAR_T+"초)"); }
+      else if(ch==="w"){ PF.grid[r][c]="."; p.featherT=8; playSfx("powerup"); showToast("🪶 깃털! 점프력 UP (8초)"); }
+      else if(ch==="m"){ PF.grid[r][c]="."; p.magnetT=8; playSfx("powerup"); showToast("🧲 자석! 별조각이 모여요 (8초)"); }
+    }
+    // P1.5 자석: 주변 별조각 자동 수집
+    if(p.magnetT>0){
+      const rad=Math.ceil(C.MAGNET_R/56);
+      for(let r=Math.max(0,rF-rad); r<=Math.min(PF.rows-1,rF+rad); r++)
+        for(let c=Math.max(0,cc-rad); c<=Math.min(PF.cols-1,cc+rad); c++){
+          if(PF.grid[r][c]!=="o") continue;
+          if(dist(p.x, p.y-C.PH/2, (c+0.5)*56, (r+0.5)*56)>C.MAGNET_R) continue;
+          PF.grid[r][c]="."; PF.stars++; playSfx("buff");
+        }
     }
   }
+  // ── P1.5 부서지는 블록 붕괴 타이머 ──
+  for(const bk in PF.crumble){
+    PF.crumble[bk]-=dt;
+    if(PF.crumble[bk]<=0){
+      const [br,bc]=bk.split(",").map(Number);
+      if(PF.grid[br] && PF.grid[br][bc]==="b"){ PF.grid[br][bc]="."; playSfx("break"); }
+      delete PF.crumble[bk];
+    }
+  }
+  // ── P1.5 파워업 타이머 + 발사체 ──
+  if(p.gunCd>0) p.gunCd-=dt;
+  if(p.starT>0) p.starT-=dt;
+  if(p.featherT>0) p.featherT-=dt;
+  if(p.magnetT>0) p.magnetT-=dt;
+  if(p.inv>0) p.inv-=dt;
+  for(const s of PF.shots){
+    if(!s.alive) continue;
+    const step=C.GUN_SPD*dt;
+    s.x+=s.dir*step; s.traveled+=step;
+    if(s.traveled>C.GUN_RANGE){ s.alive=false; continue; }
+    const sc=Math.floor(s.x/56), sr=Math.floor(s.y/56), sch=pfTileAt(sc,sr);
+    if(pfSolid(sch)){
+      if(sch==="b"){ PF.grid[sr][sc]="."; playSfx("break"); }   // 총알로도 블록 파괴
+      s.alive=false; continue;
+    }
+    for(const m of PF.monsters){
+      if(m.dead) continue;
+      if(s.x>m.x-m.w/2 && s.x<m.x+m.w/2 && s.y>m.y-m.h && s.y<m.y){ m.dead=true; s.alive=false; playSfx("kill"); break; }
+    }
+  }
+  if(PF.shots.length>24) PF.shots=PF.shots.filter(s=>s.alive);
   // ── 몬스터 ──
   for(const m of PF.monsters){
     if(m.dead) continue;
@@ -2032,8 +2354,10 @@ function pfUpdate(dt){
     const px0=p.x-C.PW/2, px1=p.x+C.PW/2, py0=p.y-C.PH, py1=p.y;
     const mx0=m.x-m.w/2, mx1=m.x+m.w/2, my0=m.y-m.h, my1=m.y;
     if(px1>mx0 && px0<mx1 && py1>my0 && py0<my1){
-      if(p.vy>0 && (py1-my0) < m.h*0.25+8){ m.dead=true; p.vy=C.STOMP_V; p.cutDone=true; playSfx("stomp"); }   // 밟기
-      else { pfDie(); return; }
+      if(p.starT>0){ m.dead=true; playSfx("kill"); }                                                          // P1.5 🌟무적: 접촉 처치
+      else if(p.vy>0 && (py1-my0) < m.h*0.25+8){ m.dead=true; p.vy=C.STOMP_V; p.cutDone=true; playSfx("stomp"); }   // 밟기
+      else if(p.inv>0){}                                                                                      // 피격 무적 중
+      else { pfHurt(); if(PF.p.inv<=0) return; }                                                              // P1.5: 파워업 있으면 상실로 대체
     }
   }
   // ── 낙사 ──
@@ -2061,10 +2385,13 @@ function pfCamUpdate(dt){
   const wy=clamp(PF.camGY-LOGH*0.62, Math.min(0,mh-LOGH), Math.max(0,mh-LOGH));
   PF.camY+=(wy-PF.camY)*Math.min(1,dt*8);
 }
+const PF_ZONE_BG=["#1a2352","#101430","#241a30","#0a0d20"];   // P1.5 구역 테마: 초원·동굴·요새·심연
+const PF_ZONE_TINT=[null,"rgba(90,120,255,0.16)","rgba(255,140,90,0.14)","rgba(150,90,255,0.18)"];
 function pfRender(){
   const C=PF_CONST;
+  const zone=(PF.level && PF.level.zone)||0;
   // 하늘 배경
-  ctx.fillStyle="#1a2352"; ctx.fillRect(0,0,LOGW,LOGH);
+  ctx.fillStyle=PF_ZONE_BG[zone]||"#1a2352"; ctx.fillRect(0,0,LOGW,LOGH);
   ctx.save();
   for(let i=0;i<40;i++){ const sx=(i*167+((i*77)%97)*7)%(LOGW+200)-100-PF.camX*0.3, sy=(i*97)%LOGH;
     ctx.globalAlpha=0.5; ctx.fillStyle="#dfe6ff"; ctx.fillRect(((sx%(LOGW+200))+LOGW+200)%(LOGW+200)-100, sy, 2, 2); }
@@ -2080,6 +2407,27 @@ function pfRender(){
     if(ch==="#"){
       if(wallImg){ const above=(r>0 && PF.grid[r-1][c]==="#"); ctx.drawImage(wallImg, 112, above?112:0, 112, 112, x, y, 56, 56); }
       else { ctx.fillStyle="#3f4a80"; ctx.fillRect(x,y,56,56); ctx.strokeStyle="#5a6aa8"; ctx.strokeRect(x+1,y+1,54,54); }
+      if(PF_ZONE_TINT[zone]){ ctx.fillStyle=PF_ZONE_TINT[zone]; ctx.fillRect(x,y,56,56); }   // P1.5 구역 색조
+    } else if(ch==="i"){   // P1.5 얼음 블록(미끄럼)
+      ctx.fillStyle="#8fd9ff"; ctx.fillRect(x,y,56,56);
+      ctx.fillStyle="rgba(255,255,255,0.45)"; ctx.fillRect(x+4,y+4,48,10);
+      ctx.strokeStyle="#c9ecff"; ctx.strokeRect(x+1,y+1,54,54);
+    } else if(ch==="b"){   // P1.5 부서지는 블록(밟으면 붕괴·아래서 박기·총알)
+      const cr=PF.crumble[r+","+c];
+      const shake=(cr!==undefined)?Math.sin(uiTime*40)*2:0;
+      ctx.save(); if(shake) ctx.translate(shake,0);
+      ctx.fillStyle="#a97a4a"; ctx.fillRect(x,y,56,56);
+      ctx.strokeStyle="#7a5230"; ctx.lineWidth=2;
+      ctx.strokeRect(x+2,y+2,52,52);
+      ctx.beginPath(); ctx.moveTo(x+14,y+8); ctx.lineTo(x+24,y+26); ctx.lineTo(x+16,y+46); ctx.moveTo(x+40,y+10); ctx.lineTo(x+32,y+30); ctx.lineTo(x+42,y+48); ctx.stroke();
+      ctx.restore();
+    } else if(ch==="P"||ch==="!"||ch==="w"||ch==="m"){   // P1.5 파워업 아이템
+      const pb=0.5+0.5*Math.sin(uiTime*4+c);
+      ctx.fillStyle="rgba(255,225,120,"+(0.18+0.12*pb)+")"; roundRect(x+6,y+6,44,44,10); ctx.fill();
+      ctx.strokeStyle="#ffe066"; ctx.lineWidth=2; roundRect(x+6,y+6,44,44,10); ctx.stroke();
+      ctx.font="26px 'Malgun Gothic',sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.fillText(ch==="P"?"⭐":(ch==="!"?"🌟":(ch==="w"?"🪶":"🧲")), x+28, y+28-pb*3);
+      ctx.textAlign="left"; ctx.textBaseline="alphabetic";
     } else if(ch==="-"){
       ctx.fillStyle="#8fd0a0"; roundRect(x+2,y+2,52,12,5); ctx.fill();
       ctx.fillStyle="rgba(0,0,0,0.22)"; ctx.fillRect(x+6,y+10,44,3);
@@ -2117,13 +2465,26 @@ function pfRender(){
       ctx.fillStyle="#3a2a55"; ctx.fillRect(-8,-m.h/2-4,4,6); ctx.fillRect(4,-m.h/2-4,4,6); }
     ctx.restore();
   }
+  // P1.5 ⭐총 발사체
+  for(const s of PF.shots){
+    if(!s.alive) continue;
+    ctx.save(); ctx.fillStyle="#ffe14d";
+    ctx.beginPath(); ctx.ellipse(s.x, s.y, 10, 5, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle="rgba(255,225,80,0.4)"; ctx.beginPath(); ctx.ellipse(s.x-s.dir*10, s.y, 7, 3.5, 0, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
   // 플레이어(캐릭터 스프라이트 재활용 — 좌우 플립)
   {
     const p=PF.p;
     ctx.save(); ctx.translate(p.x, p.y);
+    if(p.inv>0 && Math.floor(p.inv*12)%2===0) ctx.globalAlpha=0.35;                       // P1.5 피격 무적 점멸
+    if(p.starT>0){ const sp=0.5+0.5*Math.sin(uiTime*10);                                   // P1.5 🌟무적 오라
+      ctx.fillStyle="rgba(255,230,102,"+(0.18+0.18*sp)+")";
+      ctx.beginPath(); ctx.arc(0,-PF_CONST.PH/2, 40+sp*6, 0, Math.PI*2); ctx.fill(); }
     const drew=drawCharacterSprite(selectedCharacterId, 20, p.facing>0?0:Math.PI,
       { moving:Math.abs(p.vx)>20, attacking:false });
     if(!drew){ ctx.fillStyle="#ffe14d"; roundRect(-PF_CONST.PW/2, -PF_CONST.PH, PF_CONST.PW, PF_CONST.PH, 8); ctx.fill(); }
+    if(p.gun){ ctx.font="16px 'Malgun Gothic',sans-serif"; ctx.textAlign="center"; ctx.fillText("⭐", p.facing*16, -PF_CONST.PH*0.5); }
     ctx.restore();
   }
   ctx.restore();
@@ -2136,8 +2497,18 @@ function pfRender(){
   ctx.fillText(PF.time.toFixed(1)+"초", LOGW/2, 26);
   ctx.textAlign="right"; ctx.fillStyle="#ffe14d"; ctx.font="bold 16px 'Malgun Gothic',sans-serif";
   ctx.fillText("⭐ "+PF.stars+" / "+PF.starsTotal+"   💀 "+PF.deaths, LOGW-20, 26);
+  // P1.5 파워업 상태 아이콘(좌상단 아래)
+  {
+    const p=PF.p; let px=20;
+    const badge=(icon,t)=>{ ctx.textAlign="left"; ctx.font="bold 15px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#ffe066";
+      ctx.fillText(icon+(t!==undefined?(" "+Math.ceil(t)):""), px, 70); px+=t!==undefined?58:34; };
+    if(p.gun) badge("⭐X발사");
+    if(p.starT>0) badge("🌟", p.starT);
+    if(p.featherT>0) badge("🪶", p.featherT);
+    if(p.magnetT>0) badge("🧲", p.magnetT);
+  }
   ctx.fillStyle="#8893bb"; ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.textAlign="center";
-  ctx.fillText(controlMode()==="touch"?"◀▶ 이동 · 🦘 점프 버튼 · 아래+점프 = 내려가기":"←→ 이동 · Z/Space 점프(길게=높이) · ↓+점프 내려가기 · R 깃발부터 · Esc 나가기", LOGW/2, LOGH-16);
+  ctx.fillText(controlMode()==="touch"?"◀▶ 이동 · 🦘 점프 · ⭐ 발사 버튼 · 아래+점프 = 내려가기":"←→ 이동 · Z/Space 점프(길게=높이) · X 발사(⭐총) · ↓+점프 내려가기 · R 깃발부터 · Esc 나가기", LOGW/2, LOGH-16);
   ctx.restore();
   // 터치 버튼
   if(controlMode()==="touch"){
@@ -2147,6 +2518,8 @@ function pfRender(){
     ctx.beginPath(); ctx.arc(LOGW-100,LOGH-90,54,0,Math.PI*2); ctx.fill();
     ctx.globalAlpha=0.95; ctx.fillStyle="#dfe6ff"; ctx.font="bold 28px 'Malgun Gothic',sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
     ctx.fillText("◀",90,LOGH-88); ctx.fillText("▶",200,LOGH-88); ctx.fillText("🦘",LOGW-100,LOGH-90);
+    if(PF.p.gun){ ctx.globalAlpha=0.5; ctx.fillStyle="#23305e"; ctx.beginPath(); ctx.arc(LOGW-210,LOGH-70,40,0,Math.PI*2); ctx.fill();
+      ctx.globalAlpha=0.95; ctx.fillStyle="#ffe066"; ctx.fillText("⭐",LOGW-210,LOGH-70); }   // P1.5 발사 버튼
     ctx.restore();
   }
   // 클리어 오버레이
@@ -2159,26 +2532,50 @@ function pfRender(){
     const best=pfLoadBest()[PF.level.id];
     if(!PF.test && best){ ctx.fillStyle="#9fe0ff"; ctx.font="16px 'Malgun Gothic',sans-serif"; ctx.fillText("베스트 "+best.time.toFixed(2)+"초 · ⭐ "+(best.stars||0), LOGW/2, 336); }
     ctx.fillStyle="#ffe066"; ctx.font="bold 18px 'Malgun Gothic',sans-serif";
-    ctx.fillText(PF.test?"테스트 통과! Enter/Esc 에디터로 (제출 가능)":"Enter 다시 도전 · Esc 레벨 선택", LOGW/2, 400);
+    const hasNext=(PF.level.camp!==undefined && PF.level.camp+1<PF_LEVELS.length);
+    ctx.fillText(PF.test?"테스트 통과! Enter/Esc 에디터로 (제출 가능)"
+      :(hasNext?"Enter 다음 스테이지 ▶ · R 다시 도전 · Esc 레벨 선택":"Enter 다시 도전 · Esc 레벨 선택"), LOGW/2, 400);
+    if(hasNext){ ctx.fillStyle="#9fe0ff"; ctx.font="15px 'Malgun Gothic',sans-serif";
+      ctx.fillText("다음: "+PF_LEVELS[PF.level.camp+1].name, LOGW/2, 434); }
     ctx.restore();
   }
+}
+/* P1.5: 캠페인 잠금 — 스테이지 n은 이전 스테이지 클리어 시 해금(베스트 기록에서 파생 — 별도 저장 불필요) */
+function pfUnlockedCount(){
+  const best=pfLoadBest();
+  let n=1;
+  for(let i=0;i<PF_LEVELS.length;i++){ if(best[PF_LEVELS[i].id]) n=i+2; }
+  return Math.min(n, PF_LEVELS.length);
+}
+function pfLevelLocked(lv){
+  if(lv.camp===undefined) return false;                    // 학생 맵은 항상 열림
+  return lv.camp >= pfUnlockedCount();
 }
 function drawPfSelect(){
   dimScreen(0.7);
   ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
-  ctx.fillStyle="#7dffb0"; ctx.font="bold 40px 'Malgun Gothic',sans-serif"; ctx.fillText("🦘 별빛 점프", LOGW/2, 96);
-  ctx.fillStyle="#8893bb"; ctx.font="15px 'Malgun Gothic',sans-serif";
-  ctx.fillText("옆에서 보는 점프 맵 — 골(★)까지 달려라! 맵공방에서 직접 만들 수도 있어요", LOGW/2, 132);
-  const list=pfLevelList(), best=pfLoadBest();
+  ctx.fillStyle="#7dffb0"; ctx.font="bold 36px 'Malgun Gothic',sans-serif"; ctx.fillText("🦘 별빛 점프 원정", LOGW/2, 78);
+  ctx.fillStyle="#8893bb"; ctx.font="14px 'Malgun Gothic',sans-serif";
+  ctx.fillText("초원→동굴→요새→심연 20스테이지 — 클리어하면 다음이 열려요 · 맵공방 승인 맵은 목록 아래에", LOGW/2, 112);
+  const list=pfLevelList(), best=pfLoadBest(), unlocked=pfUnlockedCount();
   if(pfSelIdx>=list.length) pfSelIdx=0;
-  let y=180;
-  for(let i=0;i<list.length && i<9;i++){
-    const lv=list[i], sel=(i===pfSelIdx), b=best[lv.id];
-    drawButton(lv.name+"  ·  ✍"+(lv.author||"별빛")+(b?("   ⏱ "+b.time.toFixed(2)+"초 · ⭐"+(b.stars||0)+"/"+(b.total||"?")+" · ✅"+(b.clears||1)+"회"):"   (미클리어)"), LOGW/2, y+21, 660, 42, sel);
-    y+=52;
+  const SHOW=9, start=clamp(pfSelIdx-4, 0, Math.max(0,list.length-SHOW));
+  let y=142;
+  if(start>0){ ctx.fillStyle="#8893bb"; ctx.fillText("▲ 위로 "+start+"개", LOGW/2, y); }
+  y+=18;
+  for(let i=start;i<list.length && i<start+SHOW;i++){
+    const lv=list[i], sel=(i===pfSelIdx), b=best[lv.id], locked=pfLevelLocked(lv);
+    const camp=(lv.camp!==undefined);
+    const label = locked
+      ? "🔒 "+(lv.camp+1)+". ??? — 이전 스테이지를 클리어하면 열려요"
+      : (camp?((lv.camp+1)+". "):"🛠 ")+lv.name+"  ·  ✍"+(lv.author||"별빛")
+        +(b?("   ⏱ "+b.time.toFixed(2)+"초 · ⭐"+(b.stars||0)+"/"+(b.total||"?")+" · ✅"+(b.clears||1)+"회"):"   (미클리어)");
+    drawButton(label, LOGW/2, y+21, 700, 42, sel);
+    y+=50;
   }
+  if(start+SHOW<list.length){ ctx.fillStyle="#8893bb"; ctx.fillText("▼ 아래로 "+(list.length-start-SHOW)+"개", LOGW/2, y+8); }
   ctx.fillStyle="#aab4e0"; ctx.font="15px 'Malgun Gothic',sans-serif";
-  ctx.fillText("↑↓ 선택 · Enter 시작 · Esc 로비", LOGW/2, y+24);
+  ctx.fillText("↑↓ 선택 · Enter 시작 · Esc 로비   (진행도 "+Math.min(unlocked-1,PF_LEVELS.length)+"/"+PF_LEVELS.length+" 클리어)", LOGW/2, LOGH-28);
   ctx.restore();
 }
 function handlePfSelectKey(code){
@@ -2186,17 +2583,27 @@ function handlePfSelectKey(code){
   if(code==="Escape"){ goToStartScreen(); return; }
   if(code==="ArrowUp"){ pfSelIdx=(pfSelIdx+list.length-1)%list.length; return; }
   if(code==="ArrowDown"){ pfSelIdx=(pfSelIdx+1)%list.length; return; }
-  if(code==="Enter"||code==="NumpadEnter"){ pfStartLevel(list[pfSelIdx]); return; }
+  if(code==="Enter"||code==="NumpadEnter"){
+    const lv=list[pfSelIdx];
+    if(pfLevelLocked(lv)){ showToast("🔒 이전 스테이지를 먼저 클리어해요!"); return; }
+    pfStartLevel(lv); return;
+  }
 }
 function handlePlatformerKey(code){
   if(!PF){ gameState=STATE.START; return; }
   if(PF.cleared){
     if(PF.test){ if(code==="Enter"||code==="NumpadEnter"||code==="Escape"){ if(ED) ED.testCleared=true; gameState=STATE.EDITOR; PF=null; } return; }
-    if(code==="Enter"||code==="NumpadEnter"){ pfStartLevel(PF.level); return; }
+    if(code==="Enter"||code==="NumpadEnter"){
+      // P1.5 캠페인 연속 진행: 클리어 → Enter = 바로 다음 스테이지(선택 화면 복귀 없음)
+      if(PF.level.camp!==undefined && PF.level.camp+1<PF_LEVELS.length){ pfStartLevel(PF_LEVELS[PF.level.camp+1]); return; }
+      pfStartLevel(PF.level); return;
+    }
+    if(code==="KeyR"){ pfStartLevel(PF.level); return; }   // 다시 도전
     if(code==="Escape"){ PF=null; pfOpenSelect(); return; }
     return;
   }
   if(code==="KeyZ"||code==="Space"){ pfJumpPressed(); return; }
+  if(code==="KeyX"){ pfShoot(); return; }                     // P1.5 ⭐총 발사
   if(code==="KeyR"){ pfDie(); return; }                       // 깃발부터 재시작(사망 카운트 포함)
   if(code==="Escape"){
     if(PF.test){ gameState=STATE.EDITOR; PF=null; return; }   // 테스트 중단(클리어 아님)
@@ -2209,6 +2616,7 @@ function pfTouchAt(p, on){
   if(dist(p.x,p.y,90,LOGH-90)<60){ PF.touch.l=on; return true; }
   if(dist(p.x,p.y,200,LOGH-90)<60){ PF.touch.r=on; return true; }
   if(dist(p.x,p.y,LOGW-100,LOGH-90)<70){ if(on&&!PF.touch.j) pfJumpPressed(); PF.touch.j=on; return true; }
+  if(PF.p.gun && dist(p.x,p.y,LOGW-210,LOGH-70)<50){ if(on) pfShoot(); return true; }   // P1.5 ⭐발사(총 보유 시)
   if(p.y>LOGH*0.55 && p.x<LOGW/2){ PF.touch.dn=on; return true; }   // 하단 좌측 넓게 = ↓(원웨이 하강 보조)
   return false;
 }
@@ -2385,7 +2793,11 @@ function balanceFields(){
     mk("pf.SPRING_V","스프링 힘",()=>-PF_CONST.SPRING_V,v=>{PF_CONST.SPRING_V=-v;},600,2200,50),
     num("pf.MON_SPD","몬스터 속도",PF_CONST,"MON_SPD",20,180,10),
     num("pf.LOOK_SPD","카메라 선행 속도",PF_CONST,"LOOK_SPD",80,600,20),
-    num("pf.LOOK_HOLD","선행 반전 유지(s)",PF_CONST,"LOOK_HOLD",0,1,0.05,{dec:2})
+    num("pf.LOOK_HOLD","선행 반전 유지(s)",PF_CONST,"LOOK_HOLD",0,1,0.05,{dec:2}),
+    num("pf.GUN_CD","⭐총 발사 간격(s)",PF_CONST,"GUN_CD",0.1,1.5,0.05,{dec:2}),
+    num("pf.STAR_T","🌟무적 시간(s)",PF_CONST,"STAR_T",2,12,0.5,{dec:1}),
+    num("pf.FEATHER_MUL","🪶깃털 점프 배율",PF_CONST,"FEATHER_MUL",1,1.6,0.02,{dec:2}),
+    num("pf.MAGNET_R","🧲자석 반경",PF_CONST,"MAGNET_R",60,320,10)
   ]});
   // ── 7) 성장 오브 ──
   cats.push({ name:"성장 오브", fields:[
@@ -2585,6 +2997,12 @@ const ED_PAL_PF=[
   { ch:"M", name:"순찰 몬스터",   color:"#c58bff" },
   { ch:"o", name:"별조각",        color:"#ffe14d" },
   { ch:"F", name:"체크포인트 깃발", color:"#7dffb0" },
+  { ch:"i", name:"얼음 블록(미끌)", color:"#8fd9ff" },   /* BIG-BATCH-2 P1.5 신규 기믹·파워업 */
+  { ch:"b", name:"부서지는 블록",  color:"#a97a4a" },
+  { ch:"P", name:"⭐ 총 파워업",   color:"#ffb347" },
+  { ch:"!", name:"🌟 별 무적",     color:"#fff06a" },
+  { ch:"w", name:"🪶 깃털(점프↑)", color:"#cfe0ff" },
+  { ch:"m", name:"🧲 자석",        color:"#ff9ec2" },
   { ch:"G", name:"골",            color:"#ffd166" },
   { ch:"*", name:"시작점",        color:"#9fe0ff" }
 ];
@@ -2594,7 +3012,8 @@ const ED_PAL_MODE={ tdm:[], siege:[{ch:"X",name:"팀 수정탑",color:"#5aa0ff"}
 /* GENRE-EXPAND-1 §1.7: 술래잡기 맵은 함정·쿠션벽 제외(벽·수풀·얼음·시작점만) */
 const ED_PAL_EXCLUDE={ tag:{S:1,L:1,C:1} };
 const ED_CELL_COLOR={ ".":null, W:"#878da8", B:"#5ad36b", S:"#ff6a6a", L:"#7fd88a", I:"#8fd9ff", C:"#ff9ec2", "*":"#ffe14d", O:"#ffd23f", X:"#5aa0ff", G:"#ffcf4d",
-  "#":"#5a6aa8", "-":"#8fd0a0", J:"#ffd23f", M:"#c58bff", o:"#ffe875", F:"#7dffb0" };   /* GENRE-EXPAND-1: 플랫포머 legend */
+  "#":"#5a6aa8", "-":"#8fd0a0", J:"#ffd23f", M:"#c58bff", o:"#ffe875", F:"#7dffb0",
+  i:"#8fd9ff", b:"#a97a4a", P:"#ffb347", "!":"#fff06a", w:"#cfe0ff", m:"#ff9ec2" };   /* GENRE-EXPAND-1 + P1.5 플랫포머 legend */
 const EDITOR_STORE_KEY="starArena.editorMaps.v1";
 let ED=null;            // 에디터 상태
 let reviewIdx=0;        // 교사 승인 화면 선택
