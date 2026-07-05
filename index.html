@@ -1380,8 +1380,9 @@ const OnlineManager = {
           const team = mode.modeType==="pve" ? "pve" : "blue";
           // PVE는 스테이지 맵을 따르므로 mapId는 1스테이지 맵, PVP(3v3)는 host가 고른 맵
           const mapId = mode.modeType==="pve" ? (PVE_STAGES[0].mapId) : (selectedMapId||"training");
+          const rule=(mode.modeType==="pvp" && modeId!=="online1v1") ? (onlineSelectedRule||"tdm") : "tdm";   // BIG-BATCH-2 P2
           const room={ meta:{ mode:modeId, status:"waiting", hostUid:self.uid, createdAt:ts, updatedAt:ts,
-              mapId:mapId, maxPlayers:mode.maxPlayers, winner:null, resultText:"", stageIndex:0, waveIndex:0 },
+              mapId:mapId, maxPlayers:mode.maxPlayers, rule:rule, winner:null, resultText:"", stageIndex:0, waveIndex:0 },
             players:{ p1:{ uid:self.uid, studentId:currentStudentId||null, nickname:profile.nickname, slot:"p1", team:team, characterId:selectedCharacterId,
               weaponId:selectedWeaponId, connected:true, ready:false, isBot:false, lastSeen:ts, input:emptyInput() } } };
           ref.set(room).then(function(){
@@ -3889,7 +3890,8 @@ function tagInfect(f, initial){
   effects.push({kind:"superwave", x:f.x, y:f.y, t:0, life:0.5, radius:70});
   effects.push({kind:"respawn", x:f.x, y:f.y, t:0, life:0.5, color:"#ff5a6e"});
   playSfx("infect");
-  if(!initial && f.isPlayer) showToast("잡혔다! 이제 너가 술래 👹");
+  const isMe=f.isPlayer || (f.slot && OnlineManager.mySlot===f.slot);   // P2: 온라인 호스트 자신도 토스트
+  if(!initial && isMe) showToast("잡혔다! 이제 너가 술래 👹");
 }
 function tickTagRule(dt){
   const C=RULE_CONFIG.tag;
@@ -3931,8 +3933,9 @@ function tickTagRule(dt){
 }
 /* BIG-BATCH-2 P1: 술래 모드 전용 대체 도구(원본 스킬 훼손 없음 — X키 오버라이드)
    럭키=반짝 대시 · 달이=별빛 도약(전방 순간이동) · 모아=주변 도망자 은신 부여 · 별골렘=패시브 방어막(X 없음) */
-function castTagSpecial(f){
+function castTagSpecial(f, list){
   if(!RULE || RULE.id!=="tag" || RULE.phase!=="chase" || !f || f.dead) return false;
+  list=list||allFighters();   // P2: 온라인 팀 엔진은 tFighters 목록을 넘긴다
   const C=RULE_CONFIG.tag, id=f.char&&f.char.id;
   if(id==="student_01"){
     if(f.specialCd>0){ if(f.isPlayer) spawnSuperFail(f.x,f.y); return true; }
@@ -3960,7 +3963,7 @@ function castTagSpecial(f){
   if(id==="student_05"){
     if(f.specialCd>0){ if(f.isPlayer) spawnSuperFail(f.x,f.y); return true; }
     let n=0;
-    for(const o of allFighters()){
+    for(const o of list){
       if(o.isTagger || o.dead) continue;
       if(o!==f && dist(f.x,f.y,o.x,o.y)>C.hideRadius) continue;
       o.tagHideT=C.hideDur; n++;
@@ -4411,9 +4414,9 @@ function effSpeed(f){
     else if(RULE.runnerMul>1) s*=RULE.runnerMul;                      // BIG-BATCH-2 P1: 술래 수 비례 도망자 버프
     if(f.tagDashT>0) s*=RULE_CONFIG.tag.dashMul;                      // BIG-BATCH-2 P1: 럭키 반짝 대시
   }
-  if(RULE && RULE.id==="paint"){                                        // GENRE-EXPAND-1 §2: 자기색 위 +10%
+  if(RULE && RULE.id==="paint"){                                        // GENRE-EXPAND-1 §2: 자기색 위 +10% (P2: 온라인 blue/red 팀 매핑 포함)
     const pi=paintCellIdx(f.x,f.y);
-    if(pi>=0 && RULE.grid[pi]===(f.team==="player"?1:2)) s*=RULE_CONFIG.paint.ownSpeedMul;
+    if(pi>=0 && RULE.grid[pi]===((f.team==="player"||f.team==="blue")?1:2)) s*=RULE_CONFIG.paint.ownSpeedMul;
   }
   return s*TEMPO.playerMove;
 }
@@ -5171,14 +5174,15 @@ function updatePlayer(dt){
 }
 
 /* GENRE-EXPAND-1 §1.6 술래잡기 봇: 술래=최근접 도망자 추적(수풀 은신 존중) · 도망자=술래 반대+수풀 잠복 */
-function tagBotUpdate(f, dt){
+function tagBotUpdate(f, dt, list, env){
   if(RULE.phase==="reveal") return;
+  list=list||allFighters(); env=env||envLocal();      // P2: 온라인 팀 엔진 재사용(목록·env 주입)
   const C=RULE_CONFIG.tag, ai=(f.ai=f.ai||{});
   f.cooldown=1;                                       // 발사 안 함
   let mvx=0, mvy=0;
   if(f.isTagger){
     let best=null, bd=Infinity;
-    for(const o of allFighters()){
+    for(const o of list){
       if(o.isTagger || o.dead) continue;
       if(o.tagHideT>0) continue;                      // BIG-BATCH-2 P1: 모아 은신 부여 중 = 인지 못 함
       const d=dist(f.x,f.y,o.x,o.y);
@@ -5193,7 +5197,7 @@ function tagBotUpdate(f, dt){
     }
   } else {
     let tg=null, bd=Infinity;
-    for(const o of allFighters()){ if(!o.isTagger || o.dead) continue;
+    for(const o of list){ if(!o.isTagger || o.dead) continue;
       const d=dist(f.x,f.y,o.x,o.y); if(d<bd){ bd=d; tg=o; } }
     if(tg && bd<300){                                 // 도망: 술래 반대 방향
       const d=bd||1; mvx=(f.x-tg.x)/d; mvy=(f.y-tg.y)/d;
@@ -5222,8 +5226,8 @@ function tagBotUpdate(f, dt){
   }
   // X 허용 캐릭(시고니·눈꽃)은 원본 스킬, 나머지는 모드 전용 도구(BIG-BATCH-2 P1)를 봇도 낮은 확률로 사용
   if(f.char && f.specialCd<=0 && Math.random()<dt*0.25){
-    if(TAG_X_ALLOW[f.char.id]) castSpecialFor(f, envLocal());
-    else castTagSpecial(f);
+    if(TAG_X_ALLOW[f.char.id]) castSpecialFor(f, env);
+    else castTagSpecial(f, list);
   }
 }
 function updateAI(f, dt){
@@ -7095,6 +7099,7 @@ function openOnlineMenu(){
 function onlineMenuOptions(){
   const opts=[];
   for(const m of ONLINE_MODES){ if(m.ready && m.modeType==="pvp") opts.push({ kind:"create", modeId:m.id, label:m.name+" 만들기", head:opts.length===0?"온라인 대전 — 친구와 PVP":undefined }); }
+  if(opts.length) opts.push({ kind:"rule", label:"규칙" });  // BIG-BATCH-2 P2: 3대3 방 규칙(방장이 미리 고름 · 1대1은 섬멸전 고정)
   if(opts.length) opts.push({ kind:"map", label:"맵" });   // PvP 방에만 적용(방장이 미리 고름)
   let firstPve=true;
   for(const m of ONLINE_MODES){ if(m.ready && m.modeType==="pve"){ opts.push({ kind:"create", modeId:m.id, label:m.name+" 만들기", head:firstPve?"온라인 협동 — 함께 몬스터전":undefined }); firstPve=false; } }
@@ -7111,14 +7116,21 @@ function handleOnlineMenuKey(code){
   if(code==="ArrowDown"){ onlineMenuIndex=(onlineMenuIndex+1)%n; return; }
   const cur=opts[onlineMenuIndex];
   // 맵 변경은 맵 행에서만(전역 셀렉터 제거) — PVE엔 적용되지 않으므로 다른 행에선 무동작
-  if(code==="ArrowLeft"){ if(cur.kind==="map") cycleMap(-1); return; }
-  if(code==="ArrowRight"){ if(cur.kind==="map") cycleMap(1); return; }
+  if(code==="ArrowLeft"){ if(cur.kind==="map") cycleMap(-1); else if(cur.kind==="rule") cycleOnlineRule(-1); return; }
+  if(code==="ArrowRight"){ if(cur.kind==="map") cycleMap(1); else if(cur.kind==="rule") cycleOnlineRule(1); return; }
   if(code==="Enter"||code==="NumpadEnter"){
     if(cur.kind==="create"){ if(cur.modeId==="online1v1") doCreateRoom(); else doCreateTeamRoom(cur.modeId); }
     else if(cur.kind==="map") cycleMap(1);
+    else if(cur.kind==="rule") cycleOnlineRule(1);
     else if(cur.kind==="join") doJoinAny();
     else goToStartScreen();
   }
+}
+/* BIG-BATCH-2 P2: 온라인 3대3 규칙 선택 — 전 규칙 온라인화(별빛 점프 제외: 그쪽 멀티=클라우드 레벨 공유) */
+let onlineSelectedRule="tdm";
+function cycleOnlineRule(dir){
+  const idx=RULES.findIndex(r=>r.id===onlineSelectedRule);
+  onlineSelectedRule=RULES[(idx+dir+RULES.length)%RULES.length].id;
 }
 function doCreateTeamRoom(modeId){
   onlineLobbyMsg="방 만드는 중…";
@@ -7215,6 +7227,7 @@ function onRoomMetaChanged(){
 /* ---- 매치 준비 ---- */
 function resetOnlineMatchFromRoom(){
   const meta=OnlineManager.meta||{};
+  RULE=null;   // P2: 1대1은 섬멸전 고정 — 이전 매치 규칙 잔재 제거
   OBSTACLES=getMap(onlineMapId()).obstacles; BUSHES=getMap(onlineMapId()).bushes;
   const map=getMap(onlineMapId());
   onlineFighters.host  = makeOnlineFighter("host",  { x:map.playerSpawn.x, y:map.playerSpawn.y, facing:0,
@@ -7721,6 +7734,10 @@ function drawOnlineMenu(){
       drawButton((sel?"◀  ":"")+"맵: "+getMap(selectedMapId).name+(sel?"  ▶":""), LOGW/2, y+18, 320, 36, sel);
       y+=48; continue;
     }
+    if(o.kind==="rule"){   // BIG-BATCH-2 P2: 3대3 규칙 값 행
+      drawButton((sel?"◀  ":"")+"3대3 규칙: "+getRule(onlineSelectedRule).name+(sel?"  ▶":""), LOGW/2, y+18, 360, 36, sel);
+      y+=48; continue;
+    }
     drawButton(o.label, LOGW/2, y+21, 380, 42, sel);
     y+=52;
   }
@@ -7927,6 +7944,7 @@ function resetTeamMatchFromRoom(){
   tEnemies={}; tEnemyId=0; tEnemiesView={};
   resetSkillZones(); resetAttackLog();
   POWERUPS=[]; powerupAcc=0; powerupId=0;
+  RULE=null;   // P2: 이전 매치(로컬/팀) 규칙 잔재 제거 — PVE·tdm은 규칙 없음, PVP는 아래 tSetupRule이 재구성
   if(mode.modeType==="pve"){
     const stage=PVE_STAGES[0]; tMapId=stage.mapId;
     tPve={ stageIndex:0, waveIndex:0, teamLives:stage.teamLives, status:"playing", phase:"wave", phaseTimer:0, enemiesRemaining:0, checkpoint:null, retryUsed:false };   /* v1.24 PRD 12.6 */
@@ -7938,7 +7956,9 @@ function resetTeamMatchFromRoom(){
   } else {
     tMapId=(OnlineManager.meta&&OnlineManager.meta.mapId)||"training";   // 3v3: host가 고른 맵(게스트도 meta로 동일)
     tBuildFighters();
-    tTimeLeft=GAME_CONFIG.gameTime; tTeamScores={blue:0,red:0};
+    tSetupRule();                                          // BIG-BATCH-2 P2: 방 규칙(meta.rule) 상태·구조물·그리드(호스트/게스트 공통·결정적)
+    tMyTagRole=false;
+    tTimeLeft=tRuleMatchTime(tRuleId()); tTeamScores={blue:0,red:0};
   }
 }
 
@@ -7999,12 +8019,14 @@ function tUpdateHost(dt){
     tUpdateFighter(f, input, dt);
   }
   tUpdateBullets(dt);
+  tTickRule(dt);                                           // BIG-BATCH-2 P2: 규칙 판정(host 권위)
   tickSkillZones(dt, envTeam());
-  tickPowerupsHost(dt, Object.keys(tFighters).map(s=>tFighters[s]).filter(f=>!f.isBot));
+  if(!(RULE&&RULE.id==="tag")) tickPowerupsHost(dt, Object.keys(tFighters).map(s=>tFighters[s]).filter(f=>!f.isBot));   // 술래: 전투 아이템 없음
   for(const slot in tFighters){ const f=tFighters[slot]; f.displayHp=lerp(f.displayHp,f.hp,Math.min(1,dt*8)); }
+  if(OnlineManager.role==="host" && tFighters[OnlineManager.mySlot]) tMyTagRole=!!tFighters[OnlineManager.mySlot].isTagger;
   tTimeLeft-=dt;
   tWriteAcc+=dt; if(tWriteAcc>=1/T_STATE_FPS){ tWriteAcc=0; tHostWriteState(); }
-  if(tTimeLeft<=0){ tTimeLeft=0; tHostEndMatch(); }
+  if(tTimeLeft<=0){ tTimeLeft=0; if(RULE) tRuleTimeUpTeam(); else tHostEndMatch(); }
 }
 
 function tUpdateFighter(f, input, dt){
@@ -8012,17 +8034,32 @@ function tUpdateFighter(f, input, dt){
   if(f.hitFlash>0) f.hitFlash-=dt; if(f.invincibleTimer>0) f.invincibleTimer-=dt;
   tickStatus(f, dt); applyTrapTo(f); tickThornTrail(f);
   tickMoaPassive(f, dt, envTeam);
-  // X/C: 눌림 순간(edge)만 발동(host 판정)
+  // X/C: 눌림 순간(edge)만 발동(host 판정) — P2: 술래=X 오버라이드·C 잠금 / 칠하기=C 대형 도색
+  const isTag=!!(RULE&&RULE.id==="tag"), isPaint=!!(RULE&&RULE.id==="paint");
   const sp=!!input.special, ult=!!(input.ultimate||input.super);
-  if(sp && !f._pSp) castSpecialFor(f, envTeam());
-  if(ult && !f._pUlt) castUltimateFor(f, envTeam(), ()=>f.superGauge||0, v=>{ f.superGauge=v; });
+  if(sp && !f._pSp){
+    if(isTag){ if(TAG_X_ALLOW[f.char.id]) castSpecialFor(f, envTeam()); else castTagSpecial(f, tFightersList()); }
+    else castSpecialFor(f, envTeam());
+  }
+  if(ult && !f._pUlt && !isTag){
+    if(isPaint){
+      if((f.superGauge||0)>=GAME_CONFIG.superCharge){
+        f.superGauge=0;
+        const CS=STUDENT_CELL, R=RULE_CONFIG.paint.ultRadius;
+        for(let dr=-R;dr<=R;dr++) for(let dc=-R;dc<=R;dc++) tPaintCellBy(f.x+dc*CS, f.y+dr*CS, f.team, f.slot);
+        effects.push({kind:"superwave", x:f.x, y:f.y, t:0, life:0.6, radius:CS*(R+0.8)});
+      }
+    }
+    else castUltimateFor(f, envTeam(), ()=>f.superGauge||0, v=>{ f.superGauge=v; });
+  }
   f._pSp=sp; f._pUlt=ult;
   f.cooldown-=dt;
   tickReload(f, dt);
   if(input.reload) startReload(f);
   if(isFrozen(f)) return;                                  // 빙결: 이동·공격 불가
+  if(isTag && RULE.phase==="reveal") return;               // P2: 술래 공개 중 이동 잠금
   applyIntentMoveAim(f, input, dt);                        // UPDATE-1 P3: 아날로그 이동 + 분리 조준(공용)
-  if(input.attack && f.cooldown<=0 && canFireAmmo(f)){ tFire(f); consumeAmmo(f); f.cooldown=zCooldownOf(f, getWeapon(f.weaponId)); }
+  if(!isTag && input.attack && f.cooldown<=0 && canFireAmmo(f)){ tFire(f); consumeAmmo(f); f.cooldown=zCooldownOf(f, getWeapon(f.weaponId)); }
 }
 
 // 팀(3v3)/PVE 피해·env(host 판정). 아군/끊긴 대상엔 피해·둔화·블랙홀 없음.
@@ -8068,10 +8105,411 @@ function envTeam(){
   };
 }
 
+/* =======================================================================
+   BIG-BATCH-2 P2 · 전 규칙 온라인화(3대3 팀 엔진 위 host 권위 규칙 레이어)
+   - 로컬 RULE 전역을 재사용(팀 키: blue→player · red→enemy)해 effSpeed/렌더 헬퍼 공유
+   - 동기화: 점령전=게이지 · 수정부수기=구조물 HP 목록 · 별모으기=별 좌표/보유 · 술래=역할 플래그 · 칠하기=그리드 RLE
+   ======================================================================= */
+function tTeamKey(team){ return (team==="blue"||team==="player")?"player":"enemy"; }
+function tRuleId(){ const m=OnlineManager.meta; return (m && m.rule)||"tdm"; }
+function tRuleMatchTime(rid){
+  const C=RULE_CONFIG[rid];
+  if(rid==="tdm") return GAME_CONFIG.gameTime;
+  return (C && C.matchTime) || RULE_CONFIG.matchTime;
+}
+function tSetupRule(){
+  RULE=null;
+  const rid=tRuleId(); if(rid==="tdm") return;
+  const map=getMap(tMapId);
+  OBSTACLES=map.obstacles.map(o=>o.sid?Object.assign({},o):o);   // 구조물 훼손이 원본 맵에 남지 않게 복제
+  const rp=map.rulePoints||{};
+  if(rid==="siege"){
+    const C=RULE_CONFIG.siege;
+    RULE={ id:"siege", winner:null, towers:{}, turretAcc:{player:0.8, enemy:0.8}, structs:[], rebuild:[] };
+    for(const tk of ["player","enemy"]){
+      const sp=(tk==="player")?map.playerSpawn:map.enemySpawn;
+      const dirX=(sp.x<LOGW/2)?-1:1;
+      const tp=rp.towers&&rp.towers[tk];
+      const tx=clamp((tp?tp.x:sp.x+dirX*110)-C.towerW/2, ARENA.x+8, ARENA.x+ARENA.w-C.towerW-8);
+      const ty=clamp((tp?tp.y:sp.y)-C.towerH/2, ARENA.y+8, ARENA.y+ARENA.h-C.towerH-8);
+      const tower={ x:tx, y:ty, w:C.towerW, h:C.towerH, sid:"rtower_"+tk, team:tk, hp:C.towerHp, maxHp:C.towerHp, structure:true };
+      RULE.towers[tk]=tower; RULE.structs.push(tower); OBSTACLES.push(tower);
+      for(let i=0;i<C.wallCount;i++){
+        const wx=clamp(sp.x-dirX*130-C.wallW/2, ARENA.x+8, ARENA.x+ARENA.w-C.wallW-8);
+        const wy=clamp(sp.y+(i-1)*120-C.wallH/2, ARENA.y+8, ARENA.y+ARENA.h-C.wallH-8);
+        const wall={ x:wx, y:wy, w:C.wallW, h:C.wallH, sid:"rwall_"+tk+"_"+i, team:tk, hp:C.wallHp, maxHp:C.wallHp, structure:true };
+        RULE.structs.push(wall); OBSTACLES.push(wall);
+      }
+    }
+  } else if(rid==="hotzone"){
+    RULE={ id:"hotzone", winner:null, x:(rp.zone&&rp.zone.x)||LOGW/2, y:(rp.zone&&rp.zone.y)||ARENA.y+ARENA.h/2,
+           radius:RULE_CONFIG.hotzone.radius, gauge:{player:0, enemy:0}, holder:null,
+           fixed:!!rp.zone, moveT:0, posIdx:0, warn:0 };
+  } else if(rid==="stargrab"){
+    RULE={ id:"stargrab", winner:null, stars:[], spawnAcc:RULE_CONFIG.stargrab.spawnEvery-1, countdown:{player:-1, enemy:-1},
+           cx:(rp.vein&&rp.vein.x)||LOGW/2, cy:(rp.vein&&rp.vein.y)||ARENA.y+ARENA.h/2 };
+  } else if(rid==="tag"){
+    RULE={ id:"tag", winner:null, needInit:true, phase:"reveal", phaseT:RULE_CONFIG.tag.reveal, survivors:0, runnerMul:1 };
+  } else if(rid==="paint"){
+    const cols=STUDENT_COLS, rows=STUDENT_ROWS;
+    const grid=new Uint8Array(cols*rows), blocked=new Uint8Array(cols*rows);
+    const markRects=(rects)=>{ for(const o of (rects||[])){
+      const c0=Math.max(0,Math.floor((o.x-ARENA.x)/STUDENT_CELL)), c1=Math.min(cols-1,Math.floor((o.x+o.w-1-ARENA.x)/STUDENT_CELL));
+      const r0=Math.max(0,Math.floor((o.y-ARENA.y)/STUDENT_CELL)), r1=Math.min(rows-1,Math.floor((o.y+o.h-1-ARENA.y)/STUDENT_CELL));
+      for(let r=r0;r<=r1;r++) for(let c=c0;c<=c1;c++) blocked[r*cols+c]=1; } };
+    markRects(OBSTACLES); markRects(map.bushes); markRects(map.traps);
+    let paintable=0; for(let i=0;i<blocked.length;i++) if(!blocked[i]) paintable++;
+    RULE={ id:"paint", winner:null, cols:cols, rows:rows, grid:grid, blocked:blocked, paintable:paintable,
+           count:{1:0,2:0}, barT:0, bar:{p:0,e:0} };
+  }
+}
+function tFightersList(){ const out=[]; for(const s in tFighters) out.push(tFighters[s]); return out; }
+/* ── 칠하기(팀): 셀 도색 + 개인 궁 게이지 보상 ── */
+function tPaintCellBy(x,y,team,ownerSlot){
+  if(!RULE || RULE.id!=="paint" || RULE.winner) return false;
+  const i=paintCellIdx(x,y); if(i<0 || RULE.blocked[i]) return false;
+  const col=(tTeamKey(team)==="player")?1:2, prev=RULE.grid[i];
+  if(prev===col) return false;
+  if(prev) RULE.count[prev]--;
+  RULE.grid[i]=col; RULE.count[col]++;
+  const f=ownerSlot!==undefined ? tFighters[ownerSlot] : null;
+  if(f && !f.isBot){
+    f.myPaint=(f.myPaint||0)+1; f._pAcc=(f._pAcc||0)+1;
+    if(f._pAcc>=RULE_CONFIG.paint.gaugePerCells){ f._pAcc=0;
+      f.superGauge=Math.min(GAME_CONFIG.superCharge,(f.superGauge||0)+RULE_CONFIG.paint.gaugeAmt); }
+  }
+  return true;
+}
+function tPaintSplash(x,y,team,ownerSlot,shape){
+  const CS=STUDENT_CELL;
+  if(shape==="cross" && tTimeLeft<=RULE_CONFIG.paint.finaleSec) shape="3x3";   // 피날레(P1과 동일 규칙)
+  if(shape==="cross"){ tPaintCellBy(x,y,team,ownerSlot);
+    tPaintCellBy(x-CS,y,team,ownerSlot); tPaintCellBy(x+CS,y,team,ownerSlot);
+    tPaintCellBy(x,y-CS,team,ownerSlot); tPaintCellBy(x,y+CS,team,ownerSlot); }
+  else { for(let dr=-1;dr<=1;dr++) for(let dc=-1;dc<=1;dc++) tPaintCellBy(x+dc*CS,y+dr*CS,team,ownerSlot); }
+}
+function tPaintRLE(){
+  let s="", i=0;
+  while(i<RULE.grid.length){ const v=RULE.grid[i]; let j=i; while(j<RULE.grid.length && RULE.grid[j]===v) j++; s+=v+"*"+(j-i)+","; i=j; }
+  return s;
+}
+function tPaintApplyRLE(str){
+  if(!str || !RULE || RULE.id!=="paint") return;
+  let i=0;
+  for(const seg of str.split(",")){
+    if(!seg) continue;
+    const p=seg.split("*"), v=+p[0], n=+p[1];
+    for(let k=0;k<n && i<RULE.grid.length;k++) RULE.grid[i++]=v;
+  }
+  let c1=0,c2=0; for(let k=0;k<RULE.grid.length;k++){ if(RULE.grid[k]===1)c1++; else if(RULE.grid[k]===2)c2++; }
+  RULE.count[1]=c1; RULE.count[2]=c2;
+  RULE.bar.p=c1/Math.max(1,RULE.paintable); RULE.bar.e=c2/Math.max(1,RULE.paintable);
+}
+/* ── 수정부수기(팀): 구조물 피해(host) + 재건 + 승부 ── */
+function tDamageRuleStruct(s, dmg){
+  if(!(s.hp>0)) return;
+  s.hp-=dmg;
+  spawnDamageNumber(s.x+s.w/2, s.y-6, Math.round(dmg), "#ffd0a0");
+  if(s.hp<=0){ s.hp=0;
+    const idx=OBSTACLES.indexOf(s); if(idx>=0) OBSTACLES.splice(idx,1);
+    effects.push({kind:"death",x:s.x+s.w/2,y:s.y+s.h/2,t:0,life:0.7,color:(s.team==="player"?"#7fd6ff":"#ff8fa5"),big:true});
+    if(s.sid.indexOf("rtower_")===0) tRuleWinTeam(s.team==="player"?"red":"blue");
+    else if(s.sid.indexOf("rwall_")===0) RULE.rebuild.push({ s:s, t:RULE_CONFIG.siege.rebuildSec });
+  }
+}
+function tRuleWinTeam(winner){   // winner: "blue"|"red"|"draw"|"taggers"|"runners"
+  if(!RULE || RULE.winner) return;
+  RULE.winner=winner;
+  tWinner=winner;
+  tHostWriteState();
+  OnlineManager.writeMetaStatus("ended", { winner:winner });
+  gameState=STATE.ONLINE_OVER;
+}
+function tRuleTimeUpTeam(){
+  const rid=tRuleId();
+  if(rid==="siege"){
+    const pct=t=>{ const tw=RULE.towers[t]; return tw?Math.max(0,tw.hp)/tw.maxHp:0; };
+    tRuleWinTeam(pct("player")>pct("enemy")?"blue":(pct("enemy")>pct("player")?"red":"draw"));
+  } else if(rid==="hotzone"){
+    tRuleWinTeam(RULE.gauge.player>RULE.gauge.enemy?"blue":(RULE.gauge.enemy>RULE.gauge.player?"red":"draw"));
+  } else if(rid==="stargrab"){
+    const p=tTeamStars("blue"), e=tTeamStars("red");
+    tRuleWinTeam(p>e?"blue":(e>p?"red":"draw"));
+  } else if(rid==="tag"){
+    tRuleWinTeam("runners");   // 시간 종료 = 생존자 승
+  } else if(rid==="paint"){
+    tRuleWinTeam(RULE.count[1]>RULE.count[2]?"blue":(RULE.count[2]>RULE.count[1]?"red":"draw"));
+  }
+}
+function tTeamStars(team){ let n=0; for(const s in tFighters){ const f=tFighters[s]; if(f.team===team) n+=(f.stars||0); } return n; }
+function tTickRule(dt){
+  if(!RULE || RULE.winner) return;
+  const rid=RULE.id, list=tFightersList();
+  if(rid==="tag"){
+    const C=RULE_CONFIG.tag;
+    if(RULE.needInit){
+      if(!list.length) return;
+      RULE.needInit=false;
+      tagInfect(list[Math.floor(Math.random()*list.length)], true);
+      for(const f of list) if(!f.isTagger && f.char && f.char.id==="student_06") f.tagShield=1;
+      return;
+    }
+    if(RULE.phase==="reveal"){ RULE.phaseT-=dt; if(RULE.phaseT<=0) RULE.phase="chase"; return; }
+    for(const f of list){ if(f.tagCd>0) f.tagCd-=dt; }
+    for(const t of list){
+      if(!t.isTagger || t.dead || t.tagCd>0) continue;
+      for(const r of list){
+        if(r.isTagger || r.dead) continue;
+        if(dist2(t.x,t.y,r.x,r.y) < (t.r+r.r)*(t.r+r.r)) tagInfect(r, false);
+      }
+    }
+    let survivors=0; for(const f of list){ if(!f.isTagger && !f.dead) survivors++; }
+    RULE.survivors=survivors;
+    const taggers=list.length-survivors;
+    RULE.runnerMul=1+Math.min(C.runnerBuffMax, C.runnerBuffPer*Math.max(0,taggers-1));
+    if(survivors===1 && !RULE.lastOne) RULE.lastOne=true;
+    if(survivors===0) tRuleWinTeam("taggers");
+    return;
+  }
+  if(rid==="paint"){
+    RULE.barT-=dt;
+    if(RULE.barT<=0){ RULE.barT=0.5;
+      RULE.bar.p=RULE.count[1]/Math.max(1,RULE.paintable);
+      RULE.bar.e=RULE.count[2]/Math.max(1,RULE.paintable); }
+    return;
+  }
+  if(rid==="siege"){
+    const C=RULE_CONFIG.siege;
+    for(let i=RULE.rebuild.length-1;i>=0;i--){
+      const rb=RULE.rebuild[i]; rb.t-=dt;
+      if(rb.t>0) continue;
+      const s=rb.s;
+      if(list.some(f=>!f.dead && circleRectOverlap(f.x,f.y,f.r,s))){ rb.t=0.5; continue; }
+      s.hp=Math.round(s.maxHp*C.rebuildHpMul);
+      OBSTACLES.push(s);
+      effects.push({kind:"respawn", x:s.x+s.w/2, y:s.y+s.h/2, t:0, life:0.5, color:"#c9d6ff"});
+      RULE.rebuild.splice(i,1);
+    }
+    for(const tk of ["player","enemy"]){
+      const tw=RULE.towers[tk]; if(!tw || tw.hp<=0) continue;
+      RULE.turretAcc[tk]-=dt;
+      if(RULE.turretAcc[tk]>0) continue;
+      const cx=tw.x+tw.w/2, cy=tw.y+tw.h/2, mzOff=Math.max(tw.w,tw.h)/2+12;
+      let best=null, bd=C.turretRange;
+      for(const f of list){ if(f.dead || f.invincibleTimer>0 || tTeamKey(f.team)===tk) continue;
+        const d=dist(cx,cy,f.x,f.y); if(d>=bd) continue;
+        const a0=Math.atan2(f.y-cy,f.x-cx);
+        if(hasLineOfSight(cx+Math.cos(a0)*mzOff, cy+Math.sin(a0)*mzOff, f.x, f.y)){ bd=d; best=f; } }
+      if(best){
+        const a=Math.atan2(best.y-cy,best.x-cx), mz=Math.max(tw.w,tw.h)/2+12;
+        tBullets.push({ x:cx+Math.cos(a)*mz, y:cy+Math.sin(a)*mz, vx:Math.cos(a)*420, vy:Math.sin(a)*420,
+          r:8, damage:C.turretDmg, team:(tk==="player"?"blue":"red"), owner:"turret", color:"#ffd0a0", alive:true, traveled:0,
+          maxRange:C.turretRange+90, age:0, isSuper:true });
+        RULE.turretAcc[tk]=C.turretCd;
+      } else RULE.turretAcc[tk]=0.15;
+    }
+    return;
+  }
+  if(rid==="hotzone"){
+    const C=RULE_CONFIG.hotzone;
+    if(!RULE.fixed && C.moveEvery>0){
+      RULE.moveT+=dt;
+      RULE.warn=Math.max(0, RULE.moveT-(C.moveEvery-3));
+      if(RULE.moveT>=C.moveEvery){
+        RULE.moveT=0; RULE.warn=0; RULE.posIdx=(RULE.posIdx+1)%3;
+        RULE.y=ARENA.y+ARENA.h*[0.5,0.25,0.75][RULE.posIdx];
+        effects.push({kind:"superwave", x:RULE.x, y:RULE.y, t:0, life:0.6, radius:RULE.radius});
+      }
+    }
+    let pIn=0, eIn=0;
+    for(const f of list){ if(f.dead) continue;
+      if(dist(f.x,f.y,RULE.x,RULE.y)<=RULE.radius){ if(f.team==="blue") pIn++; else eIn++; } }
+    RULE.holder=(pIn&&!eIn)?"player":((eIn&&!pIn)?"enemy":((pIn&&eIn)?"contest":null));
+    if(RULE.holder==="player"){ RULE.gauge.player=Math.min(C.goal, RULE.gauge.player+C.capPerSec*dt); if(RULE.gauge.player>=C.goal) tRuleWinTeam("blue"); }
+    else if(RULE.holder==="enemy"){ RULE.gauge.enemy=Math.min(C.goal, RULE.gauge.enemy+C.capPerSec*dt); if(RULE.gauge.enemy>=C.goal) tRuleWinTeam("red"); }
+    return;
+  }
+  if(rid==="stargrab"){
+    const C=RULE_CONFIG.stargrab;
+    RULE.spawnAcc+=dt;
+    if(RULE.spawnAcc>=C.spawnEvery){
+      RULE.spawnAcc=0;
+      if(RULE.stars.filter(s=>s.ttl===undefined).length<C.maxOnGround){
+        for(let t=0;t<12;t++){
+          const x=clamp(RULE.cx+rand(-130,130), ARENA.x+30, ARENA.x+ARENA.w-30);
+          const y=clamp(RULE.cy+rand(-100,100), ARENA.y+30, ARENA.y+ARENA.h-30);
+          if(!OBSTACLES.some(o=>circleRectOverlap(x,y,14,o))){ RULE.stars.push({x:x,y:y}); break; }
+        }
+      }
+    }
+    for(let i=RULE.stars.length-1;i>=0;i--){
+      const s=RULE.stars[i];
+      if(s.ttl!==undefined){ s.ttl-=dt; if(s.ttl<=0){ RULE.stars.splice(i,1); continue; } }
+      for(const f of list){ if(f.dead) continue;
+        if(dist(f.x,f.y,s.x,s.y) < f.r+16){ f.stars=(f.stars||0)+1;
+          effects.push({kind:"respawn",x:s.x,y:s.y,t:0,life:0.35,color:"#ffe066"});
+          RULE.stars.splice(i,1); break; } }
+    }
+    for(const team of ["blue","red"]){
+      const tk=tTeamKey(team);
+      if(tTeamStars(team)>=C.goal){
+        if(RULE.countdown[tk]<0) RULE.countdown[tk]=C.countdown;
+        RULE.countdown[tk]-=dt;
+        if(RULE.countdown[tk]<=0){ tRuleWinTeam(team); return; }
+      } else RULE.countdown[tk]=-1;
+    }
+  }
+}
+/* 봇 목표 지점(규칙별): 근처에 적이 없으면 목표로 이동 */
+function tRuleBotObjective(f){
+  if(!RULE) return null;
+  if(RULE.id==="hotzone") return { x:RULE.x, y:RULE.y, r:RULE.radius*0.55 };
+  if(RULE.id==="stargrab"){
+    let best=null, bd=Infinity;
+    for(const s of RULE.stars){ const d=dist2(f.x,f.y,s.x,s.y); if(d<bd){ bd=d; best=s; } }
+    return best ? { x:best.x, y:best.y, r:16 } : { x:RULE.cx, y:RULE.cy, r:120 };
+  }
+  if(RULE.id==="siege"){
+    const tw=RULE.towers[tTeamKey(f.team)==="player"?"enemy":"player"];
+    return (tw && tw.hp>0) ? { x:tw.x+tw.w/2, y:tw.y+tw.h/2, r:200, tower:tw } : null;
+  }
+  if(RULE.id==="paint"){
+    const ai=(f.ai=f.ai||{});
+    ai.pT=(ai.pT||0)-1/60;
+    if(!ai.pGoal || ai.pT<=0){
+      ai.pT=2.5;
+      const myCol=(tTeamKey(f.team)==="player")?1:2;
+      for(let t=0;t<24;t++){
+        const c=Math.floor(Math.random()*RULE.cols), r=Math.floor(Math.random()*RULE.rows), i=r*RULE.cols+c;
+        if(!RULE.blocked[i] && RULE.grid[i]!==myCol){ ai.pGoal={x:ARENA.x+c*STUDENT_CELL+28, y:ARENA.y+r*STUDENT_CELL+28}; break; }
+      }
+    }
+    return ai.pGoal ? { x:ai.pGoal.x, y:ai.pGoal.y, r:60 } : null;
+  }
+  return null;
+}
+/* 게스트: 패킷 → RULE 뷰 갱신 */
+let tMyTagRole=false;   // 내 최종 술래 여부(결과 문구용)
+function tGuestApplyRule(s){
+  const rid=tRuleId(); if(rid==="tdm") return;
+  if(!RULE || RULE.id!==rid) tSetupRule();
+  const r=(s&&s.rule)||{};
+  if(rid==="hotzone"){ if(r.x!==undefined){ RULE.x=r.x; RULE.y=r.y; } RULE.gauge.player=r.gp||0; RULE.gauge.enemy=r.ge||0; RULE.holder=r.h||null; RULE.warn=r.w||0; }
+  else if(rid==="tag"){ RULE.phase=r.ph||"chase"; RULE.phaseT=r.pt||0; RULE.survivors=r.sv||0; RULE.runnerMul=r.rm||1; RULE.lastOne=!!r.lo; }
+  else if(rid==="stargrab"){ RULE.stars=(r.st||[]).map(o=>({x:o.x,y:o.y})); RULE.countdown={player:(r.cp===undefined?-1:r.cp), enemy:(r.ce===undefined?-1:r.ce)}; }
+  else if(rid==="paint"){ tPaintApplyRLE(r.g); }
+  else if(rid==="siege" && r.sh){
+    for(let i=0;i<RULE.structs.length && i<r.sh.length;i++){
+      const st=RULE.structs[i], hp=r.sh[i];
+      const inOb=OBSTACLES.indexOf(st)>=0;
+      st.hp=hp;
+      if(hp<=0 && inOb) OBSTACLES.splice(OBSTACLES.indexOf(st),1);
+      else if(hp>0 && !inOb) OBSTACLES.push(st);
+    }
+  }
+  // 내 역할 추적(술래) + 잡힘 토스트
+  if(rid==="tag" && s && s.fighters){
+    const me=s.fighters[OnlineManager.mySlot];
+    if(me){ const now=!!me.tg; if(now && !tMyTagRole && OnlineManager.role!=="host") showToast("잡혔다! 이제 너가 술래 👹"); tMyTagRole=now; }
+  }
+}
+/* 팀 모드 규칙 HUD(로컬 drawRuleHUD와 분리 — 내 역할/팀 키가 다름) */
+function tDrawRuleHUD(){
+  if(!RULE) return;
+  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
+  const cy=86;
+  if(RULE.id==="tag"){
+    if(RULE.phase==="reveal"){
+      dimScreen(0.35);
+      ctx.fillStyle="#ffe066"; ctx.font="bold 46px 'Malgun Gothic',sans-serif";
+      ctx.fillText("👹 술래 공개!", LOGW/2, LOGH/2-40);
+      ctx.font="bold 70px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#ffffff";
+      ctx.fillText(String(Math.ceil(Math.max(0,RULE.phaseT))), LOGW/2, LOGH/2+40);
+      ctx.font="bold 22px 'Malgun Gothic',sans-serif"; ctx.fillStyle=tMyTagRole?"#ff8a8a":"#9fe0ff";
+      ctx.fillText(tMyTagRole?"너가 술래다! 모두 잡아라!":"술래를 피해 숨어라!", LOGW/2, LOGH/2+100);
+    } else {
+      ctx.fillStyle="#dfe6ff"; ctx.font="bold 16px 'Malgun Gothic',sans-serif";
+      ctx.fillText("❤ 생존자 "+RULE.survivors+"명", LOGW/2, cy);
+      const p=0.5+0.5*Math.sin(uiTime*4);
+      ctx.fillStyle=tMyTagRole?("rgba(255,110,120,"+(0.7+0.3*p)+")"):("rgba(130,200,255,"+(0.7+0.3*p)+")");
+      ctx.font="bold 20px 'Malgun Gothic',sans-serif";
+      ctx.fillText(tMyTagRole?"👹 잡아라!":"🏃 도망쳐!", LOGW/2, cy+26);
+    }
+  } else if(RULE.id==="paint"){
+    const bw=420, bx=LOGW/2-bw/2, p=RULE.bar.p, e=RULE.bar.e;
+    ctx.fillStyle="rgba(0,0,0,0.5)"; roundRect(bx,cy-9,bw,18,9); ctx.fill();
+    ctx.fillStyle="rgba(90,160,255,0.9)"; if(p>0) roundRect(bx,cy-9,Math.max(8,bw*p),18,9), ctx.fill();
+    ctx.fillStyle="rgba(255,106,106,0.9)"; if(e>0) roundRect(bx+bw-Math.max(8,bw*e),cy-9,Math.max(8,bw*e),18,9), ctx.fill();
+    ctx.strokeStyle="#dfe6ff"; ctx.lineWidth=2; roundRect(bx,cy-9,bw,18,9); ctx.stroke();
+    ctx.fillStyle="#ffffff"; ctx.font="bold 13px 'Malgun Gothic',sans-serif";
+    ctx.fillText(Math.round(p*100)+"%", bx-28, cy+1); ctx.fillText(Math.round(e*100)+"%", bx+bw+28, cy+1);
+    if(tTimeLeft<=RULE_CONFIG.paint.finaleSec){
+      const fp=0.5+0.5*Math.sin(uiTime*7);
+      ctx.fillStyle="rgba(255,210,63,"+(0.65+0.35*fp)+")"; ctx.font="bold 16px 'Malgun Gothic',sans-serif";
+      ctx.fillText("🔥 피날레! 칠 2배", LOGW/2, cy+24);
+    }
+  } else if(RULE.id==="siege"){
+    const bw=190;
+    const bar=(x,tw,color)=>{ const ratio=tw?clamp(tw.hp/tw.maxHp,0,1):0;
+      ctx.fillStyle="rgba(0,0,0,0.5)"; roundRect(x-bw/2,cy-7,bw,14,7); ctx.fill();
+      ctx.fillStyle=color; roundRect(x-bw/2,cy-7,bw*ratio,14,7); ctx.fill();
+      ctx.fillStyle="#fff"; ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.fillText("🏰 "+Math.ceil(Math.max(0,tw?tw.hp:0)),x,cy+1); };
+    bar(LOGW/2-160, RULE.towers.player, TEAM_COLOR.blue);
+    bar(LOGW/2+160, RULE.towers.enemy, TEAM_COLOR.red);
+  } else if(RULE.id==="hotzone"){
+    const bw=170;
+    const bar=(x,v,color)=>{ ctx.fillStyle="rgba(0,0,0,0.5)"; roundRect(x-bw/2,cy-7,bw,14,7); ctx.fill();
+      ctx.fillStyle=color; roundRect(x-bw/2,cy-7,bw*(v/RULE_CONFIG.hotzone.goal),14,7); ctx.fill();
+      ctx.fillStyle="#fff"; ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.fillText("✨ "+Math.floor(v)+"%",x,cy+1); };
+    bar(LOGW/2-150, RULE.gauge.player, TEAM_COLOR.blue);
+    bar(LOGW/2+150, RULE.gauge.enemy, TEAM_COLOR.red);
+    if(RULE.holder==="contest"){ ctx.fillStyle="#ffd23f"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.fillText("거점 경합 중!", LOGW/2, cy+1); }
+    if(RULE.warn>0){ ctx.fillStyle="#ffe066"; ctx.font="bold 14px 'Malgun Gothic',sans-serif"; ctx.fillText("⚠ 거점이 곧 이동해요!", LOGW/2, cy+22); }
+  } else if(RULE.id==="stargrab"){
+    const p=tGuestTeamStars("blue"), e=tGuestTeamStars("red"), C=RULE_CONFIG.stargrab;
+    ctx.fillStyle="#dfe6ff"; ctx.font="bold 15px 'Malgun Gothic',sans-serif";
+    ctx.fillText("⭐ 블루 "+p+" : "+e+" 레드  (목표 "+C.goal+")", LOGW/2, cy);
+    for(const tk of ["player","enemy"]){
+      if(RULE.countdown[tk]>=0){
+        ctx.fillStyle=tk==="player"?"#7fd6ff":"#ff8fa5"; ctx.font="bold 17px 'Malgun Gothic',sans-serif";
+        ctx.fillText((tk==="player"?"블루":"레드")+" 승리까지 "+Math.ceil(RULE.countdown[tk])+"초!", LOGW/2, cy+24);
+      }
+    }
+  }
+  ctx.restore();
+}
+// 별 보유 합계(호스트=tFighters, 게스트=패킷 fighters의 st 필드)
+function tGuestTeamStars(team){
+  if(OnlineManager.role==="host") return tTeamStars(team);
+  const s=OnlineManager.onlineState; let n=0;
+  if(s && s.fighters) for(const slot in s.fighters){ if(tRosterTeam(slot)===team) n+=(s.fighters[slot].st||0); }
+  return n;
+}
+
 function tBotUpdate(f, dt){
   if(f.dead){ f.respawnTimer-=dt; if(f.respawnTimer<=0) tRespawn(f); return; }
   if(f.hitFlash>0) f.hitFlash-=dt; if(f.invincibleTimer>0) f.invincibleTimer-=dt;
   tickStatus(f, dt); applyTrapTo(f);   // 봇도 함정 둔화 적용(일관성)
+  if(RULE && RULE.id==="tag"){ tagBotUpdate(f, dt, tFightersList(), envTeam()); return; }   // P2: 술래 전용 봇 AI 재사용
+  // P2: 규칙 목표 지향 — 적이 멀면 목표 지점(거점/별/적 탑/미도색 칸)으로 이동
+  const obj=tRuleBotObjective(f);
+  const tN=tNearestEnemyFighter(f);
+  const tNd=tN?dist(f.x,f.y,tN.x,tN.y):Infinity;
+  if(obj && dist(f.x,f.y,obj.x,obj.y)>obj.r && tNd>360){
+    const dx=obj.x-f.x, dy=obj.y-f.y, d=Math.hypot(dx,dy)||1;
+    const step=effSpeed(f)*0.9*dt, ox=f.x, oy=f.y;
+    moveEntity(f, dx/d*step, dy/d*step);
+    if(Math.hypot(f.x-ox,f.y-oy)<step*0.3){ const sd=(f.ai.stuckDir||1); moveEntity(f, -dy/d*sd*step, dx/d*sd*step); }
+    f.facing=Math.atan2(dy,dx);
+    // 수정부수기: 목표가 적 탑이고 사거리·시야 안이면 탑 사격
+    if(obj.tower){ f.cooldown-=dt;
+      const td=dist(f.x,f.y,obj.x,obj.y);
+      if(td<GAME_CONFIG.playerRange*0.9 && f.cooldown<=0 && hasLineOfSight(f.x,f.y,obj.x,obj.y)){ tFire(f); f.cooldown=zCooldownOf(f, getWeapon(f.weaponId))*1.15; } }
+    // 칠하기: 이동하며 바닥 쪽 발사(탄 경로 도색)
+    else if(RULE && RULE.id==="paint"){ f.cooldown-=dt;
+      if(f.cooldown<=0){ tFire(f); f.cooldown=zCooldownOf(f, getWeapon(f.weaponId))*1.3; } }
+    return;
+  }
   const t=tNearestEnemyFighter(f);
   if(t){
     const dx=t.x-f.x, dy=t.y-f.y, d=Math.hypot(dx,dy)||1;
@@ -8137,10 +8575,13 @@ function tUpdateBullets(dt){
           b.bounces=(b.bounces||0)+1; b.lastWall=null; b.lastBounceAt=b.age; break; }
         b.alive=false; break;
       }
+      if(RULE && RULE.id==="paint") tPaintCellBy(b.x, b.y, b.team, b.owner);   // P2: 탄 비행 경로 도색
       let wall=false, wref=null; for(const o of OBSTACLES){ if(circleRectOverlap(b.x,b.y,b.r,o)){ wall=true; wref=o; break; } }
       if(wall){
         if(b.boomerang){ if(b.phase==="out"){ b.phase="back"; b.x-=sx; b.y-=sy; } break; }
         if(b.bounce){ if(!bounceBullet(b,wref,sx,sy)) b.alive=false; break; }
+        if(RULE && RULE.id==="siege" && wref.structure && wref.sid && wref.team!==tTeamKey(b.team)) tDamageRuleStruct(wref, b.damage);   // P2: 구조물 피해
+        if(RULE && RULE.id==="paint") tPaintSplash(b.x,b.y,b.team,b.owner,(b.wid==="tool_06")?"3x3":"cross");   // P2: 벽 착탄 도색
         spawnHitFx(b.x,b.y,b.wid,"#aab0d0"); b.alive=false; break;
       }
       for(const slot in tFighters){ const t=tFighters[slot];
@@ -8158,12 +8599,16 @@ function tUpdateBullets(dt){
           if(b.ultCid && !canUltDamage(b.ultCid, slot, b.ultMaxHits||4)){ b.alive=false; break; }  // 럭키 C: 같은 대상 최대 피해 상한(로컬과 동일)
           tApplyDamage(t, bulletHitDamage(b,t), b.team, b.owner, b.isSuper, b.aid);
           if(b.wref) applyWeaponHitEffects(b.wref, t, b.x, b.y);
+          if(RULE && RULE.id==="paint") tPaintSplash(b.x,b.y,b.team,b.owner,"3x3");   // P2: 적 명중 3×3
           spawnHitFx(b.x,b.y,b.wid,b.color);
           b.alive=false; break;
         }
       }
       if(!b.alive) break;
-      if(!b.boomerang && b.traveled>b.maxRange){ b.alive=false; break; }
+      if(!b.boomerang && b.traveled>b.maxRange){
+        if(RULE && RULE.id==="paint") tPaintSplash(b.x,b.y,b.team,b.owner,(b.wid==="tool_06")?"3x3":"cross");   // P2: 사거리 끝 착탄 도색
+        b.alive=false; break;
+      }
     }
   }
   tBullets=tBullets.filter(b=>b.alive);
@@ -8182,6 +8627,10 @@ function tApplyDamage(target, dmg, fromTeam, fromSlot, isSuper, aid){
     target.hp=0; target.dead=true; target.respawnTimer=GAME_CONFIG.respawnDelay;
     if(TEAM_COLOR[fromTeam]!==undefined) tTeamScores[fromTeam]=(tTeamScores[fromTeam]||0)+1;
     const killer=tFighters[fromSlot]; if(killer) killer.score+=1;
+    if(RULE && RULE.id==="stargrab" && (target.stars||0)>0){   // P2: 죽으면 보유 별 드랍(6초 소멸)
+      for(let i=0;i<target.stars;i++) RULE.stars.push({ x:target.x+rand(-26,26), y:target.y+rand(-26,26), ttl:RULE_CONFIG.stargrab.dropTtl });
+      target.stars=0;
+    }
   }
 }
 
@@ -8195,11 +8644,16 @@ function tPackFighter(f){
   // 매 틱 전송 최소화: 변하는 값만 보낸다.
   // 정적인 값(charId/team/slot/maxHp)은 players 로스터로 게스트가 역산한다(렉 최적화).
   // am/rl/sg는 내 HUD(탄창/장전/궁극기)용 작은 숫자만 추가.
-  return { x:Math.round(f.x), y:Math.round(f.y), hp:Math.round(f.hp),
+  const o={ x:Math.round(f.x), y:Math.round(f.y), hp:Math.round(f.hp),
     facing:Math.round(f.facing*100)/100, dead:!!f.dead, inv:f.invincibleTimer>0,
     am:f.ammo, rl:f.reloading?1:0, sg:Math.round(f.superGauge||0), fr:f.fireRevealTimer>0?1:0,
     xc:Math.round(Math.max(0,f.specialCd||0)*10)/10,     // X 쿨타임(HUD용)
     lv:(f.lives===undefined?-1:f.lives) };               // PVE 개인 목숨(-1=해당 없음/3v3)
+  if(RULE){                                              // P2: 규칙별 개인 상태(술래 여부·별 보유)
+    if(RULE.id==="tag") o.tg=f.isTagger?1:0;
+    else if(RULE.id==="stargrab") o.st=f.stars||0;
+  }
+  return o;
 }
 // 게스트가 정적 정보를 로스터(OnlineManager.players)에서 역산하는 도우미
 function tRosterCharId(slot){ const p=OnlineManager.players&&OnlineManager.players[slot]; return sanitizeCharacterId((p&&p.characterId)||"student_01"); }
@@ -8215,6 +8669,17 @@ function tHostWriteState(){
   for(const b of tBullets) bl.push({ x:Math.round(b.x), y:Math.round(b.y), r:Math.round(b.r), c:b.color, vx:Math.round(b.vx), vy:Math.round(b.vy), w:b.wid||null });
   const st={ timeLeft:Math.max(0,Math.round(tTimeLeft)), teamScores:tTeamScores, fighters:fighters, bullets:bl,
     powerups:POWERUPS.map(p=>({x:Math.round(p.x),y:Math.round(p.y),t:powerupPacketT(p),id:p.id})), zones:packZones() };
+  // BIG-BATCH-2 P2: 규칙 상태 동기화(점령전=게이지 · 수정=구조물HP · 별=좌표/카운트다운 · 술래=단계 · 칠=RLE 그리드)
+  if(RULE && getOnlineMode(OnlineManager.mode).modeType==="pvp"){
+    const r={};
+    if(RULE.id==="hotzone"){ r.x=Math.round(RULE.x); r.y=Math.round(RULE.y); r.gp=Math.round(RULE.gauge.player*10)/10; r.ge=Math.round(RULE.gauge.enemy*10)/10; r.h=RULE.holder||null; r.w=Math.round((RULE.warn||0)*10)/10; }
+    else if(RULE.id==="siege"){ r.sh=RULE.structs.map(s=>Math.max(0,Math.round(s.hp))); }
+    else if(RULE.id==="stargrab"){ r.st=RULE.stars.map(s=>({x:Math.round(s.x),y:Math.round(s.y)}));
+      r.cp=RULE.countdown.player<0?-1:Math.round(RULE.countdown.player*10)/10; r.ce=RULE.countdown.enemy<0?-1:Math.round(RULE.countdown.enemy*10)/10; }
+    else if(RULE.id==="tag"){ r.ph=RULE.phase; r.pt=Math.round(Math.max(0,RULE.phaseT)*10)/10; r.sv=RULE.survivors; r.rm=Math.round((RULE.runnerMul||1)*100)/100; r.lo=RULE.lastOne?1:0; }
+    else if(RULE.id==="paint"){ r.g=tPaintRLE(); }
+    st.rule=r;
+  }
   // PVE면 적/스테이지 정보도 함께 보낸다. color/r/boss는 type으로 게스트가 역산(전송 제외).
   if(getOnlineMode(OnlineManager.mode).modeType==="pve"){
     const en={}; for(const id in tEnemies){ const e=tEnemies[id]; en[id]={ x:Math.round(e.x), y:Math.round(e.y), hp:Math.round(e.hp), maxHp:Math.round(e.maxHp), facing:Math.round(e.facing*100)/100, type:e.type, dead:!!e.dead }; }
@@ -8249,6 +8714,8 @@ function tMyTeam(){
 function tComputeResultText(){
   let w=tWinner; if(!w && OnlineManager.meta) w=OnlineManager.meta.winner;
   if(!w || w==="draw") return "무승부!";
+  if(w==="taggers") return tMyTagRole ? "승리!" : "패배!";      // P2 술래: 역할 기준 결과
+  if(w==="runners") return tMyTagRole ? "패배!" : "승리!";
   return (w===tMyTeam()) ? "승리!" : "패배!";
 }
 
@@ -8258,6 +8725,7 @@ function tUpdateGuest(dt){
   // PVE: host가 보낸 현재 스테이지 맵으로 장애물/풀숲을 맞춘다(보이는 벽=실제 충돌)
   if(s.pve && s.pve.mapId && s.pve.mapId!==tMapId){ tMapId=s.pve.mapId; const m=getMap(tMapId); OBSTACLES=m.obstacles.slice(); BUSHES=m.bushes; tGuestStructSig=""; }
   if(s.structs) tGuestApplyStructs(s.structs);                       // v1.22: 구조물 상태+충돌 동기화
+  if(getOnlineMode(OnlineManager.mode).modeType==="pvp") tGuestApplyRule(s);   // BIG-BATCH-2 P2: 규칙 뷰 동기화
   if(s!==tLastStateRef){ tLastStateRef=s; tBulletsView=(s.bullets||[]).map(b=>({ x:b.x,y:b.y,vx:b.vx||0,vy:b.vy||0,r:b.r,c:b.c,w:b.w||null })); }
   for(const b of tBulletsView){ b.x+=b.vx*dt; b.y+=b.vy*dt; }
   const myslot=OnlineManager.mySlot, k=Math.min(1,dt*18);
@@ -8280,7 +8748,8 @@ function tGetDrawData(){
   const out={ fighters:[], bullets:[], teamScores:{blue:0,red:0}, timeLeft:0, waiting:false };
   if(OnlineManager.role==="host"){
     for(const slot in tFighters){ const f=tFighters[slot];
-      out.fighters.push({ x:f.x,y:f.y,facing:f.facing,hp:f.hp,maxHp:f.maxHp,dead:f.dead,inv:f.invincibleTimer>0,charId:f.char.id,team:f.team,slot:slot,isMe:slot===OnlineManager.mySlot,fr:f.fireRevealTimer>0?1:0 }); }
+      out.fighters.push({ x:f.x,y:f.y,facing:f.facing,hp:f.hp,maxHp:f.maxHp,dead:f.dead,inv:f.invincibleTimer>0,charId:f.char.id,team:f.team,slot:slot,isMe:slot===OnlineManager.mySlot,fr:f.fireRevealTimer>0?1:0,
+        tg:f.isTagger?1:0, st:f.stars||0, sh:f.tagShield||0 }); }   // P2: 규칙 배지
     out.bullets=tBullets.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.color,w:b.wid||null,vx:b.vx,vy:b.vy }));
     out.teamScores=tTeamScores; out.timeLeft=Math.max(0,Math.ceil(tTimeLeft));
     out.zones=packZones();
@@ -8291,7 +8760,8 @@ function tGetDrawData(){
     for(const slot in s.fighters){ const p=s.fighters[slot]; let rx=p.x,ry=p.y,rf=p.facing;
       if(slot===myslot && tPredict && !p.dead){ rx=tPredict.x; ry=tPredict.y; rf=tPredict.facing; }
       else if(tRenderFighters[slot] && !p.dead){ rx=tRenderFighters[slot].x; ry=tRenderFighters[slot].y; rf=tRenderFighters[slot].facing; }
-      out.fighters.push({ x:rx,y:ry,facing:rf,hp:p.hp,maxHp:p.maxHp||tRosterMaxHp(slot),dead:p.dead,inv:p.inv,charId:p.charId||tRosterCharId(slot),team:p.team||tRosterTeam(slot),slot:slot,isMe:slot===myslot,fr:p.fr }); }
+      out.fighters.push({ x:rx,y:ry,facing:rf,hp:p.hp,maxHp:p.maxHp||tRosterMaxHp(slot),dead:p.dead,inv:p.inv,charId:p.charId||tRosterCharId(slot),team:p.team||tRosterTeam(slot),slot:slot,isMe:slot===myslot,fr:p.fr,
+        tg:p.tg||0, st:p.st||0 }); }   // P2: 규칙 배지
     out.bullets=tBulletsView.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.c,w:b.w||null,vx:b.vx,vy:b.vy }));
     out.teamScores=s.teamScores||{blue:0,red:0}; out.timeLeft=s.timeLeft;
     out.zones=(s.zones||[]);
@@ -8302,12 +8772,39 @@ function tGetDrawData(){
 function tDrawFighter(d){
   if(d.dead) return;
   const ch=getCharacter(d.charId||"lumi");
-  const vis=bushVisibility(d.x,d.y, d.team, d.isMe, _viewer, !!d.fr);
+  const isTagRule=!!(RULE && RULE.id==="tag");
+  let vis;
+  if(isTagRule){   // P2 §1.4: 역할 기반 시야 — 내가 술래면 수풀 속 도망자 안 보임
+    const hideMe = tMyTagRole && !d.tg && !d.isMe &&
+                   inBush({x:d.x,y:d.y}) && _viewer && dist(_viewer.x,_viewer.y,d.x,d.y)>RULE_CONFIG.tag.bushHide && !d.fr;
+    vis = hideMe ? {hidden:true, alpha:0} : {hidden:false, alpha:inBush({x:d.x,y:d.y})?0.75:1};
+  } else {
+    vis=bushVisibility(d.x,d.y, d.team, d.isMe, _viewer, !!d.fr);
+  }
   if(vis.hidden){ drawBushRustle(d.x,d.y); return; }
   let alpha=vis.alpha; if(d.inv && Math.floor(uiTime*12)%2===0) alpha*=0.4;
   // 축11: 팀 색 원형 링(몸에 겹침) → 발밑 마커로 교체(나=금색·아군=파랑 실선·적=빨강 점선)
   const _myTeam=_viewer?_viewer.team:null;
-  drawTeamMarker(d.x, d.y, 22, d.isMe?"me":((_myTeam && d.team===_myTeam)?"ally":"enemy"), alpha);
+  const mk = isTagRule ? (d.isMe?"me":((!!d.tg)===tMyTagRole?"ally":"enemy"))
+                       : (d.isMe?"me":((_myTeam && d.team===_myTeam)?"ally":"enemy"));
+  drawTeamMarker(d.x, d.y, 22, mk, alpha);
+  if(isTagRule && d.tg){   // 술래 표식 👹
+    ctx.save(); ctx.globalAlpha=alpha; ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.font="bold 20px 'Malgun Gothic',sans-serif";
+    ctx.fillText("👹", d.x, d.y-22-44+Math.sin(uiTime*5)*3);
+    ctx.restore();
+  }
+  if(RULE && RULE.id==="stargrab" && (d.st||0)>0){   // ⭐ 보유 배지 + 캐리어 링
+    ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.globalAlpha=alpha;
+    ctx.font="bold 15px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#ffe14d";
+    ctx.fillText("⭐"+d.st, d.x, d.y-22-44);
+    if(d.st>=RULE_CONFIG.stargrab.carrierMark){
+      const cp=0.5+0.5*Math.sin(uiTime*5);
+      ctx.strokeStyle=TEAM_COLOR[d.team]||"#fff"; ctx.lineWidth=2.5; ctx.globalAlpha=alpha*(0.5+0.4*cp);
+      ctx.beginPath(); ctx.arc(d.x,d.y,22+12+cp*3,0,Math.PI*2); ctx.stroke();
+    }
+    ctx.restore();
+  }
   if(d.isMe) drawSelfMarker(d.x,d.y,22);
   ctx.save(); ctx.globalAlpha=alpha; ctx.translate(d.x,d.y);
   if(!drawCharacterSprite(d.charId||"student_01", 22, d.facing||0, { moving:spriteMoving("T"+d.slot,d.x,d.y), attacking:!!d.fr }))
@@ -8327,6 +8824,8 @@ function tRender(){
   if(getOnlineMode(OnlineManager.mode).modeType==="pve"){ tPveRender(); return; }
   const data=tGetDrawData();
   const me=data.fighters.find(f=>f.isMe); _viewer = me ? { x:me.x, y:me.y, team:me.team } : null;
+  if(RULE && RULE.id==="paint") drawPaintGrid();     // P2: 유닛 아래층 페인트
+  if(RULE) drawRuleObjects();                        // P2: 거점/별/구조물(양 역할 공통 — RULE·OBSTACLES 기반)
   drawSkillZonesPacked(data.zones);
   for(const b of data.bullets) drawOnlineBullet(b);
   for(const f of data.fighters) tDrawFighter(f);
@@ -8342,12 +8841,14 @@ function tRender(){
   ctx.fillText((myTeam==="red"?"(우리) ":"")+"레드",LOGW-24,22);
   ctx.fillStyle="#fff"; ctx.font="bold 30px 'Malgun Gothic',sans-serif"; ctx.fillText(String(data.teamScores.red||0),LOGW-24,48);
   ctx.textAlign="center"; ctx.fillStyle="#fff"; ctx.font="bold 36px 'Malgun Gothic',sans-serif"; ctx.fillText(String(data.timeLeft),LOGW/2,26);
-  ctx.fillStyle="#aab4e0"; ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.fillText("온라인 3대3 (베타) · 방 "+(OnlineManager.roomCode||""),LOGW/2,52);
+  ctx.fillStyle="#aab4e0"; ctx.font="bold 12px 'Malgun Gothic',sans-serif";
+  ctx.fillText("온라인 3대3 · "+getRule(tRuleId()).name+" · 방 "+(OnlineManager.roomCode||""),LOGW/2,52);   // P2: 방 규칙 표시
   ctx.fillStyle="rgba(10,12,32,0.72)"; ctx.fillRect(0,656,LOGW,64);
   ctx.textAlign="right"; ctx.fillStyle="#aab4e0"; ctx.font="bold 14px 'Malgun Gothic',sans-serif";
   ctx.fillText(controlHintText()+" · Esc 나가기",LOGW-24,688);
   ctx.restore();
   drawCombatStrip();
+  if(RULE) tDrawRuleHUD();                           // P2: 규칙 HUD(게이지·탑HP·별·역할·면적 바)
   if(!OnlineManager.connected) drawCenterBanner("네트워크 연결 확인 중…","#ff7a7a");
   if(data.waiting) drawCenterBanner("동기화 대기 중…","#9fe0ff");
 }
@@ -8356,7 +8857,8 @@ function tDrawLobby(){
   dimScreen(0.72);
   ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
   const mode=getOnlineMode(OnlineManager.mode);
-  ctx.fillStyle="#9fe0ff"; ctx.font="bold 36px 'Malgun Gothic',sans-serif"; ctx.fillText("대기실 · "+mode.name,LOGW/2,70);
+  ctx.fillStyle="#9fe0ff"; ctx.font="bold 36px 'Malgun Gothic',sans-serif";
+  ctx.fillText("대기실 · "+mode.name+(mode.modeType==="pvp"?(" · "+getRule(tRuleId()).name):""),LOGW/2,70);   // P2: 방 규칙
   ctx.fillStyle="#fff"; ctx.font="bold 18px 'Malgun Gothic',sans-serif"; ctx.fillText("방 코드",LOGW/2,112);
   ctx.fillStyle="#ffe066"; ctx.font="bold 52px 'Malgun Gothic',sans-serif"; ctx.fillText(OnlineManager.roomCode||"----",LOGW/2,158);
   ctx.fillStyle="#aab4e0"; ctx.font="14px 'Malgun Gothic',sans-serif";
