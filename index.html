@@ -558,14 +558,20 @@ const RULES = [
   { id:"tdm",      name:"섬멸전",     desc:"제한시간 안에 상대를 더 많이 쓰러뜨리면 승리" },
   { id:"siege",    name:"수정부수기", desc:"상대 별 수정탑을 먼저 부수면 승리" },
   { id:"hotzone",  name:"점령전",     desc:"중앙 거점을 점령해 게이지 100을 채우면 승리" },   /* OVERNIGHT-1 2-1: 표시명 핫존→점령전(id 유지) */
-  { id:"stargrab", name:"별모으기",   desc:"별 10개를 모아 15초 카운트다운을 지키면 승리" }
+  { id:"stargrab", name:"별모으기",   desc:"별 10개를 모아 15초 카운트다운을 지키면 승리" },
+  { id:"tag",      name:"별빛 술래",  desc:"술래를 피해 90초 살아남으면 승리 — 잡히면 술래팀!" },   /* GENRE-EXPAND-1 §1 */
+  { id:"paint",    name:"별빛 칠하기", desc:"바닥을 우리 팀 색으로 더 많이 칠하면 승리" }             /* GENRE-EXPAND-1 §2 */
 ];
 const RULE_CONFIG = {
   matchTime: 180,                    // 오브젝트 모드 공통 매치 시간(초) — 규칙별 matchTime이 있으면 그것을 우선
   siege:    { towerHp:650, towerW:64, towerH:64, turretDmg:15, turretCd:1.2, turretRange:260,   /* BIG-BATCH-1 F18: 450→650 — 3인 집중 시 ~10초 붕괴 완화 */
               wallHp:60, wallCount:3, wallW:28, wallH:56, respawn:5 },                          /* BIG-BATCH-1 F18: 120→60 — '부술 수 있는 문' 체감(시고니 7발) */
   hotzone:  { radius:110, capPerSec:8, goal:100, respawn:5 },
-  stargrab: { goal:10, countdown:15, spawnEvery:4, maxOnGround:3, dropTtl:6, respawn:3, matchTime:90 }   /* BIG-BATCH-1 F18: 60→90초 — 역전 여지 확보 */
+  stargrab: { goal:10, countdown:15, spawnEvery:4, maxOnGround:3, dropTtl:6, respawn:3, matchTime:90 },  /* BIG-BATCH-1 F18: 60→90초 — 역전 여지 확보 */
+  /* GENRE-EXPAND-1 §1 별빛 술래: 술래 이속 +12% · 감염 후 2초 잡기 쿨 · 3초 술래 공개 · 수풀 은신 거리 170 */
+  tag:      { matchTime:90, tagSpeedMul:1.12, tagCd:2.0, reveal:3, bushHide:170, respawn:3 },
+  /* GENRE-EXPAND-1 §2 별빛 칠하기: 자기색 위 이속 +10% · 칠 10칸당 궁 게이지 +2 */
+  paint:    { matchTime:90, respawn:4, ownSpeedMul:1.10, gaugePerCells:10, gaugeAmt:2 }
 };
 // OVERNIGHT-1 Phase 4: 교사가 승인한 맵공방 맵은 부팅 시 startLoopOnce()에서 반영한다.
 // (여기서 호출하면 EDITOR_STORE_KEY 등 아래쪽 const가 아직 TDZ라 조용히 실패 — 코드감사 수정)
@@ -1544,7 +1550,7 @@ window.addEventListener("beforeunload", ()=>{ try{ if(OnlineManager.role) Online
    assets/sfx/<이름>.mp3 파일을 넣으면 자동으로 로드·재생된다(없으면 완전 무음 no-op).
    브라우저 자동재생 정책: 첫 사용자 입력(keydown/mousedown)에서 AudioContext 초기화.
    ======================================================================= */
-const SFX_NAMES=["fire","hit","kill","special","ult","win","lose","buff","reload"];
+const SFX_NAMES=["fire","hit","kill","special","ult","win","lose","buff","reload","infect","paint","jump","stomp","spring","checkpoint","clear"];   /* GENRE-EXPAND-1 §4.1 신설 이벤트 포함 */
 const SFX={ _ctx:null, _buf:{}, _tried:false };
 function sfxVolume(){ const v=(profile && typeof profile.sfxVolume==="number")?profile.sfxVolume:0.7; return clamp(v,0,1); }
 function sfxInit(){
@@ -1918,7 +1924,13 @@ function balanceFields(){
     num("r.stargrab.goal","별 목표 개수",R.stargrab,"goal",3,30,1,{group:"별모으기"}),
     num("r.stargrab.countdown","카운트다운(초)",R.stargrab,"countdown",5,60,1,{group:"별모으기"}),
     num("r.stargrab.spawnEvery","별 생성 주기(초)",R.stargrab,"spawnEvery",1,15,1,{group:"별모으기"}),
-    num("r.stargrab.matchTime","별모으기 시간(초)",R.stargrab,"matchTime",30,300,10,{group:"별모으기"})
+    num("r.stargrab.matchTime","별모으기 시간(초)",R.stargrab,"matchTime",30,300,10,{group:"별모으기"}),
+    num("r.tag.matchTime","술래 매치 시간(초)",R.tag,"matchTime",30,300,10,{group:"별빛 술래"}),
+    num("r.tag.tagSpeedMul","술래 이속 배율",R.tag,"tagSpeedMul",1,1.5,0.02,{group:"별빛 술래",dec:2}),
+    num("r.tag.tagCd","감염 후 잡기 쿨(초)",R.tag,"tagCd",0.5,6,0.5,{group:"별빛 술래",dec:1}),
+    num("r.paint.matchTime","칠하기 시간(초)",R.paint,"matchTime",30,300,10,{group:"별빛 칠하기"}),
+    num("r.paint.ownSpeedMul","자기색 이속 배율",R.paint,"ownSpeedMul",1,1.3,0.02,{group:"별빛 칠하기",dec:2}),
+    num("r.paint.gaugeAmt","칠 10칸당 궁 게이지",R.paint,"gaugeAmt",0,10,1,{group:"별빛 칠하기"})
   ]});
 
   // ── 7) 성장 오브 ──
@@ -2109,7 +2121,10 @@ const ED_PAL_COMMON=[
   { ch:"*", name:"팀 시작점",    color:"#ffe14d" }
 ];
 const ED_PAL_MODE={ tdm:[], siege:[{ch:"X",name:"팀 수정탑",color:"#5aa0ff"}],
-  hotzone:[{ch:"O",name:"거점(점령 공간)",color:"#ffd23f"}], stargrab:[{ch:"G",name:"별광맥",color:"#ffe14d"}] };
+  hotzone:[{ch:"O",name:"거점(점령 공간)",color:"#ffd23f"}], stargrab:[{ch:"G",name:"별광맥",color:"#ffe14d"}],
+  tag:[], paint:[] };   /* GENRE-EXPAND-1: 술래·칠하기 — 모드 전용 요소 없음 */
+/* GENRE-EXPAND-1 §1.7: 술래잡기 맵은 함정·쿠션벽 제외(벽·수풀·얼음·시작점만) */
+const ED_PAL_EXCLUDE={ tag:{S:1,L:1,C:1} };
 const ED_CELL_COLOR={ ".":null, W:"#878da8", B:"#5ad36b", S:"#ff6a6a", L:"#7fd88a", I:"#8fd9ff", C:"#ff9ec2", "*":"#ffe14d", O:"#ffd23f", X:"#5aa0ff", G:"#ffcf4d" };
 const EDITOR_STORE_KEY="starArena.editorMaps.v1";
 let ED=null;            // 에디터 상태
@@ -2119,7 +2134,11 @@ function loadEditorStore(){
   return { pending:[], approved:[] };
 }
 function saveEditorStore(st){ try{ localStorage.setItem(EDITOR_STORE_KEY, JSON.stringify(st)); }catch(e){} }
-function edPalette(){ return ED_PAL_COMMON.concat(ED_PAL_MODE[ED?ED.mode:"tdm"]||[]); }
+function edPalette(){
+  const mode=ED?ED.mode:"tdm", ex=ED_PAL_EXCLUDE[mode];
+  const base=ex ? ED_PAL_COMMON.filter(p=>!ex[p.ch]) : ED_PAL_COMMON;   // GENRE-EXPAND-1: 모드별 제외(술래=함정류 없음)
+  return base.concat(ED_PAL_MODE[mode]||[]);
+}
 /* BIG-BATCH-1 C8: 초안 자동저장(Esc로 나가도 소실 없음) + undo(U) — 매 배치마다 저장/스냅샷 */
 const EDITOR_DRAFT_KEY="starArena.editorDraft.v1";
 function edSaveDraft(){ try{ localStorage.setItem(EDITOR_DRAFT_KEY, JSON.stringify({ mode:ED.mode, modeIdx:ED.modeIdx, sizeIdx:ED.sizeIdx,
@@ -2624,8 +2643,7 @@ function getMatchConfig(){
     rule:rule, ruleId:rule.id,
     timeLimit: (rule.id==="tdm")?GAME_CONFIG.gameTime:((RULE_CONFIG[rule.id]&&RULE_CONFIG[rule.id].matchTime)||RULE_CONFIG.matchTime),
     respawnDelay: (rule.id==="tdm")?GAME_CONFIG.respawnDelay
-                 :(rule.id==="stargrab"?RULE_CONFIG.stargrab.respawn
-                 :(rule.id==="hotzone"?RULE_CONFIG.hotzone.respawn:RULE_CONFIG.siege.respawn)),
+                 :((RULE_CONFIG[rule.id]&&RULE_CONFIG[rule.id].respawn)||GAME_CONFIG.respawnDelay),   // GENRE-EXPAND-1: 규칙별 일반화
     enemyMaxHp: GAME_CONFIG.enemyMaxHp * diff.enemyHpMul * mode.enemyStatMul,
     enemyMoveSpeed: GAME_CONFIG.enemyMoveSpeed * diff.enemySpeedMul * TEMPO.enemyMove,
     enemyDamage: GAME_CONFIG.enemyDamage * diff.enemyDamageMul * mode.enemyDamageMul,
@@ -2797,7 +2815,105 @@ function setupRuleState(){
   } else if(id==="stargrab"){
     RULE={ id:id, winner:null, stars:[], spawnAcc:RULE_CONFIG.stargrab.spawnEvery-1, countdown:{player:-1, enemy:-1},
            cx:(rp.vein&&rp.vein.x)||LOGW/2, cy:(rp.vein&&rp.vein.y)||ARENA.y+ARENA.h/2 };
+  } else if(id==="tag"){
+    // GENRE-EXPAND-1 §1: 파이터 생성 후 첫 틱에서 술래를 뽑는다(needInit)
+    RULE={ id:id, winner:null, needInit:true, phase:"reveal", phaseT:RULE_CONFIG.tag.reveal,
+           survivors:0, myInfections:0, mySurvival:0 };
+  } else if(id==="paint"){
+    // GENRE-EXPAND-1 §2: 56px 셀 페인트 그리드 + 칠 불가 마스크(벽·수풀·함정·구조물 — 1회 계산)
+    const cols=STUDENT_COLS, rows=STUDENT_ROWS, map=MATCH.map;
+    const grid=new Uint8Array(cols*rows), blocked=new Uint8Array(cols*rows);
+    const markRects=(rects)=>{ for(const o of (rects||[])){
+      const c0=Math.max(0,Math.floor((o.x-ARENA.x)/STUDENT_CELL)), c1=Math.min(cols-1,Math.floor((o.x+o.w-1-ARENA.x)/STUDENT_CELL));
+      const r0=Math.max(0,Math.floor((o.y-ARENA.y)/STUDENT_CELL)), r1=Math.min(rows-1,Math.floor((o.y+o.h-1-ARENA.y)/STUDENT_CELL));
+      for(let r=r0;r<=r1;r++) for(let c=c0;c<=c1;c++) blocked[r*cols+c]=1; } };
+    markRects(OBSTACLES); markRects(map.bushes); markRects(map.traps);
+    let paintable=0; for(let i=0;i<blocked.length;i++) if(!blocked[i]) paintable++;
+    RULE={ id:id, winner:null, cols:cols, rows:rows, grid:grid, blocked:blocked, paintable:paintable,
+           count:{1:0,2:0}, barT:0, bar:{p:0,e:0}, myPaint:0, gaugeAcc:0 };
   }
+}
+/* ── GENRE-EXPAND-1 §1 별빛 술래 ── */
+function tagInfect(f, initial){
+  if(!f || f.isTagger) return;
+  f.isTagger=true; f.tagCd=RULE_CONFIG.tag.tagCd;
+  f.hitFlash=0.3;
+  effects.push({kind:"superwave", x:f.x, y:f.y, t:0, life:0.5, radius:70});
+  effects.push({kind:"respawn", x:f.x, y:f.y, t:0, life:0.5, color:"#ff5a6e"});
+  playSfx("infect");
+  if(!initial && f.isPlayer) showToast("잡혔다! 이제 너가 술래 👹");
+}
+function tickTagRule(dt){
+  const C=RULE_CONFIG.tag;
+  if(RULE.needInit){
+    const all=allFighters(); if(!all.length) return;
+    RULE.needInit=false;
+    tagInfect(all[Math.floor(Math.random()*all.length)], true);
+    return;
+  }
+  if(RULE.phase==="reveal"){ RULE.phaseT-=dt; if(RULE.phaseT<=0) RULE.phase="chase"; return; }
+  const all=allFighters();
+  for(const f of all){ if(f.tagCd>0) f.tagCd-=dt; }
+  if(player && !player.isTagger) RULE.mySurvival+=dt;
+  // 잡기: 술래(쿨 아님)와 도망자 충돌원 겹침 → 감염(연쇄 즉감염은 tagCd 2s가 방지)
+  for(const t of all){
+    if(!t.isTagger || t.dead || t.tagCd>0) continue;
+    for(const r of all){
+      if(r.isTagger || r.dead) continue;
+      if(dist2(t.x,t.y,r.x,r.y) < (t.r+r.r)*(t.r+r.r)){
+        tagInfect(r, false);
+        if(t.isPlayer){ stats.kills++; RULE.myInfections++; }   // E16 연동: 감염 1회 = 킬 1 취급
+      }
+    }
+  }
+  let survivors=0; for(const f of all){ if(!f.isTagger && !f.dead) survivors++; }
+  RULE.survivors=survivors;
+  if(survivors===0) ruleWin(player && player.isTagger ? "player" : "enemy");   // 전원 감염 → 술래팀 승
+}
+/* ── GENRE-EXPAND-1 §2 별빛 칠하기 ── */
+function paintCellIdx(x,y){
+  if(!RULE || RULE.id!=="paint") return -1;
+  const c=Math.floor((x-ARENA.x)/STUDENT_CELL), r=Math.floor((y-ARENA.y)/STUDENT_CELL);
+  if(c<0||c>=RULE.cols||r<0||r>=RULE.rows) return -1;
+  return r*RULE.cols+c;
+}
+function paintCellBy(x,y,team,byPlayer){
+  if(!RULE || RULE.id!=="paint" || RULE.winner) return false;
+  const i=paintCellIdx(x,y); if(i<0 || RULE.blocked[i]) return false;
+  const col=(team==="player")?1:2, prev=RULE.grid[i];
+  if(prev===col) return false;
+  if(prev) RULE.count[prev]--;
+  RULE.grid[i]=col; RULE.count[col]++;
+  if(byPlayer){
+    RULE.myPaint++; RULE.gaugeAcc++;
+    if(RULE.gaugeAcc>=RULE_CONFIG.paint.gaugePerCells){ RULE.gaugeAcc=0;
+      superGauge=Math.min(GAME_CONFIG.superCharge, superGauge+RULE_CONFIG.paint.gaugeAmt); }   // 칠 행위도 궁 보상
+  }
+  return true;
+}
+function paintSplash(x,y,team,byPlayer,shape){
+  const CS=STUDENT_CELL;
+  if(shape==="cross"){ paintCellBy(x,y,team,byPlayer);
+    paintCellBy(x-CS,y,team,byPlayer); paintCellBy(x+CS,y,team,byPlayer);
+    paintCellBy(x,y-CS,team,byPlayer); paintCellBy(x,y+CS,team,byPlayer); }
+  else { for(let dr=-1;dr<=1;dr++) for(let dc=-1;dc<=1;dc++) paintCellBy(x+dc*CS,y+dr*CS,team,byPlayer); }   // 3×3
+}
+function tickPaintRule(dt){
+  RULE.barT-=dt;
+  if(RULE.barT<=0){ RULE.barT=0.5;   // 면적 바 0.5s 갱신(증분 카운터 — 전수 카운트 없음)
+    RULE.bar.p=RULE.count[1]/Math.max(1,RULE.paintable);
+    RULE.bar.e=RULE.count[2]/Math.max(1,RULE.paintable); }
+}
+function drawPaintGrid(){
+  if(!RULE || RULE.id!=="paint") return;
+  const CS=STUDENT_CELL;
+  ctx.save();
+  for(let r=0;r<RULE.rows;r++) for(let c=0;c<RULE.cols;c++){
+    const v=RULE.grid[r*RULE.cols+c]; if(!v) continue;
+    ctx.fillStyle = v===1 ? "rgba(90,160,255,0.35)" : "rgba(255,106,106,0.35)";
+    ctx.fillRect(ARENA.x+c*CS, ARENA.y+r*CS, CS, CS);
+  }
+  ctx.restore();
 }
 function teamStars(team){
   const list=(team==="player")?playerTeam():enemies;
@@ -2814,6 +2930,11 @@ function ruleTimeUp(){
     } else if(RULE.id==="stargrab"){
       const p=teamStars("player"), e=teamStars("enemy");
       RULE.winner = p>e ? "player" : (e>p ? "enemy" : "draw");
+    } else if(RULE.id==="tag"){
+      // 타이머 종료 = 생존자(도망팀) 승 — 내가 살아남았으면 승, 술래였으면 패
+      RULE.winner = (player && !player.isTagger) ? "player" : "enemy";
+    } else if(RULE.id==="paint"){
+      RULE.winner = RULE.count[1]>RULE.count[2] ? "player" : (RULE.count[2]>RULE.count[1] ? "enemy" : "draw");
     }
   }
   endGame();
@@ -2832,6 +2953,8 @@ function damageRuleStructure(s, dmg){
 }
 function tickRule(dt){
   if(!RULE || RULE.winner) return;
+  if(RULE.id==="tag"){ tickTagRule(dt); return; }       // GENRE-EXPAND-1 §1
+  if(RULE.id==="paint"){ tickPaintRule(dt); return; }   // GENRE-EXPAND-1 §2
   if(RULE.id==="siege"){
     const C=RULE_CONFIG.siege;
     for(const team of ["player","enemy"]){
@@ -2963,6 +3086,37 @@ function drawRuleHUD(){
   if(!RULE) return;
   ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
   const cy=80;
+  if(RULE.id==="tag"){   // GENRE-EXPAND-1 §1.5
+    if(RULE.phase==="reveal"){
+      dimScreen(0.35);
+      ctx.fillStyle="#ffe066"; ctx.font="bold 46px 'Malgun Gothic',sans-serif";
+      ctx.fillText("👹 술래 공개!", LOGW/2, LOGH/2-40);
+      ctx.font="bold 70px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#ffffff";
+      ctx.fillText(String(Math.ceil(Math.max(0,RULE.phaseT))), LOGW/2, LOGH/2+40);
+      const meT=player&&player.isTagger;
+      ctx.font="bold 22px 'Malgun Gothic',sans-serif"; ctx.fillStyle=meT?"#ff8a8a":"#9fe0ff";
+      ctx.fillText(meT?"너가 술래다! 모두 잡아라!":"술래를 피해 숨어라!", LOGW/2, LOGH/2+100);
+    } else {
+      ctx.fillStyle="#dfe6ff"; ctx.font="bold 16px 'Malgun Gothic',sans-serif";
+      ctx.fillText("❤ 생존자 "+RULE.survivors+"명", LOGW/2, cy);
+      const meT=player&&player.isTagger;
+      const p=0.5+0.5*Math.sin(uiTime*4);
+      ctx.fillStyle=meT?("rgba(255,110,120,"+(0.7+0.3*p)+")"):("rgba(130,200,255,"+(0.7+0.3*p)+")");
+      ctx.font="bold 20px 'Malgun Gothic',sans-serif";
+      ctx.fillText(meT?"👹 잡아라!":"🏃 도망쳐!", LOGW/2, cy+26);
+    }
+    ctx.restore(); return;
+  }
+  if(RULE.id==="paint"){   // GENRE-EXPAND-1 §2.5: 실시간 면적 바(청|무|홍)
+    const bw=420, bx=LOGW/2-bw/2, p=RULE.bar.p, e=RULE.bar.e;
+    ctx.fillStyle="rgba(0,0,0,0.5)"; roundRect(bx,cy-9,bw,18,9); ctx.fill();
+    ctx.fillStyle="rgba(90,160,255,0.9)"; if(p>0) roundRect(bx,cy-9,Math.max(8,bw*p),18,9), ctx.fill();
+    ctx.fillStyle="rgba(255,106,106,0.9)"; if(e>0) roundRect(bx+bw-Math.max(8,bw*e),cy-9,Math.max(8,bw*e),18,9), ctx.fill();
+    ctx.strokeStyle="#dfe6ff"; ctx.lineWidth=2; roundRect(bx,cy-9,bw,18,9); ctx.stroke();
+    ctx.fillStyle="#ffffff"; ctx.font="bold 13px 'Malgun Gothic',sans-serif";
+    ctx.fillText(Math.round(p*100)+"%", bx-28, cy+1); ctx.fillText(Math.round(e*100)+"%", bx+bw+28, cy+1);
+    ctx.restore(); return;
+  }
   if(RULE.id==="siege"){
     const bw=190;
     const bar=(x,tw,color)=>{ const ratio=tw?clamp(tw.hp/tw.maxHp,0,1):0;
@@ -3107,6 +3261,11 @@ function effSpeed(f){
   if(f.wSlowTimer>0) s*=(1-(f.wSlowPct||0));                          // 무기/기술 둔화(중첩 없음)
   if(f.cSpeedTimer>0) s*=(1+getAbility("student_03").c.speedUp);       // 시고니 C 질주 +45%
   if(f.upg && f.upg.mspd) s*=(1+0.05*f.upg.mspd);                       // PVE 강화: 빠른 발
+  if(RULE && RULE.id==="tag" && f.isTagger) s*=RULE_CONFIG.tag.tagSpeedMul;   // GENRE-EXPAND-1 §1: 술래 +12%
+  if(RULE && RULE.id==="paint"){                                        // GENRE-EXPAND-1 §2: 자기색 위 +10%
+    const pi=paintCellIdx(f.x,f.y);
+    if(pi>=0 && RULE.grid[pi]===(f.team==="player"?1:2)) s*=RULE_CONFIG.paint.ownSpeedMul;
+  }
   return s*TEMPO.playerMove;
 }
 function tickStatus(f,dt){
@@ -3679,13 +3838,17 @@ function distPointSeg(px,py, x1,y1, x2,y2){
 }
 
 // ── 로컬 시전 래퍼(플레이어 전용) ──
+/* GENRE-EXPAND-1 §1.3: 술래잡기 X 허용표 — 이동/방해류(시고니 가시길·눈꽃 서리)만. 나머지 🔒 */
+const TAG_X_ALLOW={ student_03:true, student_04:true };
 function useCharacterSpecial(){
   if(gameState!==STATE.PLAYING || !player || player.dead) return;
+  if(RULE && RULE.id==="tag" && !TAG_X_ALLOW[player.char.id]){ showToast("🔒 이 모드에선 이 기술을 쓸 수 없어요"); return; }
   if(player.specialCd>0){ spawnSuperFail(player.x,player.y); return; }
   castSpecialFor(player, envLocal());
 }
 function useCharacterSuper(){
   if(!player || player.dead) return;
+  if(RULE && RULE.id==="tag"){ showToast("🔒 술래잡기에선 궁극기를 쓸 수 없어요"); return; }
   if(superGauge<GAME_CONFIG.superCharge){ spawnSuperFail(player.x,player.y); return; }
   const ok=castUltimateFor(player, envLocal(), ()=>superGauge, v=>{ superGauge=v; });
   if(ok) stats.superUsed++;
@@ -3807,8 +3970,10 @@ function updatePlayer(dt){
   tickThornTrail(player);                     // 시고니 X: 이동 경로 가시 생성
   tickMoaPassive(player, dt, envLocal);       // v1.21 모아 패시브(근처 팀원 회복)
   if(isFrozen(player)){ regen(player, dt); return; }   // 빙결: 이동·공격 불가(타이머는 tickStatus에서 진행)
+  if(RULE && RULE.id==="tag" && RULE.phase==="reveal") return;   // GENRE-EXPAND-1 §1: 술래 공개 3초 — 전원 이동 잠금
   // UPDATE-1 P3: 의도 기반 입력 — 키보드는 기존 동작 동일, 마우스/터치는 이동과 조준 분리(무빙샷)
   const it=getLocalIntent();
+  if(RULE && RULE.id==="tag") it.fire=false;           // 술래잡기: Z 발사 비활성(순수 추격)
   let mx=it.mx, my=it.my;
   const ml=Math.hypot(mx,my);
   const aimSeparate = !!(it.aimPoint || typeof it.aim==="number");
@@ -3834,6 +3999,58 @@ function updatePlayer(dt){
   regen(player, dt);
 }
 
+/* GENRE-EXPAND-1 §1.6 술래잡기 봇: 술래=최근접 도망자 추적(수풀 은신 존중) · 도망자=술래 반대+수풀 잠복 */
+function tagBotUpdate(f, dt){
+  if(RULE.phase==="reveal") return;
+  const C=RULE_CONFIG.tag, ai=(f.ai=f.ai||{});
+  f.cooldown=1;                                       // 발사 안 함
+  let mvx=0, mvy=0;
+  if(f.isTagger){
+    let best=null, bd=Infinity;
+    for(const o of allFighters()){
+      if(o.isTagger || o.dead) continue;
+      const d=dist(f.x,f.y,o.x,o.y);
+      if(inBush(o) && d>C.bushHide) continue;         // 수풀 잠복자는 인지 못 함(§1.4)
+      if(d<bd){ bd=d; best=o; }
+    }
+    if(best){ const d=bd||1; mvx=(best.x-f.x)/d; mvy=(best.y-f.y)/d; f.facing=Math.atan2(mvy,mvx); }
+    else {                                            // 수색 배회
+      ai.wT=(ai.wT||0)-dt;
+      if(ai.wT<=0){ ai.wA=Math.random()*Math.PI*2; ai.wT=rand(0.8,1.6); }
+      mvx=Math.cos(ai.wA); mvy=Math.sin(ai.wA);
+    }
+  } else {
+    let tg=null, bd=Infinity;
+    for(const o of allFighters()){ if(!o.isTagger || o.dead) continue;
+      const d=dist(f.x,f.y,o.x,o.y); if(d<bd){ bd=d; tg=o; } }
+    if(tg && bd<300){                                 // 도망: 술래 반대 방향
+      const d=bd||1; mvx=(f.x-tg.x)/d; mvy=(f.y-tg.y)/d;
+      // 근처 수풀 유인(도주 벡터에 35% 블렌드)
+      let bb=null, bbd=Infinity;
+      for(const b of BUSHES){ const bx=b.x+b.w/2, by=b.y+b.h/2, d2=dist(f.x,f.y,bx,by); if(d2<bbd){bbd=d2; bb={x:bx,y:by};} }
+      if(bb && bbd<400){ const dl=bbd||1; mvx=mvx*0.65+((bb.x-f.x)/dl)*0.35; mvy=mvy*0.65+((bb.y-f.y)/dl)*0.35; }
+      f.facing=Math.atan2(mvy,mvx);
+    } else if(tg && inBush(f)){ mvx=0; mvy=0; }       // 술래 멀고 수풀 안 → 잠복(§1.6)
+    else {
+      ai.wT=(ai.wT||0)-dt;
+      if(ai.wT<=0){ ai.wA=Math.random()*Math.PI*2; ai.wT=rand(1.0,2.0); }
+      mvx=Math.cos(ai.wA)*0.5; mvy=Math.sin(ai.wA)*0.5;
+    }
+  }
+  const ml=Math.hypot(mvx,mvy);
+  if(ml>0.01){
+    if(ml>1){ mvx/=ml; mvy/=ml; }
+    const step=effSpeed(f)*dt, ox=f.x, oy=f.y;
+    moveEntity(f, mvx*step, mvy*step);
+    if(Math.hypot(f.x-ox,f.y-oy) < step*0.3){         // 벽 끼임 → 수직 방향 우회
+      ai.sT=(ai.sT||0)-dt;
+      if(ai.sT<=0){ ai.sD=Math.random()<0.5?1:-1; ai.sT=0.5; }
+      moveEntity(f, -mvy*ai.sD*step, mvx*ai.sD*step);
+    }
+  }
+  // X 허용 캐릭(시고니·눈꽃) 봇은 낮은 확률로 사용
+  if(f.char && TAG_X_ALLOW[f.char.id] && f.specialCd<=0 && Math.random()<dt*0.25) castSpecialFor(f, envLocal());
+}
 function updateAI(f, dt){
   if(f.dead){ f.respawnTimer-=dt; if(f.respawnTimer<=0) respawn(f); return; }
   if(f.hitFlash>0) f.hitFlash-=dt;
@@ -3842,6 +4059,7 @@ function updateAI(f, dt){
   // (코드감사: 기존엔 적 봇에만 적용되는 비대칭 + 타겟 없을 때 미적용 문제 수정)
   if(!f.isBoss && f.char) tickMoaPassive(f, dt, envLocal);
   if(isFrozen(f)){ return; }                 // 빙결: 이동·공격 불가
+  if(RULE && RULE.id==="tag"){ tagBotUpdate(f, dt); return; }   // GENRE-EXPAND-1 §1.6: 술래잡기 전용 AI
 
   const ai=f.ai, isEnemy=(f.team==="enemy");
   const target=nearestTarget(f, isEnemy);
@@ -3871,6 +4089,21 @@ function updateAI(f, dt){
     } else if(RULE.id==="siege" && isEnemy){
       const tw=RULE.towers.player;
       if(tw && tw.hp>0 && d>MATCH.enemyRange*1.1) objTarget={x:tw.x+tw.w/2, y:tw.y+tw.h/2, ideal:170, siege:true};
+    } else if(RULE.id==="paint" && d>260){
+      // GENRE-EXPAND-1 §2.7: 상대가 멀면 '내 색이 아닌' 가장 가까운 칸으로 이동+사격(탄이 바닥을 칠함)
+      ai.paintT=(ai.paintT||0)-dt;
+      if(ai.paintT<=0 || !ai.paintCell){
+        ai.paintT=0.5;
+        const my=(f.team==="player")?1:2; let best=null, bd3=Infinity;
+        for(let r=0;r<RULE.rows;r++) for(let c=0;c<RULE.cols;c++){
+          const i=r*RULE.cols+c;
+          if(RULE.blocked[i] || RULE.grid[i]===my) continue;
+          const cx=ARENA.x+c*STUDENT_CELL+STUDENT_CELL/2, cy=ARENA.y+r*STUDENT_CELL+STUDENT_CELL/2;
+          const d3=dist2(f.x,f.y,cx,cy); if(d3<bd3){ bd3=d3; best={x:cx,y:cy}; }
+        }
+        ai.paintCell=best;
+      }
+      if(ai.paintCell) objTarget={x:ai.paintCell.x, y:ai.paintCell.y, ideal:140, siege:true};   // siege 플래그 = 목표 지점 사격
     }
   }
 
@@ -3984,8 +4217,11 @@ function updateBullets(dt){
     const steps=Math.max(1, Math.ceil(speed*dt/(b.r*0.9)));
     const sx=b.vx*dt/steps, sy=b.vy*dt/steps, stepLen=Math.hypot(sx,sy);
     const list=targetsOf(b.team);   // 성능(코드감사): 서브스텝 루프 밖으로 — 팀은 비행 중 안 바뀌는데 스텝마다 배열을 새로 만들었음
+    const _pByMe = !!(player && b.ownerId===player.id);                     // GENRE-EXPAND-1 §2
+    const _pStamp = (b.wid==="tool_06") ? "3x3" : "cross";                  // 별골렘 = 착탄 대형 스탬프
     for(let s=0;s<steps && b.alive;s++){
       b.x+=sx; b.y+=sy; b.traveled+=stepLen;
+      if(RULE && RULE.id==="paint") paintCellBy(b.x, b.y, b.team, _pByMe);  // 탄 비행 경로 1칸씩 칠
       if(b.x<ARENA.x||b.x>ARENA.x+ARENA.w||b.y<ARENA.y||b.y>ARENA.y+ARENA.h){
         if(b.boomerang && b.phase==="out"){ b.phase="back"; b.x=clamp(b.x,ARENA.x,ARENA.x+ARENA.w); b.y=clamp(b.y,ARENA.y,ARENA.y+ARENA.h); break; }
         if(b.bounce){                                   // 통통비행기: 경기장 가장자리에서도 반사
@@ -4006,7 +4242,10 @@ function updateBullets(dt){
           damageRuleStructure(wallRef, b.damage);
         if(b.boomerang){ if(b.phase==="out"){ b.phase="back"; b.x-=sx; b.y-=sy; break; } }
         else if(b.bounce){ if(!bounceBullet(b, wallRef, sx, sy)){ b.alive=false; } break; }
-        else { spawnHitFx(b.x,b.y,b.wid,"#aab0d0"); b.alive=false; break; }
+        else {
+          if(RULE && RULE.id==="paint") paintSplash(b.x,b.y,b.team,_pByMe,_pStamp);   // 착탄 스플래시(§2.3)
+          spawnHitFx(b.x,b.y,b.wid,"#aab0d0"); b.alive=false; break;
+        }
       }
       for(const t of list){
         if(canBeHit(t) && dist2(b.x,b.y,t.x,t.y)<(b.r+t.r)*(b.r+t.r)){   // 성능: 제곱거리 비교(Math.hypot 제거)
@@ -4030,12 +4269,16 @@ function updateBullets(dt){
             stats.shotsHit++;
             tryChargeGauge(b.aid, t.id, ()=>{ superGauge=Math.min(GAME_CONFIG.superCharge, superGauge+GAME_CONFIG.superChargePerHit); });
           }
+          if(RULE && RULE.id==="paint") paintSplash(b.x,b.y,b.team,_pByMe,"3x3");   // 적 명중 3×3(§2.3)
           spawnHitFx(b.x,b.y,b.wid,b.color);
           b.alive=false; break;
         }
       }
       if(!b.alive) break;
-      if(!b.boomerang && b.traveled>b.maxRange){ b.alive=false; break; }
+      if(!b.boomerang && b.traveled>b.maxRange){
+        if(RULE && RULE.id==="paint") paintSplash(b.x,b.y,b.team,_pByMe,_pStamp);   // 사거리 끝 소멸도 착탄 취급(§2.3)
+        b.alive=false; break;
+      }
     }
   }
   bullets=bullets.filter(b=>b.alive);
@@ -4117,6 +4360,9 @@ function grantMatchReward(){
   const r=calculateMatchReward();
   // BIG-BATCH-1 E17: 방치 방지 — 이번 판 기여(딜·킬·보스)가 0이면 보상 30%(아군 봇 캐리로 골드 수급되던 구멍)
   matchIdle = (stats.damageDealt<=0 && stats.kills<=0 && !stats.bossKilled);
+  // GENRE-EXPAND-1 §4.1: 모드별 기여 지표 — 술래=생존 15초+ 또는 감염 1+ · 칠하기=칠 1칸+
+  if(RULE && RULE.id==="tag") matchIdle = !(RULE.myInfections>0 || RULE.mySurvival>=15);
+  if(RULE && RULE.id==="paint") matchIdle = !(RULE.myPaint>0);
   playSfx(r.result==="win"?"win":"lose");   // E14 훅
   matchGoldEarned = matchIdle ? Math.round(r.gold*REWARD_CONFIG.idleMul) : r.gold;
   addGold(matchGoldEarned);
@@ -4194,6 +4440,7 @@ function render(){
   const _worldVisible = gameState===STATE.PLAYING||gameState===STATE.PAUSED||gameState===STATE.OVER||isOnlineState();
   if(_worldVisible) drawStaticWorld();   // v1.21 성능: 바닥/함정/풀숲/장애물을 프리렌더 1장으로 합성(기존 4함수 매 프레임 호출 대체)
   else drawMenuStarfield();
+  if(_worldVisible && gameState!==STATE.ONLINE_PLAYING) drawPaintGrid();   // GENRE-EXPAND-1 §2.5: 페인트(바닥 위·유닛 아래)
   if(gameState===STATE.PLAYING||gameState===STATE.PAUSED||gameState===STATE.OVER||gameState===STATE.ONLINE_PLAYING) drawPowerups(powerupsView());
 
   if(gameState===STATE.PLAYING || gameState===STATE.PAUSED || gameState===STATE.OVER){
@@ -4727,11 +4974,29 @@ function drawFighter(f){
   // 풀숲 가시성: 내 시점(player) 기준. 적이 풀숲에 멀리 있으면 숨김(살랑이는 풀만).
   _fviewer.x=player.x; _fviewer.y=player.y;
   const recently = f.lastFireTime!==undefined && (matchElapsed-f.lastFireTime) < GAME_CONFIG.bushAttackRevealTime;
-  const vis=bushVisibility(f.x, f.y, f.team, f.isPlayer, _fviewer, recently);
+  let vis;
+  if(RULE && RULE.id==="tag"){
+    // GENRE-EXPAND-1 §1.4: 역할 기반 시야 — 내가 술래면 수풀 속 도망자(170px 밖) 안 보임. 도망자끼리는 서로 보임.
+    const hideMe = player.isTagger && !f.isTagger && !f.isPlayer &&
+                   inBush(f) && dist(player.x,player.y,f.x,f.y)>RULE_CONFIG.tag.bushHide && !recently;
+    vis = hideMe ? {hidden:true, alpha:0} : {hidden:false, alpha: inBush(f)?0.75:1};
+  } else {
+    vis=bushVisibility(f.x, f.y, f.team, f.isPlayer, _fviewer, recently);
+  }
   if(vis.hidden){ drawBushRustle(f.x,f.y); return; }
   let alpha=vis.alpha;
   if(f.invincibleTimer>0 && Math.floor(f.invincibleTimer*12)%2===0) alpha*=0.35;
-  drawTeamMarker(f.x, f.y, f.r, f.isPlayer?"me":(f.team==="player"?"ally":"enemy"), alpha);   // 축11: 아군/적/나 즉시 구분
+  // 축11 마커 — 술래잡기에선 역할 기준(같은 역할=아군색·다른 역할=적색)
+  const mk = (RULE && RULE.id==="tag")
+    ? (f.isPlayer?"me":((!!f.isTagger)===(!!player.isTagger)?"ally":"enemy"))
+    : (f.isPlayer?"me":(f.team==="player"?"ally":"enemy"));
+  drawTeamMarker(f.x, f.y, f.r, mk, alpha);
+  if(RULE && RULE.id==="tag" && f.isTagger){   // §1.5 술래 표식: 머리 위 👹
+    ctx.save(); ctx.globalAlpha=alpha; ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.font="bold 20px 'Malgun Gothic',sans-serif";
+    ctx.fillText("👹", f.x, f.y-f.r-44+Math.sin(uiTime*5)*3);
+    ctx.restore();
+  }
   ctx.save(); ctx.globalAlpha=alpha; ctx.translate(f.x,f.y);
   // 캐릭터가 배정된 파이터(아군/플레이어/v1.27 적 캐릭터 봇)는 이미지 우선, 실패 시 도형.
   // 보스는 크롬 정체성 유지(항상 도형 크롬).
@@ -4983,6 +5248,10 @@ function dockWeaponIcon(wid,cx,cy,size){
     ctx.drawImage(img, cx-iw*k/2, cy-ih*k/2, iw*k, ih*k); return true;
   }catch(e){ return false; }
 }
+function dockLock(cx,cy,R){   // GENRE-EXPAND-1 §1.3: 모드 잠금 표시
+  ctx.fillStyle="rgba(8,10,26,0.62)"; ctx.beginPath(); ctx.arc(cx,cy,R,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle="#dfe6ff"; ctx.font="bold 16px 'Malgun Gothic',sans-serif"; ctx.fillText("🔒", cx, cy+1);
+}
 function drawSkillDock(s){
   if(!s) return;
   const cy=685, R=21, cxZ=LOGW/2-96, cxX=LOGW/2, cxC=LOGW/2+96;
@@ -5008,6 +5277,7 @@ function drawSkillDock(s){
     }
     if(!dockWeaponIcon(s.wid,cxZ,cy,26)){ ctx.fillStyle=s.ammo<=2?"#ff9a9a":"#eaf4ff"; ctx.font="bold 16px 'Malgun Gothic',sans-serif"; ctx.fillText(String(s.ammo), cxZ, cy+1); }
   }
+  if(s.zLocked) dockLock(cxZ,cy,R);
   dockKeycap(cxZ, cy+R+4, "Z", false);
 
   // ── X: 쿨타임 스윕 ──
@@ -5027,7 +5297,8 @@ function drawSkillDock(s){
     ctx.globalAlpha=0.35; ctx.fillStyle="#bfffc8"; ctx.font="bold 19px 'Malgun Gothic',sans-serif"; ctx.fillText(glyph, cxX, cy-4); ctx.globalAlpha=1;
     ctx.fillStyle="#dfe6ff"; ctx.font="bold 11px 'Malgun Gothic',sans-serif"; ctx.fillText((s.xc).toFixed(1), cxX, cy+11);
   }
-  dockKeycap(cxX, cy+R+4, "X", xReady);
+  if(s.xLocked) dockLock(cxX,cy,R);
+  dockKeycap(cxX, cy+R+4, "X", xReady && !s.xLocked);
 
   // ── C: 골드 게이지 링 ──
   dockBase(cxC,cy,R);
@@ -5044,7 +5315,8 @@ function drawSkillDock(s){
   } else {
     ctx.fillStyle="#ffe066"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.fillText(Math.floor(cRatio*100)+"%", cxC, cy+1);
   }
-  dockKeycap(cxC, cy+R+4, "C", cReady);
+  if(s.cLocked) dockLock(cxC,cy,R);
+  dockKeycap(cxC, cy+R+4, "C", cReady && !s.cLocked);
   ctx.restore();
 }
 // 로컬 플레이의 내 전투 상태 → 스킬 독 공용 형식
@@ -5056,7 +5328,8 @@ function localCombatStatus(){
     infAmmo:!usesAmmo(player), sg:superGauge, superMax:GAME_CONFIG.superCharge,
     xc:Math.max(0,player.specialCd||0), xcdMax:(getAbility(ch.id).x||{}).cd||8,
     superName:ch.ultName||ch.superName, specialName:ch.specialName||"", toolName:w?w.name:"",
-    charId:ch.id, wid:w?w.id:null };
+    charId:ch.id, wid:w?w.id:null,
+    zLocked:!!(RULE&&RULE.id==="tag"), xLocked:!!(RULE&&RULE.id==="tag"&&!TAG_X_ALLOW[ch.id]), cLocked:!!(RULE&&RULE.id==="tag") };   // GENRE-EXPAND-1 §1.3 🔒
 }
 let _hudLineFor=null, _hudLine="";   // 매치 정보 줄 캐시(MATCH가 바뀔 때만 재조립)
 function drawHUD(){
