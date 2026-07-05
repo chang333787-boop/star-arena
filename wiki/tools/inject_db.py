@@ -36,7 +36,8 @@ for m in mp["maps"]:
            "portals": [{"at": [p["tx"], p["ty"]], "to": p["to"]["mapId"],
                         "tx": p["to"]["tx"], "ty": p["to"]["ty"]} for p in m.get("portals", [])],
            "npcs": m.get("npcs", []), "monsters": m.get("monsters", []),
-           "soil": m.get("soil", [])}
+           # soil을 [c,r] 배열로 정규화(맵 생성기는 {tx,ty} 객체 — 엔진은 soil[i][0/1] 배열 접근)
+           "soil": [([s["tx"], s["ty"]] if isinstance(s, dict) else s) for s in m.get("soil", [])]}
     objs, seen_bed = [], set()
     for r, row in enumerate(m["rows"]):
         for c, ch in enumerate(row):
