@@ -46,6 +46,8 @@ script += `
   rpgCollides, rpgSolidAt, rpgAddGold, rpgAddExp,
   rpgAttack, rpgCastX, rpgCastC, rpgHurtPlayer, rpgDie, rpgInvenUse, rpgBulletsUpdate,
   rpgMakeMob, rpgHitMob, rpgWeapon, rpgDef, rpgLearnSkills, rpgSkillX, rpgMobUpdate,
+  rpgFarmDo, rpgFarmActionFor, rpgFarmCell, rpgFarmNeed, rpgFarmDone, rpgPlant, rpgWater, rpgHarvest,
+  rpgSeedStacks, rpgFarmCount, rpgSoil, rpgOnDayAdvance,
   handleRpgKey, handleKeyPress, keysDown,
   loadAccounts, createStudent, studentLogin, logout, resetStudent, accountToProfile, mergeProfile, saveProfile, loadProfile,
   AccountStore, PROFILE_KEY,
@@ -280,5 +282,78 @@ run("한 방 ≤10% 헌장(§0.4 — 몬스터×권장 레벨 데이터 검증)"
   check("전 몬스터 한 방 ≤10% (위반: "+(bad.join(",")||"없음")+")", bad.length===0);
 });
 
-console.log("\n결과: " + (fails===0 ? "RPG2_PASS ✅" : (fails+"건 실패 ❌")));
+console.log("=== RPG-7) 생활: 농사 사이클·재수확·물뿌리개·대장간 (RPG-3a) ===");
+function sleepNow(){ R.rpgSleep(); for(let i=0;i<25;i++) R.rpgUpdate(0.1); }
+run("씨앗 구매·농사 풀 사이클", ()=>{
+  R.profile.rpg=null; R.rpgEnter();
+  R.RPG.save.gold=500;
+  R.rpgOpenShop("npc_leaf");
+  let rows=R.rpgShopRows();
+  check("리프 가게: 씨앗 4종(콩·묘목은 mq05 잠금)+물뿌리개", rows.filter(r=>r.id.indexOf("seed_")===0).length===4&&rows.some(r=>r.sp==="watercan"));
+  R.rpgShopBuy(rows.find(r=>r.id==="seed_crop_byeolmu"));
+  check("별무 씨앗 ×5 구매(50G — 묶음=단가×5)", R.RPG.save.gold===450&&R.rpgInvCount("seed_crop_byeolmu")===5);
+  R.handleRpgKey("Escape");
+  R.rpgFarmDo(0);
+  check("괭이질 → 경작지", !!(R.RPG.save.farm[0]&&R.RPG.save.farm[0].t));
+  R.rpgFarmDo(0);
+  check("심기(씨앗 1종=바로) → 별무·씨앗 소모", R.RPG.save.farm[0].c==="crop_byeolmu"&&R.rpgInvCount("seed_crop_byeolmu")===4);
+  R.rpgFarmDo(0);
+  check("물 주기 → 젖음", R.RPG.save.farm[0].wt===true);
+  sleepNow();
+  check("취침 → 성장 +1(별무 1일=다자람)", R.RPG.save.farm[0].wd===1&&R.rpgFarmActionFor(0).act==="harvest");
+  R.rpgFarmDo(0);
+  check("수확 → 별무 +1·경작지 복귀", R.rpgInvCount("crop_byeolmu")===1&&R.RPG.save.farm[0].t===1&&!R.RPG.save.farm[0].c);
+});
+run("물 안 주면 성장 정지(사멸 없음)", ()=>{
+  R.rpgFarmDo(0);   // 직전 씨앗 기억 → 바로 심기
+  check("연속 심기(직전 씨앗 기억)", R.RPG.save.farm[0].c==="crop_byeolmu");
+  sleepNow();
+  check("물 없이 취침 → wd 0 유지·작물 생존", R.RPG.save.farm[0].wd===0&&R.RPG.save.farm[0].c==="crop_byeolmu");
+});
+run("별딸기 재수확(그루터기)", ()=>{
+  R.rpgInvAdd("seed_crop_star_strawberry",1);
+  R.rpgFarmDo(1);   // 괭이질
+  R.RPG.lastSeed="seed_crop_star_strawberry";
+  R.rpgFarmDo(1);   // 심기
+  check("딸기 심김", R.RPG.save.farm[1].c==="crop_star_strawberry");
+  for(let d=0;d<3;d++){ R.rpgFarmDo(1); sleepNow(); }   // 물+취침 ×3
+  check("3일 성장 → 다자람", R.rpgFarmActionFor(1).act==="harvest");
+  R.rpgFarmDo(1);
+  check("수확 → 그루터기(재수확 대기)", R.rpgInvCount("crop_star_strawberry")===1&&R.RPG.save.farm[1].rg===true);
+  for(let d=0;d<2;d++){ R.rpgFarmDo(1); sleepNow(); }   // 재수확 2일
+  check("재수확 2일 → 다시 다자람", R.rpgFarmActionFor(1).act==="harvest");
+});
+run("물뿌리개 개량(3칸 급수)", ()=>{
+  R.rpgOpenShop("npc_leaf");
+  R.rpgShopBuy(R.rpgShopRows().find(r=>r.sp==="watercan"));
+  check("개량 구매(120G)", R.RPG.save.flags.canUp===1);
+  R.handleRpgKey("Escape");
+  // 0번 옆 칸(같은 줄)에 심고 0번에 물 → 이웃도 젖는지
+  R.rpgFarmDo(3); R.RPG.lastSeed="seed_crop_byeolmu"; R.rpgFarmDo(3);
+  const soil=R.RPG.map.soil, adj=soil.findIndex((s,j)=>j!==3&&Math.abs(s[0]-soil[3][0])+Math.abs(s[1]-soil[3][1])===1&&R.RPG.save.farm[j]&&R.RPG.save.farm[j].c);
+  R.rpgFarmDo(3);
+  check("이웃 밭 동시 급수", R.RPG.save.farm[3].wt===true&&(adj<0||R.RPG.save.farm[adj].wt===true));
+});
+run("대장간: 강화·제작(승계)", ()=>{
+  R.RPG.save.gold=600;
+  R.rpgOpenShop("npc_bolt");
+  let rows=R.rpgShopRows();
+  check("볼트 가게: 도구 2+강화 메뉴", rows.some(r=>r.id==="wp_star_dagger")&&rows.some(r=>r.sp==="up1"));
+  R.rpgShopBuy(rows.find(r=>r.sp==="up1"));
+  check("강화 +1 (120G)", R.RPG.save.flags.boomerUp===1&&R.RPG.save.gold===480);
+  R.rpgInvAdd("wp_old_boomerang",1); R.rpgInvAdd("it_starpiece",3);
+  rows=R.rpgShopRows();
+  check("재료 갖추면 제작 메뉴 등장", rows.some(r=>r.sp==="craft"));
+  R.rpgShopBuy(rows.find(r=>r.sp==="craft"));
+  check("반짝 부메랑 완성: 재료 소모·낡은 것 소멸·강화 승계", R.rpgInvCount("wp_sparkle_boomerang")===1&&R.rpgInvCount("wp_old_boomerang")===0&&R.rpgInvCount("it_starpiece")===0&&R.RPG.save.flags.boomerUp===1);
+  R.handleRpgKey("Escape");
+});
+run("퀘스트 해금 상점(mq05)", ()=>{
+  R.RPG.save.quests.done.push("mq05");
+  R.rpgOpenShop("npc_leaf");
+  check("mq05 완료 후 콩·묘목 씨앗 노출(6종)", R.rpgShopRows().filter(r=>r.id.indexOf("seed_")===0).length===6);
+  R.handleRpgKey("Escape");
+});
+
+console.log("\n결과: " + (fails===0 ? "RPG3A_PASS ✅" : (fails+"건 실패 ❌")));
 process.exit(fails===0?0:1);

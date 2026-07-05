@@ -2936,15 +2936,24 @@ function rpgCheckWarp(){
 }
 
 /* ── 상호작용(문맥 버튼 §4.7: NPC > 오브젝트 — 드랍/수확/밭일은 RPG-2/3a에서 우선순위 삽입) ── */
-function rpgScanContext(){
-  const p=RPG.p; let best=null, bd=RPG_CONST.INTERACT_R+18;
-  for(const n of RPG.npcsOnMap){ const d=dist(p.x,p.y,n.x,n.y); if(d<bd){ best={kind:"npc",npc:n}; bd=d; } }
-  for(const o of RPG.objects){ const d=dist(p.x,p.y,(o.tx+0.5)*56,(o.ty+0.5)*56); if(d<bd){ best={kind:"obj",obj:o}; bd=d; } }
-  RPG.ctxTarget=best;
+function rpgScanContext(){   // §4.7 우선순위: NPC > (줍기=자동) > 수확 > 밭일 > 문/오브젝트 — 적은 절대 미포함
+  const p=RPG.p, R2=RPG_CONST.INTERACT_R+18, cands=[];
+  for(const n of RPG.npcsOnMap){ const d=dist(p.x,p.y,n.x,n.y); if(d<R2) cands.push({pri:0,d:d,t:{kind:"npc",npc:n}}); }
+  const soil=rpgSoil();
+  for(let i=0;i<soil.length;i++){
+    const sx=(soil[i][0]+0.5)*56, sy=(soil[i][1]+0.5)*56, d=dist(p.x,p.y,sx,sy);
+    if(d>=R2) continue;
+    const a=rpgFarmActionFor(i);
+    cands.push({pri:(a.act==="harvest")?1:2, d:d, t:{kind:"farm",idx:i,farm:a,x:sx,y:sy}});
+  }
+  for(const o of RPG.objects){ const d=dist(p.x,p.y,(o.tx+0.5)*56,(o.ty+0.5)*56); if(d<R2) cands.push({pri:3,d:d,t:{kind:"obj",obj:o}}); }
+  cands.sort(function(a,b){ return (a.pri-b.pri)||(a.d-b.d); });
+  RPG.ctxTarget=cands.length?cands[0].t:null;
 }
 function rpgInteract(){
   const t=RPG.ctxTarget; if(!t) return;
   if(t.kind==="npc") return rpgTalkTo(t.npc.id);
+  if(t.kind==="farm") return rpgFarmDo(t.idx);
   if(t.kind==="obj") return rpgUseObject(t.obj);
 }
 function rpgUseObject(o){
@@ -3009,13 +3018,29 @@ function rpgUseCandy(){
 /* ── 상점(§5.6: 사기/팔기 탭·씨앗 5개 묶음·작물 전부 팔기) ── */
 function rpgOpenShop(npcId){ RPG.ui="shop"; RPG.shop={ npcId:npcId, tab:"buy", idx:0, scroll:0 }; }
 function rpgShopStock(npc){
-  const out=[];
+  const out=[], sv=RPG.save;
   for(const s of (npc&&npc.shop||[])){
     const ref=(typeof s==="string")?s:(s.itemRef||s.ref||s.item||s.id);
+    if(s&&s.reqQuest&&sv.quests.done.indexOf(s.reqQuest)<0) continue;   // 퀘스트 해금 전 비노출(별방울 콩·묘목)
+    const crop=rpgFind("crops",ref);
+    if(crop){ out.push({ id:"seed_"+ref, name:crop.name+" 씨앗 ×5", price:crop.seedPrice*5, qty:5 }); continue; }   // §5.5 묶음=단가×5
     const it=rpgItemAny(ref); if(!it) continue;
-    if(it.kind==="seed") out.push({ id:ref, name:it.name+" ×5", price:it.crop.seedPrice*5, qty:5 });   // §5.5 묶음=단가×5
-    else if(it.price>0) out.push({ id:ref, name:it.name, price:it.price, qty:1 });
+    if(it.kind==="seed") out.push({ id:ref, name:it.name+" ×5", price:it.crop.seedPrice*5, qty:5 });
+    else if(it.price>0){
+      const w=rpgFind("weapons",ref);
+      out.push({ id:ref, name:it.name+(w?(" (Lv."+w.levelReq+")"):""), price:it.price, qty:1 });
+    }
   }
+  // 대장간 특별 메뉴(§5.5): 강화·제작 — 강화 단계는 제작 시 승계(§3.1)
+  if(npc&&npc.id==="npc_bolt"){
+    const up=sv.flags.boomerUp||0;
+    if(up===0) out.push({ sp:"up1", id:"_up1", name:"🔨 부메랑 강화 +1 (공격 +10%)", price:120, qty:1 });
+    if(up===1) out.push({ sp:"up2", id:"_up2", name:"🔨 강화 +2 (공격 +20%·가시 껍질 ×5)", price:300, qty:1 });
+    if(rpgInvCount("wp_old_boomerang")>0&&rpgInvCount("wp_sparkle_boomerang")===0&&sv.equip.weapon!=="wp_sparkle_boomerang")
+      out.push({ sp:"craft", id:"_craft", name:"🌟 반짝 부메랑 제작 (낡은 부메랑+별조각 ×3)", price:0, qty:1 });
+  }
+  if(npc&&npc.id==="npc_leaf"&&!sv.flags.canUp)
+    out.push({ sp:"watercan", id:"_can", name:"🚿 물뿌리개 개량 (한 번에 3칸 급수)", price:120, qty:1 });
   return out;
 }
 function rpgSellables(){
@@ -3031,7 +3056,21 @@ function rpgSellables(){
 }
 function rpgShopRows(){ const sh=RPG.shop; return sh.tab==="buy"?rpgShopStock(rpgFind("npcs",sh.npcId)):rpgSellables(); }
 function rpgShopBuy(row){
-  if(RPG.save.gold<row.price){ showToast("골드가 부족해요 ("+row.price+"G)"); return; }
+  const sv=RPG.save;
+  if(sv.gold<row.price){ showToast("골드가 부족해요 ("+row.price+"G)"); return; }
+  if(row.sp==="up1"){ rpgAddGold(-120); sv.flags.boomerUp=1; showToast("🔨 부메랑 강화 +1! 반짝임이 늘었다"); playSfx("clear"); rpgPersist(); return; }
+  if(row.sp==="up2"){
+    if(rpgInvCount("it_thorn_shell")<5){ showToast("가시 껍질이 부족해요 (5개 — 가시딱지가 떨어뜨려요)"); return; }
+    rpgAddGold(-300); rpgInvRemove("it_thorn_shell",5); sv.flags.boomerUp=2;
+    showToast("🔨 부메랑 강화 +2! (공격 +20%)"); playSfx("clear"); rpgPersist(); return;
+  }
+  if(row.sp==="craft"){
+    if(rpgInvCount("it_starpiece")<3){ showToast("별조각이 부족해요 (3개 필요)"); return; }
+    rpgInvRemove("it_starpiece",3); rpgInvRemove("wp_old_boomerang",1); rpgInvAdd("wp_sparkle_boomerang",1);
+    if(sv.equip.weapon==="wp_old_boomerang") sv.equip.weapon="wp_sparkle_boomerang";
+    showToast("🌟 반짝 부메랑 완성! (강화 "+(sv.flags.boomerUp||0)+"단계 승계)"); playSfx("clear"); rpgPersist(); return;
+  }
+  if(row.sp==="watercan"){ rpgAddGold(-120); sv.flags.canUp=1; showToast("🚿 물뿌리개 개량! 한 번에 3칸을 적셔요"); playSfx("clear"); rpgPersist(); return; }
   rpgAddGold(-row.price); rpgInvAdd(row.id,row.qty);
   playSfx("pick"); showToast("🛒 "+row.name+" 구입! (−"+row.price+"G)");
   rpgPersist();
@@ -3055,7 +3094,73 @@ function rpgSellAllCrops(){
 
 /* ── 취침 = 하루 진행(§5.1) ── */
 function rpgSleep(){ RPG.ui="sleep"; RPG.sleep={ t:0, done:false }; RPG.p.moving=false; }
-function rpgOnDayAdvance(){ /* RPG-3a: 밭 성장(wateredDays 판정) — 뼈대 단계는 훅만 */ }
+function rpgOnDayAdvance(){   // §5.1·§7.3: 젖은 날만 성장 +1(wateredDays) — 물 안 주면 정지, 사멸 없음
+  for(const cell of RPG.save.farm){ if(cell&&cell.c&&cell.wt&&!rpgFarmDone(cell)){ cell.wd++; cell.wt=false; } else if(cell&&cell.c){ cell.wt=false; } }
+}
+
+/* ── RPG-3a 생활: 농사 상태기계·씨앗 선택·물뿌리개(§5.2 — 도구 인벤 없음, 문맥 버튼이 전부) ── */
+const RPG_CROP_EMOJI={ crop_byeolmu:"🥬", crop_galaxy_wheat:"🌾", crop_sparkle_carrot:"🥕",
+  crop_star_strawberry:"🍓", crop_starbell_bean:"🫛", crop_lightwood_sapling:"🌳" };
+function rpgSoil(){ return (RPG.map&&RPG.map.soil)||[]; }
+function rpgFarmCell(i){ const f=RPG.save.farm; while(f.length<=i) f.push(null); return f[i]; }
+function rpgFarmNeed(cell){ const c=rpgFind("crops",cell.c); if(!c) return 1; return cell.rg?(c.regrowDays||c.growDays):c.growDays; }
+function rpgFarmDone(cell){ return !!(cell&&cell.c&&cell.wd>=rpgFarmNeed(cell)); }
+function rpgFarmActionFor(i){
+  const cell=rpgFarmCell(i);
+  if(!cell) return { act:"till", icon:"⛏", label:"괭이질" };
+  if(cell.t&&!cell.c) return { act:"plant", icon:"🌱", label:"씨앗 심기" };
+  if(cell.c){
+    if(rpgFarmDone(cell)) return { act:"harvest", icon:"🌾", label:"수확" };
+    if(!cell.wt) return { act:"water", icon:"💧", label:"물 주기" };
+    return { act:"info", icon:"🌿", label:"자라는 중" };
+  }
+  return { act:"till", icon:"⛏", label:"괭이질" };
+}
+function rpgSeedStacks(){ return RPG.save.inventory.filter(s=>s.id.indexOf("seed_")===0); }
+function rpgFarmDo(i){
+  const a=rpgFarmActionFor(i);
+  if(a.act==="till"){ RPG.save.farm[i]={t:1}; playSfx("pick"); rpgPersist(); }
+  else if(a.act==="plant"){
+    const seeds=rpgSeedStacks();
+    if(!seeds.length){ showToast("씨앗이 없어요 — 리프네 씨앗 가게로!"); return; }
+    if(RPG.lastSeed&&rpgInvCount(RPG.lastSeed)>0) return rpgPlant(i,RPG.lastSeed);   // 직전 씨앗 기억=연속 심기
+    if(seeds.length===1) return rpgPlant(i,seeds[0].id);
+    RPG.ui="seed"; RPG.seed={ idx:0, target:i };
+  }
+  else if(a.act==="water") rpgWater(i);
+  else if(a.act==="harvest") rpgHarvest(i);
+  else { const cell=rpgFarmCell(i); showToast("🌿 자라는 중! (물 준 날 "+cell.wd+"/"+rpgFarmNeed(cell)+")"); }
+}
+function rpgPlant(i,seedId){
+  const cropId=seedId.slice(5), c=rpgFind("crops",cropId); if(!c) return;
+  rpgInvRemove(seedId,1);
+  RPG.save.farm[i]={ c:cropId, wd:0, wt:false, rg:false };
+  RPG.lastSeed=(rpgInvCount(seedId)>0)?seedId:null;
+  playSfx("pick"); showToast("🌱 "+c.name+" 심었다!");
+  rpgPersist();   // §7.3: 심기 자동저장
+}
+function rpgWater(i){
+  const soil=rpgSoil(), targets=[i];
+  if(RPG.save.flags.canUp){   // 물뿌리개 개량: 상하좌우 인접 밭 동시 급수(§5.5)
+    const c0=soil[i][0], r0=soil[i][1];
+    for(let j=0;j<soil.length;j++){ if(j===i) continue;
+      if(Math.abs(soil[j][0]-c0)+Math.abs(soil[j][1]-r0)===1) targets.push(j); }
+  }
+  let n=0;
+  for(const j of targets){ const cell=rpgFarmCell(j); if(cell&&cell.c&&!cell.wt&&!rpgFarmDone(cell)){ cell.wt=true; n++; } }
+  if(n>0){ playSfx("pick"); showToast("💧 물을 줬다! ("+n+"칸) — 자고 나면 자라요"); }
+}
+function rpgHarvest(i){
+  const cell=rpgFarmCell(i), c=rpgFind("crops",cell.c); if(!c) return;
+  rpgInvAdd(cell.c,1); playSfx("clear");
+  RPG.fx.push({x:RPG.p.x,y:RPG.p.y-40,t:0.9,text:"+"+c.name,color:"#8fdba0"});
+  if(c.regrowDays>0){ RPG.save.farm[i]={ c:cell.c, wd:0, wt:false, rg:true }; showToast("🍓 수확! (그루터기에서 다시 자라요)"); }
+  else { RPG.save.farm[i]={t:1}; showToast("🌾 "+c.name+" 수확!"); }
+  rpgQuestOnHarvest(cell.c);   // RPG-3b 훅
+  rpgPersist();   // §7.3: 수확 자동저장
+}
+function rpgQuestOnHarvest(cropId){ /* RPG-3b: harvest 목표 카운트 */ }
+function rpgFarmCount(cropId){ let n=0; for(const cell of RPG.save.farm){ if(cell&&cell.c===cropId) n++; } return n; }   // mq06 묘목 수(§3.1)
 
 /* ── 입력(키보드) ── */
 function handleRpgKey(code){
@@ -3091,6 +3196,17 @@ function handleRpgKey(code){
     if(code==="ArrowUp"){ RPG.inven.idx=Math.max(0,RPG.inven.idx-1); return; }
     if(code==="ArrowDown"){ RPG.inven.idx=Math.min(Math.max(0,inv.length-1),RPG.inven.idx+1); return; }
     if((code==="Enter"||code==="NumpadEnter"||code==="KeyZ")&&inv[RPG.inven.idx]){ rpgInvenUse(RPG.inven.idx); return; }
+    return;
+  }
+  if(RPG.ui==="seed"){   // 씨앗 선택 팝업(§5.2)
+    const seeds=rpgSeedStacks();
+    if(code==="Escape"){ RPG.ui="field"; RPG.seed=null; return; }
+    if(code==="ArrowUp"||code==="ArrowLeft"){ RPG.seed.idx=Math.max(0,RPG.seed.idx-1); return; }
+    if(code==="ArrowDown"||code==="ArrowRight"){ RPG.seed.idx=Math.min(Math.max(0,seeds.length-1),RPG.seed.idx+1); return; }
+    if((code==="Enter"||code==="NumpadEnter"||code==="KeyZ"||code==="Space")&&seeds[RPG.seed.idx]){
+      const tgt=RPG.seed.target, id=seeds[RPG.seed.idx].id;
+      RPG.ui="field"; RPG.seed=null; rpgPlant(tgt,id); return;
+    }
     return;
   }
   if(RPG.ui==="confirm"){
@@ -3132,6 +3248,16 @@ function rpgTouchStart(id,p){
     if(p.y>390&&p.y<440){
       if(p.x>LOGW/2-160&&p.x<LOGW/2-20){ showToast("🌙 저장하고 나왔어요"); rpgExit(); return; }
       if(p.x>LOGW/2+20&&p.x<LOGW/2+160){ RPG.ui="field"; return; }
+    }
+    return;
+  }
+  if(RPG.ui==="seed"){
+    const seeds=rpgSeedStacks();
+    if(p.x<340||p.x>940||p.y<180||p.y>560){ RPG.ui="field"; RPG.seed=null; return; }
+    const i=Math.floor((p.y-250)/50);
+    if(i>=0&&i<seeds.length){
+      if(RPG.seed.idx===i){ const tgt=RPG.seed.target, id=seeds[i].id; RPG.ui="field"; RPG.seed=null; rpgPlant(tgt,id); }
+      else RPG.seed.idx=i;
     }
     return;
   }
@@ -3326,9 +3452,11 @@ function rpgAttack(){
   } else {
     const tgt=rpgAutoAim(w.range*rngMul*1.15); const a=tgt?Math.atan2(tgt.y-p.y,tgt.x-p.x):p.facing;
     p.facing=a; playSfx("shoot");
+    const upMul=(w.kind==="boomerang")?(1+0.1*(RPG.save.flags.boomerUp||0)):1;   // 대장간 강화(제작 시 승계 §3.1)
     RPG.bullets.push({ from:"p", boomer:(w.kind==="boomerang"), phase:"out", hitOnce:{},
       x:p.x, y:p.y, vx:Math.cos(a)*(w.bulletSpeed||400), vy:Math.sin(a)*(w.bulletSpeed||400),
-      dmg:(w.dmg+rpgAtkPower())*rpgJobMod("rangedDmgMul",1), traveled:0, range:w.range*rngMul, r:8 });
+      dmg:(w.dmg+rpgAtkPower())*rpgJobMod("rangedDmgMul",1)*upMul, traveled:0, range:w.range*rngMul,
+      r:8*(((RPG.save.flags.boomerUp||0)>=2&&w.kind==="boomerang")?1.1:1) });
   }
 }
 function rpgHitMob(mob,dmg){
@@ -3449,6 +3577,7 @@ function rpgInvenUse(i){
   const st=RPG.save.inventory[i]; if(!st) return;
   const id=st.id;
   if(id==="it_jelly_candy"){ rpgUseCandy(); return; }
+  if(id.indexOf("seed_")===0){ showToast("씨앗은 마을 밭에서 심어요! (경작지에 서서 Space)"); return; }
   const w=rpgFind("weapons",id);
   if(w){
     if(RPG.save.level<w.levelReq){ showToast("Lv."+w.levelReq+"부터 쓸 수 있어요"); return; }
@@ -3548,7 +3677,7 @@ function rpgDrawHUD(){
   ctx.textAlign="left";
   ctx.fillStyle="rgba(255,255,255,0.12)"; roundRect(LOGW-136,10,116,42,10); ctx.fill();
   ctx.font="bold 15px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#ffffff"; ctx.fillText("🎒 가방", LOGW-118, 37);
-  const hint=RPG.ctxTarget?((RPG.ctxTarget.kind==="npc")?"Space: 대화하기":"Space: 살펴보기"):"방향키 이동 · Space 상호작용 · I 가방 · Q 사탕 · Esc 나가기";
+  const hint=RPG.ctxTarget?((RPG.ctxTarget.kind==="npc")?"Space: 대화하기":(RPG.ctxTarget.kind==="farm"?("Space: "+RPG.ctxTarget.farm.label):"Space: 살펴보기")):"방향키 이동 · Z 공격 · X 기술 · Space 상호작용 · I 가방 · Q 사탕 · Esc 나가기";
   ctx.fillStyle="rgba(10,12,32,0.6)"; ctx.fillRect(0,LOGH-28,LOGW,28);
   ctx.fillStyle="#bfb6dd"; ctx.font="13px 'Malgun Gothic',sans-serif"; ctx.fillText(hint, 24, LOGH-9);
   // 스킬 칩(키보드·터치 공통 표시): X 쿨다운 · C 게이지
@@ -3574,7 +3703,7 @@ function rpgDrawHUD(){
     if(RPG.ctxTarget){
       ctx.fillStyle="rgba(255,224,102,0.88)"; ctx.beginPath(); ctx.arc(LOGW-92,LOGH-208,40,0,Math.PI*2); ctx.fill();
       ctx.font="28px sans-serif"; ctx.textAlign="center";
-      ctx.fillText((RPG.ctxTarget.kind==="npc")?"💬":"👀", LOGW-92, LOGH-198); ctx.textAlign="left";
+      ctx.fillText((RPG.ctxTarget.kind==="npc")?"💬":(RPG.ctxTarget.kind==="farm"?RPG.ctxTarget.farm.icon:"👀"), LOGW-92, LOGH-198); ctx.textAlign="left";
     }
     if(RPG.touch.moveId!==null&&RPG.touch.anchor){
       ctx.strokeStyle="rgba(255,255,255,0.35)"; ctx.beginPath(); ctx.arc(RPG.touch.anchor.x,RPG.touch.anchor.y,60,0,Math.PI*2); ctx.stroke();
@@ -3652,6 +3781,21 @@ function rpgDrawInven(){
   ctx.fillStyle="#9a90b8"; ctx.font="13px 'Malgun Gothic',sans-serif";
   ctx.fillText("Enter 사용(사탕) · Esc/I 닫기", PX+PW-260, PY+PH-24);
 }
+function rpgDrawSeed(){   // 씨앗 선택 팝업(§5.2 — 보유 씨앗만, 더블탭/Enter 심기)
+  const seeds=rpgSeedStacks();
+  ctx.fillStyle="rgba(0,0,0,0.45)"; ctx.fillRect(0,0,LOGW,LOGH);
+  ctx.fillStyle="rgba(16,14,40,0.96)"; roundRect(340,180,600,380,16); ctx.fill();
+  ctx.strokeStyle="rgba(255,255,255,0.25)"; roundRect(340.5,180.5,599,379,16); ctx.stroke();
+  ctx.fillStyle="#ffe066"; ctx.font="bold 20px 'Malgun Gothic',sans-serif"; ctx.fillText("🌱 어떤 씨앗을 심을까?", 368, 220);
+  for(let i=0;i<Math.min(6,seeds.length);i++){
+    const y=250+i*50, on=(RPG.seed&&RPG.seed.idx===i);
+    const c=rpgFind("crops",seeds[i].id.slice(5));
+    ctx.fillStyle=on?"rgba(255,224,102,0.22)":"rgba(255,255,255,0.05)"; roundRect(360,y,560,44,8); ctx.fill();
+    ctx.fillStyle="#ffffff"; ctx.font=(on?"bold ":"")+"17px 'Malgun Gothic',sans-serif";
+    ctx.fillText((RPG_CROP_EMOJI[seeds[i].id.slice(5)]||"🌱")+" "+rpgNameOf(seeds[i].id)+" ×"+seeds[i].qty+(c?("  ("+c.growDays+"일)"):""), 380, y+28);
+  }
+  ctx.fillStyle="#9a90b8"; ctx.font="13px 'Malgun Gothic',sans-serif"; ctx.fillText("Enter/재탭 심기 · Esc 취소", 700, 540);
+}
 function rpgDrawConfirm(){
   ctx.fillStyle="rgba(0,0,0,0.55)"; ctx.fillRect(0,0,LOGW,LOGH);
   ctx.fillStyle="rgba(16,14,40,0.97)"; roundRect(LOGW/2-260,300,520,170,16); ctx.fill();
@@ -3671,6 +3815,21 @@ function rpgRender(){
   if(RPG.layerMapId!==RPG.map.id) rpgBuildLayer();
   rpgWorldBegin();
   if(RPG.layer) ctx.drawImage(RPG.layer,0,0);
+  const _soil=rpgSoil();   // 밭 상태(경작 줄·젖음·작물 단계 — §5.2)
+  for(let i=0;i<_soil.length;i++){
+    const cell=RPG.save.farm[i]; if(!cell) continue;
+    const x=_soil[i][0]*56, y=_soil[i][1]*56;
+    if(cell.t||cell.c){ ctx.strokeStyle="rgba(0,0,0,0.35)";
+      for(let k=1;k<4;k++){ ctx.beginPath(); ctx.moveTo(x+7,y+k*14); ctx.lineTo(x+49,y+k*14); ctx.stroke(); } }
+    if(cell.c){
+      if(cell.wt){ ctx.fillStyle="rgba(80,140,255,0.22)"; ctx.fillRect(x+3,y+3,50,50); }
+      const pr=cell.wd/rpgFarmNeed(cell);
+      const em=(pr>=1)?(RPG_CROP_EMOJI[cell.c]||"🌟"):(pr>=0.5?"🌿":"🌱");
+      ctx.font=(pr>=1?"30px":"22px")+" sans-serif"; ctx.textAlign="center";
+      ctx.fillText(em, x+28, y+40); ctx.textAlign="left";
+      if(pr>=1&&(uiTime%1)<0.6){ ctx.font="14px sans-serif"; ctx.fillText("✨", x+40, y+18); }
+    }
+  }
   for(const d of RPG.drops){   // 드랍(엔티티 아래층)
     ctx.fillStyle="rgba(255,224,102,0.9)"; ctx.beginPath(); ctx.arc(d.x,d.y,8,0,Math.PI*2); ctx.fill();
     ctx.strokeStyle="rgba(255,255,255,0.6)"; ctx.stroke();
@@ -3692,15 +3851,19 @@ function rpgRender(){
     ctx.fillText(f.text,f.x,f.y); ctx.textAlign="left"; ctx.globalAlpha=1;
   }
   if(RPG.ui==="field"&&RPG.ctxTarget){   // 대상 부착형 말풍선(§2.1)
-    const t=RPG.ctxTarget, x=(t.kind==="npc")?t.npc.x:((t.obj.tx+0.5)*56), y=(t.kind==="npc")?t.npc.y:((t.obj.ty+0.5)*56);
+    const t=RPG.ctxTarget;
+    const x=(t.kind==="npc")?t.npc.x:(t.kind==="farm"?t.x:((t.obj.tx+0.5)*56));
+    const y=(t.kind==="npc")?t.npc.y:(t.kind==="farm"?t.y:((t.obj.ty+0.5)*56));
+    const lb=(t.kind==="npc")?"💬 Space":(t.kind==="farm"?(t.farm.icon+" "+t.farm.label):"👀 Space");
     ctx.fillStyle="rgba(255,224,102,0.95)"; ctx.font="bold 15px 'Malgun Gothic',sans-serif"; ctx.textAlign="center";
-    ctx.fillText((t.kind==="npc")?"💬 Space":"👀 Space", x, y-44); ctx.textAlign="left";
+    ctx.fillText(lb, x, y-44); ctx.textAlign="left";
   }
   rpgWorldEnd();
   rpgDrawHUD();
   if(RPG.ui==="dialog") rpgDrawDialog();
   else if(RPG.ui==="shop") rpgDrawShop();
   else if(RPG.ui==="inven") rpgDrawInven();
+  else if(RPG.ui==="seed") rpgDrawSeed();
   else if(RPG.ui==="confirm") rpgDrawConfirm();
   if(RPG.ui==="sleep"&&RPG.sleep){
     const t=RPG.sleep.t, a=(t<0.8)?(t/0.8):Math.max(0,(1.6-t)/0.8);
