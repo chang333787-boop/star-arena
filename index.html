@@ -2013,6 +2013,16 @@ function validateEditorMap(){
   }
   if(stars!==1) return {ok:false, msg:"팀 시작점(★)이 정확히 1개 필요해요"};
   if(need && modeCh!==1) return {ok:false, msg:"이 모드의 목표 요소("+need+")를 1개 배치하세요"};
+  // QUALITY-SWEEP-1 축20: 악성 배치 방지 — 시작점 주변 8칸에는 함정(가시/끈끈이/얼음) 금지(태어나자마자 피해 방지)
+  for(let r=0;r<ED.rows;r++) for(let c=0;c<ED.half;c++){
+    if(ED.cells[r][c]!=="*") continue;
+    for(let dr=-1;dr<=1;dr++) for(let dc=-1;dc<=1;dc++){
+      const nr=r+dr, nc=c+dc;
+      if(nr<0||nc<0||nr>=ED.rows||nc>=ED.half) continue;
+      const nch=ED.cells[nr][nc];
+      if(nch==="S"||nch==="L"||nch==="I") return {ok:false, msg:"시작점(★) 바로 옆에는 함정을 둘 수 없어요"};
+    }
+  }
   const total=ED.rows*ED.cols, wallPct=walls*2/total, bushPct=bushes*2/total;
   if(wallPct>0.25) return {ok:false, msg:"벽이 너무 많아요("+Math.round(wallPct*100)+"% > 25%)"};
   if(bushPct>0.15) return {ok:false, msg:"풀숲이 너무 많아요("+Math.round(bushPct*100)+"% > 15%)"};
@@ -4378,6 +4388,22 @@ function drawObstacles(){
   }
 }
 
+/* QUALITY-SWEEP-1 축11 난전 가독성: 발밑 팀 마커 — 나=금색 이중 링(펄스) · 아군=파란 실선 · 적=빨간 점선.
+   색으로만 구분하지 않고 '점선(적)/실선(아군)/이중(나)' 형태 차이를 함께 사용(색맹 배려 — 축19). */
+function drawTeamMarker(x,y,r,kind,alpha){
+  ctx.save(); ctx.globalAlpha=(alpha===undefined?1:alpha);
+  const gy=y+r*0.85, rx=r*1.25, ry=r*0.45;
+  if(kind==="me"){ const p=0.5+0.5*Math.sin(uiTime*5);
+    ctx.strokeStyle="rgba(255,225,80,"+(0.7+0.3*p)+")"; ctx.fillStyle="rgba(255,225,80,0.14)"; }
+  else if(kind==="ally"){ ctx.strokeStyle="rgba(110,190,255,0.85)"; ctx.fillStyle="rgba(95,160,255,0.12)"; }
+  else { ctx.strokeStyle="rgba(255,90,110,0.9)"; ctx.fillStyle="rgba(255,77,109,0.15)"; }
+  ctx.beginPath(); ctx.ellipse(x,gy,rx,ry,0,0,Math.PI*2); ctx.fill();
+  if(kind==="enemy") ctx.setLineDash([6,4]);
+  ctx.lineWidth=(kind==="me")?3:2;
+  ctx.beginPath(); ctx.ellipse(x,gy,rx,ry,0,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+  if(kind==="me"){ ctx.lineWidth=1.5; ctx.beginPath(); ctx.ellipse(x,gy,rx*1.3,ry*1.35,0,0,Math.PI*2); ctx.stroke(); }
+  ctx.restore();
+}
 const _fviewer={ x:0, y:0, team:"player" };   // 성능(코드감사): 파이터마다 새 객체를 만들지 않는 재사용 스크래치
 function drawFighter(f){
   if(f.dead) return;
@@ -4388,6 +4414,7 @@ function drawFighter(f){
   if(vis.hidden){ drawBushRustle(f.x,f.y); return; }
   let alpha=vis.alpha;
   if(f.invincibleTimer>0 && Math.floor(f.invincibleTimer*12)%2===0) alpha*=0.35;
+  drawTeamMarker(f.x, f.y, f.r, f.isPlayer?"me":(f.team==="player"?"ally":"enemy"), alpha);   // 축11: 아군/적/나 즉시 구분
   ctx.save(); ctx.globalAlpha=alpha; ctx.translate(f.x,f.y);
   // 캐릭터가 배정된 파이터(아군/플레이어/v1.27 적 캐릭터 봇)는 이미지 우선, 실패 시 도형.
   // 보스는 크롬 정체성 유지(항상 도형 크롬).
@@ -4616,6 +4643,108 @@ function drawDamageNumbers(){
 }
 
 /* ---- HUD ---- */
+/* ── QUALITY-SWEEP-1: 하단 스킬 독(게임식 아이콘 인디케이터) ──
+   Z = 탄창 수만큼 나뉜 링(쏘면 소진·장전 시 차오름·무한탄=∞) · X = 원형 쿨타임 스윕(준비되면 빛남)
+   C = 골드 게이지 링(명중 충전·100%면 ★ 펄스). 로컬(drawHUD)·온라인(drawCombatStrip) 공용. */
+const SKILL_GLYPH_X={ student_01:"✶", student_02:"◎", student_03:"▲", student_04:"❄", student_05:"♥", student_06:"◆" };
+function fitText(t, maxW){ t=String(t||""); while(t.length>1 && ctx.measureText(t).width>maxW) t=t.slice(0,-1); return t; }
+function dockBase(cx,cy,R){
+  ctx.fillStyle="rgba(6,10,26,0.88)"; ctx.beginPath(); ctx.arc(cx,cy,R+5,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle="#3a4470"; ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(cx,cy,R+5,0,Math.PI*2); ctx.stroke();
+}
+function dockKeycap(cx,y,letter,glow){
+  ctx.fillStyle=glow?"#ffe066":"rgba(24,30,62,0.95)"; roundRect(cx-10,y-8,20,16,5); ctx.fill();
+  ctx.strokeStyle=glow?"#fff3b0":"#5a6a9a"; ctx.lineWidth=1.5; roundRect(cx-10,y-8,20,16,5); ctx.stroke();
+  ctx.fillStyle=glow?"#3a2f00":"#dfe6ff"; ctx.font="bold 11px 'Malgun Gothic',sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillText(letter, cx, y+1);
+}
+function dockWeaponIcon(wid,cx,cy,size){
+  try{
+    const w=getWeapon(wid); if(!w||!w.assetId) return false;
+    const img=getWeaponImage(w.assetId,"projectile"); if(!img) return false;
+    const iw=img.naturalWidth||1, ih=img.naturalHeight||1, k=Math.min(size/iw,size/ih);
+    ctx.drawImage(img, cx-iw*k/2, cy-ih*k/2, iw*k, ih*k); return true;
+  }catch(e){ return false; }
+}
+function drawSkillDock(s){
+  if(!s) return;
+  const cy=685, R=21, cxZ=LOGW/2-96, cxX=LOGW/2, cxC=LOGW/2+96;
+  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
+  // 이름 라벨(글자 의존 최소 — 11px 한 줄, 폭 맞춰 자름)
+  ctx.font="bold 11px 'Malgun Gothic',sans-serif";
+  ctx.fillStyle="#9fc6e8"; ctx.fillText(fitText(s.toolName||"기본공격",168), cxZ, 662);
+  ctx.fillStyle="#9fdc9f"; ctx.fillText(fitText(s.specialName||"특수기술",168), cxX, 662);
+  ctx.fillStyle="#ffe066"; ctx.fillText(fitText(s.superName||"궁극기",168), cxC, 662);
+
+  // ── Z: 탄창 링 ──
+  dockBase(cxZ,cy,R);
+  if(s.infAmmo){
+    ctx.strokeStyle="#ffd23f"; ctx.lineWidth=4; ctx.beginPath(); ctx.arc(cxZ,cy,R,0,Math.PI*2); ctx.stroke();
+    ctx.fillStyle="#ffe066"; ctx.font="bold 19px 'Malgun Gothic',sans-serif"; ctx.fillText("∞", cxZ, cy+1);
+  } else if(s.reloading){
+    ctx.strokeStyle="rgba(255,210,77,0.95)"; ctx.lineWidth=4;
+    if(s.reloadProg!=null){ ctx.beginPath(); ctx.arc(cxZ,cy,R,-Math.PI/2,-Math.PI/2+Math.PI*2*clamp(s.reloadProg,0,1)); ctx.stroke(); }
+    else { const a0=uiTime*5; ctx.beginPath(); ctx.arc(cxZ,cy,R,a0,a0+1.7); ctx.stroke(); }   // 게스트: 진행도 미수신 → 스피너
+    ctx.fillStyle="#ffd24d"; ctx.font="bold 11px 'Malgun Gothic',sans-serif"; ctx.fillText("장전", cxZ, cy+1);
+  } else if(s.ammo!==undefined && s.mag){
+    const n=s.mag, seg=Math.PI*2/n, gap=Math.min(0.14, seg*0.3);
+    for(let i=0;i<n;i++){
+      const a0=-Math.PI/2+i*seg+gap/2, a1=-Math.PI/2+(i+1)*seg-gap/2;
+      ctx.strokeStyle = i<s.ammo ? (s.ammo<=2?"#ff8a8a":"#8fd0ff") : "rgba(255,255,255,0.13)";
+      ctx.lineWidth=4; ctx.beginPath(); ctx.arc(cxZ,cy,R,a0,a1); ctx.stroke();
+    }
+    if(!dockWeaponIcon(s.wid,cxZ,cy,26)){ ctx.fillStyle=s.ammo<=2?"#ff9a9a":"#eaf4ff"; ctx.font="bold 16px 'Malgun Gothic',sans-serif"; ctx.fillText(String(s.ammo), cxZ, cy+1); }
+  }
+  dockKeycap(cxZ, cy+R+4, "Z", false);
+
+  // ── X: 쿨타임 스윕 ──
+  dockBase(cxX,cy,R);
+  const xMax=Math.max(0.1, s.xcdMax||8), xLeft=clamp((s.xc||0)/xMax,0,1), xReady=(s.xc||0)<=0;
+  const glyph=SKILL_GLYPH_X[s.charId]||"X";
+  if(xReady){
+    const p=0.5+0.5*Math.sin(uiTime*6);
+    ctx.fillStyle="rgba(120,220,130,0.22)"; ctx.beginPath(); ctx.arc(cxX,cy,R,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle="rgba(160,255,170,"+(0.55+0.45*p)+")"; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(cxX,cy,R+1,0,Math.PI*2); ctx.stroke();
+    ctx.fillStyle="#bfffc8"; ctx.font="bold 19px 'Malgun Gothic',sans-serif"; ctx.fillText(glyph, cxX, cy+1);
+  } else {
+    // 준비된 만큼 시계방향으로 차오르는 부채꼴
+    ctx.fillStyle="rgba(120,220,130,0.20)";
+    ctx.beginPath(); ctx.moveTo(cxX,cy); ctx.arc(cxX,cy,R,-Math.PI/2,-Math.PI/2+Math.PI*2*(1-xLeft)); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle="#6fae77"; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(cxX,cy,R,-Math.PI/2,-Math.PI/2+Math.PI*2*(1-xLeft)); ctx.stroke();
+    ctx.globalAlpha=0.35; ctx.fillStyle="#bfffc8"; ctx.font="bold 19px 'Malgun Gothic',sans-serif"; ctx.fillText(glyph, cxX, cy-4); ctx.globalAlpha=1;
+    ctx.fillStyle="#dfe6ff"; ctx.font="bold 11px 'Malgun Gothic',sans-serif"; ctx.fillText((s.xc).toFixed(1), cxX, cy+11);
+  }
+  dockKeycap(cxX, cy+R+4, "X", xReady);
+
+  // ── C: 골드 게이지 링 ──
+  dockBase(cxC,cy,R);
+  const cRatio=clamp((s.sg||0)/(s.superMax||100),0,1), cReady=cRatio>=1;
+  ctx.strokeStyle="#2c3560"; ctx.lineWidth=5; ctx.beginPath(); ctx.arc(cxC,cy,R,0,Math.PI*2); ctx.stroke();
+  if(cRatio>0){
+    ctx.strokeStyle=cReady?"#ffd23f":"#e8b93a"; ctx.lineWidth=5;
+    ctx.beginPath(); ctx.arc(cxC,cy,R,-Math.PI/2,-Math.PI/2+Math.PI*2*cRatio); ctx.stroke();
+  }
+  if(cReady){
+    const p=0.5+0.5*Math.sin(uiTime*8);
+    ctx.strokeStyle="rgba(255,225,80,"+(0.4+0.6*p)+")"; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(cxC,cy,R+6,0,Math.PI*2); ctx.stroke();
+    ctx.fillStyle="#ffe066"; ctx.font="bold "+(18+Math.round(p*3))+"px 'Malgun Gothic',sans-serif"; ctx.fillText("★", cxC, cy+1);
+  } else {
+    ctx.fillStyle="#ffe066"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.fillText(Math.floor(cRatio*100)+"%", cxC, cy+1);
+  }
+  dockKeycap(cxC, cy+R+4, "C", cReady);
+  ctx.restore();
+}
+// 로컬 플레이의 내 전투 상태 → 스킬 독 공용 형식
+function localCombatStatus(){
+  if(!player || !player.char) return null;
+  const ch=player.char, w=getWeapon(player.weaponId||selectedWeaponId);
+  return { ammo:player.ammo, mag:magSizeOf(player), reloading:!!player.reloading,
+    reloadProg: player.reloading ? clamp(1-player.reloadTimer/Math.max(0.01,reloadTimeOf(player)),0,1) : null,
+    infAmmo:!usesAmmo(player), sg:superGauge, superMax:GAME_CONFIG.superCharge,
+    xc:Math.max(0,player.specialCd||0), xcdMax:(getAbility(ch.id).x||{}).cd||8,
+    superName:ch.ultName||ch.superName, specialName:ch.specialName||"", toolName:w?w.name:"",
+    charId:ch.id, wid:w?w.id:null };
+}
 let _hudLineFor=null, _hudLine="";   // 매치 정보 줄 캐시(MATCH가 바뀔 때만 재조립)
 function drawHUD(){
   const mode=MATCH.mode;
@@ -4653,37 +4782,12 @@ function drawHUD(){
 
   for(const f of allFighters()) drawRespawnCountdown(f);
 
-  // 하단 전투 HUD: Z 탄창 · X 쿨타임 · C 게이지 동시 표시(1280 기준 겹침 없음)
+  // QUALITY-SWEEP-1: 하단 스킬 독 — 텍스트 HUD → 게임식 아이콘 인디케이터(Z 탄창 링·X 쿨 스윕·C 골드 게이지)
   ctx.save();
   ctx.fillStyle="rgba(10,12,32,0.72)"; ctx.fillRect(0,656,LOGW,64);
-  const barY=676, barH=22;
-  // ── C 궁극기 게이지(왼쪽) ──
-  const cX=24, cW=210, ready=superGauge>=GAME_CONFIG.superCharge;
-  ctx.fillStyle="#cfd6f0"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.textAlign="left"; ctx.textBaseline="middle";
-  ctx.fillText("C 궁극기 · "+(player.char.ultName||player.char.superName||""), cX, 665);
-  ctx.fillStyle="rgba(0,0,0,0.5)"; roundRect(cX,barY,cW,barH,8); ctx.fill();
-  const ratio=clamp(superGauge/GAME_CONFIG.superCharge,0,1);
-  if(ready){ const p=0.5+0.5*Math.sin(uiTime*8); ctx.fillStyle="rgba(255,225,80,"+(0.7+p*0.3)+")"; } else ctx.fillStyle="#5fa0ff";
-  roundRect(cX,barY,cW*ratio,barH,8); ctx.fill();
-  ctx.strokeStyle=ready?"#fff3b0":"#7088c0"; ctx.lineWidth=ready?3:2; roundRect(cX,barY,cW,barH,8); ctx.stroke();
-  ctx.fillStyle=ready?"#ffe066":"#ffffff"; ctx.font="bold 12px 'Malgun Gothic',sans-serif";
-  ctx.fillText(ready?"C 사용 가능!":Math.floor(superGauge)+"%", cX+cW+8, barY+barH/2);
-  // ── X 특수기술 쿨타임 ──
-  const xX=340;
-  const xcd=Math.max(0,player.specialCd||0), xReady=xcd<=0;
-  ctx.fillStyle="#9fdc9f"; ctx.font="bold 13px 'Malgun Gothic',sans-serif";
-  ctx.fillText("X · "+(player.char.specialName||""), xX, 665);
-  ctx.font="bold 15px 'Malgun Gothic',sans-serif";
-  if(xReady){ const p=0.5+0.5*Math.sin(uiTime*6); ctx.fillStyle="rgba(160,255,160,"+(0.7+p*0.3)+")"; ctx.fillText("준비 완료", xX, barY+barH/2); }
-  else { ctx.fillStyle="#8893bb"; ctx.fillText("쿨타임 "+xcd.toFixed(1)+"초", xX, barY+barH/2); }
-  // ── Z 탄창(중앙) ──
-  ctx.textAlign="center"; ctx.font="bold 16px 'Malgun Gothic',sans-serif";
-  if(!usesAmmo(player)){ ctx.fillStyle="#ffe066"; ctx.fillText("Z 탄창 ∞ (무한 탄창)",640,barY+barH/2); }   // v1.21 럭키 패시브
-  else if(player.reloading){ const p=0.5+0.5*Math.sin(uiTime*10); ctx.fillStyle="rgba(255,210,77,"+(0.6+p*0.4)+")"; ctx.fillText("Z 장전 중…",640,barY+barH/2); }
-  else { ctx.fillStyle=(player.ammo<=2)?"#ff9a9a":"#cfeaff"; ctx.fillText("Z 탄창 "+player.ammo+" / "+magSizeOf(player)+"  (R 장전)",640,barY+barH/2); }
-  // ── 조작 안내(오른쪽) ──
-  ctx.textAlign="right"; ctx.fillStyle="#aab4e0"; ctx.font="bold 13px 'Malgun Gothic',sans-serif";
-  ctx.fillText("방향키 이동 · Z 기본공격 · X 특수기술 · C 궁극기 · R 장전 · P 일시정지",LOGW-20,barY+barH/2);
+  drawSkillDock(localCombatStatus());
+  ctx.textAlign="right"; ctx.fillStyle="#aab4e0"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.textBaseline="middle";
+  ctx.fillText("방향키 이동 · Z 공격 · X 기술 · C 궁극기 · R 장전 · P 일시정지",LOGW-20,688);
   ctx.restore();
 }
 function drawRespawnCountdown(f){
@@ -4950,8 +5054,11 @@ function drawEditorScreen(){
   if(ED.step==="mode"){
     ctx.fillStyle="#9fe0ff"; ctx.font="bold 40px 'Malgun Gothic',sans-serif"; ctx.fillText("🛠 맵공방", LOGW/2, 110);
     ctx.fillStyle="#aab4e0"; ctx.font="16px 'Malgun Gothic',sans-serif"; ctx.fillText("어떤 모드의 맵을 만들까요? (모드에 따라 배치 요소가 달라져요)", LOGW/2, 156);
-    for(let i=0;i<RULES.length;i++) drawButton(getRule(RULES[i].id).name+" — "+RULES[i].desc.slice(0,22), LOGW/2, 230+i*58, 560, 46, i===ED.modeIdx);
-    ctx.fillStyle="#8893bb"; ctx.font="14px 'Malgun Gothic',sans-serif"; ctx.fillText("↑↓ 선택 · Enter 다음 · Esc 로비", LOGW/2, 230+RULES.length*58+20);
+    // QUALITY-SWEEP-1 C-1: desc.slice(22) 하드컷이 문장을 자르던 문제 → 버튼은 모드명만, 설명은 선택된 모드 것을 아래 한 줄 전체 표시
+    for(let i=0;i<RULES.length;i++) drawButton(getRule(RULES[i].id).name, LOGW/2, 230+i*58, 360, 46, i===ED.modeIdx);
+    ctx.fillStyle="#9fe0ff"; ctx.font="bold 16px 'Malgun Gothic',sans-serif";
+    ctx.fillText(RULES[ED.modeIdx].desc, LOGW/2, 230+RULES.length*58+16);
+    ctx.fillStyle="#8893bb"; ctx.font="14px 'Malgun Gothic',sans-serif"; ctx.fillText("↑↓ 선택 · Enter 다음 · Esc 로비", LOGW/2, 230+RULES.length*58+48);
   } else if(ED.step==="size"){
     ctx.fillStyle="#9fe0ff"; ctx.font="bold 34px 'Malgun Gothic',sans-serif"; ctx.fillText("맵 크기", LOGW/2, 140);
     for(let i=0;i<ED_SIZES.length;i++) drawButton(ED_SIZES[i].name, LOGW/2, 230+i*58, 560, 46, i===ED.sizeIdx);
@@ -5602,6 +5709,7 @@ function drawOnlineFighter(d, isMe){
   if(vis.hidden){ drawBushRustle(d.x,d.y); return; }
   let alpha=vis.alpha;
   if(d.inv && Math.floor(uiTime*12)%2===0) alpha*=0.4;
+  drawTeamMarker(d.x, d.y, 22, isMe?"me":"enemy", alpha);   // 축11: 1대1도 발밑 마커
   if(isMe) drawSelfMarker(d.x,d.y,22);
   ctx.save(); ctx.globalAlpha=alpha; ctx.translate(d.x,d.y);
   if(!drawCharacterSprite(d.charId||"student_01", 22, d.facing||0, { moving:spriteMoving("O"+(isMe?"me":"op"),d.x,d.y), attacking:!!d.fr }))
@@ -5640,7 +5748,8 @@ function myCombatStatus(){
   const pack=(ch,ammo,reloading,sg,xc,lives)=>({ ammo:ammo, mag:(getWeapon(getWeaponForCharacter(ch.id)).magazineSize||GAME_CONFIG.magazineSize),
     reloading:reloading, sg:sg||0, superMax:sm, xc:Math.max(0,xc||0), lives:(lives===undefined||lives===null||lives<0)?null:lives,
     infAmmo:(ch.id==="student_01"),   // v1.21 럭키 패시브: HUD에 ∞ 표시
-    superName:ch.ultName||ch.superName, specialName:ch.specialName||"", charName:ch.name, toolName:getWeapon(getWeaponForCharacter(ch.id)).name });
+    superName:ch.ultName||ch.superName, specialName:ch.specialName||"", charName:ch.name, toolName:getWeapon(getWeaponForCharacter(ch.id)).name,
+    charId:ch.id, wid:getWeaponForCharacter(ch.id), xcdMax:(getAbility(ch.id).x||{}).cd||8 });   // QUALITY-SWEEP-1: 스킬 독용
   if(isTeamOnline()){
     const slot=OnlineManager.mySlot;
     if(OnlineManager.role==="host"){ const f=tFighters[slot]; if(!f)return null;
@@ -5657,34 +5766,14 @@ function myCombatStatus(){
     return pack(ch, p.am, !!p.rl, p.sg, p.xc);
   }
 }
-// 바닥 왼쪽에 탄창 + 궁극기 게이지 표시(온라인용)
+// 하단 스킬 독(온라인 공용) — QUALITY-SWEEP-1: 텍스트 → 아이콘 인디케이터. 좌측에 내 캐릭터·PVE 목숨만 텍스트 유지.
 function drawCombatStrip(){
   const s=myCombatStatus(); if(!s) return;
-  ctx.save(); ctx.textBaseline="middle";
-  const barX=24, barY=678, barW=190, barH=18, ready=s.sg>=s.superMax;
-  // 내 캐릭터/도구 이름(상단) + PVE 개인 목숨
-  ctx.textAlign="left"; ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#bfffad";
+  drawSkillDock(s);
+  ctx.save(); ctx.textAlign="left"; ctx.textBaseline="middle";
+  ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#bfffad";
   const livesTxt=(s.lives!==null&&s.lives!==undefined)?("  ♥ 내 목숨 "+s.lives):"";
-  ctx.fillText("나: "+(s.charName||"")+" · Z "+(s.toolName||"")+livesTxt, barX, 664);
-  // C 궁극기 게이지
-  ctx.fillStyle="rgba(0,0,0,0.5)"; roundRect(barX,barY,barW,barH,7); ctx.fill();
-  const ratio=clamp(s.sg/s.superMax,0,1);
-  if(ready){ const p=0.5+0.5*Math.sin(uiTime*8); ctx.fillStyle="rgba(255,225,80,"+(0.7+p*0.3)+")"; } else ctx.fillStyle="#5fa0ff";
-  roundRect(barX,barY,barW*ratio,barH,7); ctx.fill();
-  ctx.strokeStyle=ready?"#fff3b0":"#7088c0"; ctx.lineWidth=ready?3:2; roundRect(barX,barY,barW,barH,7); ctx.stroke();
-  ctx.fillStyle=ready?"#ffe066":"#8893bb"; ctx.font="bold 12px 'Malgun Gothic',sans-serif";
-  ctx.fillText(ready?"C 사용 가능!":("C "+Math.floor(s.sg)+"%"), barX+barW+8, barY+barH/2);
-  // X 특수기술 쿨타임
-  const xX=barX+barW+92;
-  ctx.font="bold 12px 'Malgun Gothic',sans-serif";
-  if(s.xc<=0){ const p=0.5+0.5*Math.sin(uiTime*6); ctx.fillStyle="rgba(160,255,160,"+(0.7+p*0.3)+")"; ctx.fillText("X 준비 완료", xX, barY+barH/2); }
-  else { ctx.fillStyle="#8893bb"; ctx.fillText("X "+s.xc.toFixed(1)+"초", xX, barY+barH/2); }
-  // Z 탄창
-  ctx.font="bold 14px 'Malgun Gothic',sans-serif";
-  if(s.infAmmo){ ctx.fillStyle="#ffe066"; ctx.fillText("Z 탄창 ∞", xX+92, barY+barH/2); }   // v1.21 럭키 무한 탄창
-  else if(s.ammo===undefined){ /* 봇/관전 */ }
-  else if(s.reloading){ const p=0.5+0.5*Math.sin(uiTime*10); ctx.fillStyle="rgba(255,210,77,"+(0.6+p*0.4)+")"; ctx.fillText("Z 장전 중…", xX+92, barY+barH/2); }
-  else { ctx.fillStyle=(s.ammo<=2)?"#ff9a9a":"#cfeaff"; ctx.fillText("Z 탄창 "+s.ammo+"/"+s.mag+" (R)", xX+92, barY+barH/2); }
+  ctx.fillText("나: "+(s.charName||"")+livesTxt, 24, 688);
   ctx.restore();
 }
 function drawOnlineHUD(data){
@@ -6324,10 +6413,11 @@ function tDrawFighter(d){
   const vis=bushVisibility(d.x,d.y, d.team, d.isMe, _viewer, !!d.fr);
   if(vis.hidden){ drawBushRustle(d.x,d.y); return; }
   let alpha=vis.alpha; if(d.inv && Math.floor(uiTime*12)%2===0) alpha*=0.4;
+  // 축11: 팀 색 원형 링(몸에 겹침) → 발밑 마커로 교체(나=금색·아군=파랑 실선·적=빨강 점선)
+  const _myTeam=_viewer?_viewer.team:null;
+  drawTeamMarker(d.x, d.y, 22, d.isMe?"me":((_myTeam && d.team===_myTeam)?"ally":"enemy"), alpha);
   if(d.isMe) drawSelfMarker(d.x,d.y,22);
   ctx.save(); ctx.globalAlpha=alpha; ctx.translate(d.x,d.y);
-  // 팀 색 링
-  ctx.strokeStyle=TEAM_COLOR[d.team]||"#fff"; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(0,0,28,0,Math.PI*2); ctx.stroke();
   if(!drawCharacterSprite(d.charId||"student_01", 22, d.facing||0, { moving:spriteMoving("T"+d.slot,d.x,d.y), attacking:!!d.fr }))
     drawPlayerCharacter({ r:22, color:ch.color, subColor:ch.subColor, facing:d.facing||0 });
   ctx.restore();
