@@ -1045,6 +1045,76 @@ const AccountStore = {
       if(a && a._pendingSync){ self.saveCloudStudent(a).then(function(ok){ if(ok){ delete a._pendingSync; saveAccounts(); } }); } });
   }
 };
+/* ============================================================
+   BIG-BATCH-2 P3 · 맵공방 클라우드 스토어 (D10)
+   경로: starArenaOnline/editorMaps/{classCode}/{pending|approved}/{id}
+   - 학급 전체 공유: A컴퓨터 제출 → B컴퓨터 교사 승인 → 전 클라이언트 부팅 시 반영
+   - 오프라인 폴백 = 기존 localStorage(editorMaps.v1). 병합은 클라우드 우선:
+     · 클라우드에 있는 레코드 = 그대로 채택(_synced 표시)
+     · 로컬에만 있고 _synced 아님 = 오프라인 신규 → 업로드
+     · 로컬에 있는데 _synced인데 클라우드에 없음 = 다른 기기에서 삭제됨 → 버림
+   - 개인정보 최소: 맵 데이터 + 작성자 닉네임 + 학급 코드만.
+   ============================================================ */
+let cloudMapStatus="로컬 전용";
+const MapStore = {
+  cloudReady(){ return !!(OnlineManager && OnlineManager.available && OnlineManager.db); },
+  _ref(){ return OnlineManager.db.ref("starArenaOnline/editorMaps/"+ADMIN_CONFIG.classCode); },
+  toRecord(r){
+    return { id:r.id, name:r.name||"", author:r.author||"", mode:r.mode||"tdm",
+      size:(r.size||[22,10]).slice(), floor:r.floor||"basic",
+      cellsLeft:(r.cellsLeft||[]).slice(), createdAt:r.createdAt||nowTs(),
+      disabled:!!r.disabled, updatedAt:nowTs() };
+  },
+  pushRec(kind, rec, cb){
+    if(!this.cloudReady()){ if(cb) cb(false); return; }
+    try{ this._ref().child(kind+"/"+rec.id).set(this.toRecord(rec)).then(function(){ if(cb) cb(true); }).catch(function(){ if(cb) cb(false); }); }
+    catch(e){ if(cb) cb(false); }
+  },
+  removeRec(kind, id, cb){
+    if(!this.cloudReady()){ if(cb) cb(false); return; }
+    try{ this._ref().child(kind+"/"+id).remove().then(function(){ if(cb) cb(true); }).catch(function(){ if(cb) cb(false); }); }
+    catch(e){ if(cb) cb(false); }
+  },
+  // 교사 액션 미러: 승인(pending→approved) / 거절·삭제 / 비활성 토글
+  mirrorApprove(rec){ const self=this; this.removeRec("pending", rec.id, null); this.pushRec("approved", rec, null); },
+  mirrorReject(id){ this.removeRec("pending", id, null); },
+  mirrorDelete(id){ this.removeRec("approved", id, null); },
+  mirrorDisable(rec){ this.pushRec("approved", rec, null); },
+  loadCloud(cb){
+    if(!this.cloudReady()){ cb(undefined); return; }
+    try{ this._ref().once("value").then(function(s){ cb(s.val()||{pending:{},approved:{}}); }).catch(function(){ cb(undefined); }); }
+    catch(e){ cb(undefined); }
+  },
+  sync(cb){
+    const self=this;
+    this.loadCloud(function(cloud){
+      if(cloud===undefined){ cloudMapStatus="오프라인 — 이 기기 목록"; if(cb) cb(false); return; }
+      const st=loadEditorStore();
+      const out={pending:[],approved:[]}, pushes=[];
+      for(const kind of ["pending","approved"]){
+        const cmap=cloud[kind]||{}, seen={};
+        for(const id in cmap){
+          const rec=cmap[id];
+          if(!rec || !rec.cellsLeft) continue;
+          rec._synced=true; out[kind].push(rec); seen[id]=true;
+        }
+        for(const rec of (st[kind]||[])){
+          if(seen[rec.id]) continue;
+          if(rec._synced) continue;                       // 다른 기기에서 삭제됨 → 버림(클라우드 우선)
+          out[kind].push(rec); pushes.push([kind, rec]);  // 오프라인 신규 → 업로드
+        }
+      }
+      saveEditorStore(out);
+      try{ applyApprovedMaps(); }catch(e){}
+      for(const [kind, rec] of pushes){
+        (function(k, r){ self.pushRec(k, r, function(ok){
+          if(ok){ const cur=loadEditorStore(); const hit=(cur[k]||[]).find(x=>x.id===r.id); if(hit){ hit._synced=true; saveEditorStore(cur); } } }); })(kind, rec);
+      }
+      cloudMapStatus="학급 맵공방 연결됨 (승인 "+out.approved.length+" · 대기 "+out.pending.length+")";
+      if(cb) cb(true, out);
+    });
+  }
+};
 // 진행도/계정 변경을 클라우드에 밀어넣기(불가하면 pending)
 function pushCloudOrPending(id){
   if(!accounts||!accounts.students[id]) return;
@@ -1060,6 +1130,7 @@ function onCloudAccountsReady(){
     AccountStore.flushPending();
     const l=studentList(); if((!adminSelId||!accounts.students[adminSelId]) && l[0]) adminSelId=l[0].id;
   });
+  try{ MapStore.sync(); }catch(e){}   // BIG-BATCH-2 P3: 부팅 시 학급 맵공방 동기화(D10)
 }
 // 클라우드 우선 학생 로그인(비동기). 실패 유형별 메시지 분리.
 function studentLoginCloud(id, pin, cb){
@@ -3329,10 +3400,14 @@ function edSubmit(){
   if(!name) return; name=(""+name).trim().slice(0,10);
   if(name.length<2){ ED.msg="⚠ 이름은 2자 이상"; return; }
   const st=loadEditorStore();
-  st.pending.push({ id:"ed_"+Date.now().toString(36)+Math.floor(Math.random()*100),
+  const rec={ id:"ed_"+Date.now().toString(36)+Math.floor(Math.random()*100),
     name:name, author:profile.nickname||"", mode:ED.mode, size:[ED.cols,ED.rows],
-    floor:FLOOR_THEME_LIST[ED.floorIdx], cellsLeft:ED.cells.map(row=>row.join("")), createdAt:Date.now() });
+    floor:FLOOR_THEME_LIST[ED.floorIdx], cellsLeft:ED.cells.map(row=>row.join("")), createdAt:Date.now() };
+  st.pending.push(rec);
   saveEditorStore(st);
+  // BIG-BATCH-2 P3: 학급 클라우드에도 제출(오프라인이면 다음 부팅 동기화 때 업로드)
+  try{ MapStore.pushRec("pending", rec, function(ok){
+    if(ok){ const cur=loadEditorStore(); const hit=cur.pending.find(x=>x.id===rec.id); if(hit){ hit._synced=true; saveEditorStore(cur); } } }); }catch(e){}
   edClearDraft();                                          // C8: 제출 성공 → 초안 정리
   showToast("제출 완료! 선생님 승인을 기다려요 🛠");
   goToStartScreen();
@@ -3418,20 +3493,25 @@ function handleMapReviewKey(code){
   if(it.kind==="pending"){
     if(code==="Enter"||code==="NumpadEnter"){                 // 승인 → 게임 맵 목록에 반영
       const i=st.pending.indexOf(it.rec); st.pending.splice(i,1);
+      it.rec._synced=true;
       st.approved.push(it.rec); saveEditorStore(st); applyApprovedMaps();
+      try{ MapStore.mirrorApprove(it.rec); }catch(e){}        // P3: 클라우드 반영(전 클라이언트 공유)
       showToast("승인: "+it.rec.name+(it.rec.size[0]===22?" — 맵 목록에 추가됨":" — 대형(카메라 후속)"));
     } else if(code==="KeyX"||code==="Delete"){                // 거절(삭제)
       const i=st.pending.indexOf(it.rec); st.pending.splice(i,1);
       saveEditorStore(st); showToast("거절: "+it.rec.name);
+      try{ MapStore.mirrorReject(it.rec.id); }catch(e){}
     } else return;
   } else {
     if(code==="KeyX"||code==="Delete"){                       // 승인 취소(완전 삭제 — 맵 목록에서 즉시 내려감)
       const i=st.approved.indexOf(it.rec); st.approved.splice(i,1);
       saveEditorStore(st); applyApprovedMaps();
+      try{ MapStore.mirrorDelete(it.rec.id); }catch(e){}
       showToast("삭제: "+it.rec.name+" — 맵 목록에서 내려감");
     } else if(code==="KeyD"){                                 // 비활성/활성 토글(기록은 보존, 목록에서만 내림)
       it.rec.disabled=!it.rec.disabled;
       saveEditorStore(st); applyApprovedMaps();
+      try{ MapStore.mirrorDisable(it.rec); }catch(e){}
       showToast((it.rec.disabled?"⏸ 비활성: ":"▶ 활성: ")+it.rec.name);
     } else return;
   }
@@ -3522,7 +3602,7 @@ function handleAdminKey(code){
   if(code==="KeyX"||code==="Delete"){ adminDeleteStudent(); return; } // 계정 삭제
   if(code==="KeyS"){ adminRefreshFromCloud(); return; }         // 클라우드 새로고침
   if(code==="KeyM"){ adminMigrateLocal(); return; }             // 로컬 계정 클라우드 이전
-  if(code==="KeyG"){ reviewIdx=0; gameState=STATE.MAP_REVIEW; return; }   // OVERNIGHT-1: 학생 맵 승인
+  if(code==="KeyG"){ reviewIdx=0; gameState=STATE.MAP_REVIEW; try{ MapStore.sync(); }catch(e){} return; }   // OVERNIGHT-1: 학생 맵 승인 + P3: 열 때 클라우드 동기화
   if(code==="KeyB"){ BAL.cat=0; BAL.idx=0; BAL.scroll=0; BAL.edit=null; BAL.confirmReset=0; gameState=STATE.BALANCE; return; }   // BALANCE-1: 밸런스 조정
 }
 function adminCreateStudent(){
@@ -6986,6 +7066,8 @@ function drawMapReviewScreen(){
   ctx.fillStyle="#c79bff"; ctx.font="bold 34px 'Malgun Gothic',sans-serif"; ctx.fillText("🛠 학생 맵 승인 (교사)", LOGW/2, 70);
   ctx.fillStyle="#b0a0d0"; ctx.font="14px 'Malgun Gothic',sans-serif";
   ctx.fillText("승인하면 게임 맵 목록에 추가돼요 · 승인된 맵은 D 비활성 / X 삭제로 관리(BIG-BATCH-1)", LOGW/2, 102);
+  ctx.fillStyle=cloudMapStatus.indexOf("연결됨")>=0?"#7dffb0":"#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
+  ctx.fillText("☁ "+cloudMapStatus+" — 승인/삭제는 학급 전체에 반영돼요", LOGW/2, 124);   // BIG-BATCH-2 P3
   const list=reviewList(st);
   if(!list.length){
     ctx.fillStyle="#dfe6ff"; ctx.font="bold 20px 'Malgun Gothic',sans-serif"; ctx.fillText("제출/승인된 맵이 없습니다", LOGW/2, LOGH/2);
