@@ -48,7 +48,7 @@ run("필드 규모·유일성·범위", ()=>{
     if(!(f.min<f.max)) bad++;
     if(!(f.def>=f.min-1e-9 && f.def<=f.max+1e-9)) { bad++; console.log("    범위 밖 def:", f.id, f.def, f.min, f.max); }
   }
-  check("분류 10종(+캠페인·별빛 점프)", reg.cats.length===10);
+  check("분류 11종(+캠페인·별빛 점프·별빛 마을 RPG)", reg.cats.length===11);
   check("필드 120개 이상 ("+n+"개)", n>=120);
   check("id 중복·범위 오류 0건", bad===0);
 });

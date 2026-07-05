@@ -1,0 +1,769 @@
+{
+ "_about": "별빛 마을 RPG 챕터1 맵 도면 10장 — RPG모드_PRD.md §2(목록·크기)·§7.1(map 스키마) 단일 출처. 좌표계: tx=열, ty=행, 원점=좌상단(0,0).",
+ "_legend": {
+  "T": {
+   "name": "벽/나무",
+   "passable": false
+  },
+  ".": {
+   "name": "길/맨땅",
+   "passable": true
+  },
+  "~": {
+   "name": "물",
+   "passable": false
+  },
+  "f": {
+   "name": "밭(경작지)",
+   "passable": true
+  },
+  "m": {
+   "name": "몬스터 스폰",
+   "passable": true
+  },
+  "*": {
+   "name": "플레이어 스폰",
+   "passable": true
+  },
+  "B": {
+   "name": "건물 footprint",
+   "passable": false
+  },
+  "N": {
+   "name": "NPC 앵커",
+   "passable": true
+  },
+  "W": {
+   "name": "우물(부활 지점)",
+   "passable": false
+  },
+  "G": {
+   "name": "게시판",
+   "passable": false
+  },
+  "V": {
+   "name": "별광맥",
+   "passable": false
+  },
+  "E": {
+   "name": "빈 부지(학생 건물 슬롯)",
+   "passable": true
+  },
+  "b": {
+   "name": "침대(취침=저장+날짜)",
+   "passable": false
+  },
+  "c": {
+   "name": "상자/진열대",
+   "passable": false
+  },
+  "D": {
+   "name": "잠긴 지하실 문(여백)",
+   "passable": false
+  },
+  "C": {
+   "name": "상점 카운터",
+   "passable": false
+  },
+  "A": {
+   "name": "모루(제작·강화)",
+   "passable": false
+  },
+  "t": {
+   "name": "야영지(텐트·모닥불)",
+   "passable": false
+  },
+  "e": {
+   "name": "알(보스방 연출)",
+   "passable": false
+  },
+  "1": {
+   "name": "포탈 앵커",
+   "passable": true
+  },
+  "2": {
+   "name": "포탈 앵커",
+   "passable": true
+  },
+  "3": {
+   "name": "포탈 앵커",
+   "passable": true
+  },
+  "4": {
+   "name": "포탈 앵커",
+   "passable": true
+  },
+  "5": {
+   "name": "포탈 앵커",
+   "passable": true
+  }
+ },
+ "_notes": {
+  "포탈_규약": "포탈 도착 칸은 상대 포탈 앵커 '앞'의 통행 칸(도착 즉시 재워프 방지). 역방향 포탈은 전 짝 존재.",
+  "스폰_규약": "monsters[]는 상시 리스폰 배치. 퀘스트 스폰(mq02 밭 습격·mq05 간부 보슬보슬·mq06 방어 웨이브)은 퀘스트 엔진 소관이라 도면에 없음.",
+  "NPC_규약": "N 칸은 통행 가능으로 정의(런타임엔 NPC가 점유·충돌 처리). 배치 좌표는 map이 단일 출처(§7.1 — npc 테이블에 좌표 없음).",
+  "rpg_village": "확장 밭 8×5=40칸 예정지 = (3,10)~(10,14), 기존 12칸 포함(mq06 후 200G 구매 시 f로 전환). E 빈 부지 2곳=(21~24,12~13)·(29~31,3~4). V=별광맥(mq06 방어전 무대), G=게시판, W=우물(부활).",
+  "rpg_home": "D=잠긴 지하실 문(여백②). 화덕은 챕터2라 미배치.",
+  "rpg_field1": "t=mq05 야영지. 초급 몬스터 8스폰(젤리3·뿔깡총2·씨앗총사2·가시딱지1).",
+  "rpg_field2": "B 구역=먹구름 요새 외벽(접경), '2'=요새 정문. 개울 다리는 (20~21,10~11). 중급 7스폰(부슬이3·부엉이2·그늘조각2).",
+  "rpg_den2": "c=훔친 별빛 상자(수집방 연출).",
+  "rpg_den3": "e=알(여백①). 보스 뭉게대왕 단독(isBoss — 버짓 면제·교사 검수)."
+ },
+ "maps": [
+  {
+   "id": "rpg_village",
+   "name": "별마중 마을",
+   "w": 36,
+   "h": 16,
+   "theme": "village_meadow",
+   "rows": [
+    "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+    "T..................................T",
+    "T..BBBBB.TT..BBBBB.TT..BBBBB.T.....T",
+    "T..BBBBB.....BBBBB.....BBBBB.EEE...T",
+    "T..BB1BB.....BB2BB.....BB3BB.EEE...T",
+    "T..................................T",
+    "T...............G..................T",
+    "T..BBBBB............N..............5",
+    "T..BBBBB....*.....W................5",
+    "T..BB4BB..................N........T",
+    "T..................................T",
+    "T..ffff....N.......................T",
+    "T..ffff.......TT.....EEEE....VVV...T",
+    "T..ffff..............EEEE.....V....T",
+    "T..................................T",
+    "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT"
+   ],
+   "portals": [
+    {
+     "tx": 5,
+     "ty": 4,
+     "to": {
+      "mapId": "rpg_home",
+      "tx": 11,
+      "ty": 8
+     }
+    },
+    {
+     "tx": 15,
+     "ty": 4,
+     "to": {
+      "mapId": "rpg_store",
+      "tx": 11,
+      "ty": 8
+     }
+    },
+    {
+     "tx": 25,
+     "ty": 4,
+     "to": {
+      "mapId": "rpg_smith",
+      "tx": 11,
+      "ty": 8
+     }
+    },
+    {
+     "tx": 5,
+     "ty": 9,
+     "to": {
+      "mapId": "rpg_chief",
+      "tx": 11,
+      "ty": 8
+     }
+    },
+    {
+     "tx": 35,
+     "ty": 7,
+     "to": {
+      "mapId": "rpg_field1",
+      "tx": 2,
+      "ty": 7
+     }
+    },
+    {
+     "tx": 35,
+     "ty": 8,
+     "to": {
+      "mapId": "rpg_field1",
+      "tx": 2,
+      "ty": 8
+     }
+    }
+   ],
+   "npcs": [
+    {
+     "npcId": "npc_leaf",
+     "tx": 11,
+     "ty": 11
+    },
+    {
+     "npcId": "npc_pico",
+     "tx": 20,
+     "ty": 7
+    },
+    {
+     "npcId": "npc_meonbyeol",
+     "tx": 26,
+     "ty": 9
+    }
+   ],
+   "monsters": [],
+   "soil": [
+    {
+     "tx": 3,
+     "ty": 11
+    },
+    {
+     "tx": 4,
+     "ty": 11
+    },
+    {
+     "tx": 5,
+     "ty": 11
+    },
+    {
+     "tx": 6,
+     "ty": 11
+    },
+    {
+     "tx": 3,
+     "ty": 12
+    },
+    {
+     "tx": 4,
+     "ty": 12
+    },
+    {
+     "tx": 5,
+     "ty": 12
+    },
+    {
+     "tx": 6,
+     "ty": 12
+    },
+    {
+     "tx": 3,
+     "ty": 13
+    },
+    {
+     "tx": 4,
+     "ty": 13
+    },
+    {
+     "tx": 5,
+     "ty": 13
+    },
+    {
+     "tx": 6,
+     "ty": 13
+    }
+   ]
+  },
+  {
+   "id": "rpg_home",
+   "name": "할머니의 농가",
+   "w": 22,
+   "h": 10,
+   "theme": "indoor_wood",
+   "rows": [
+    "TTTTTTTTTTTTTTTTTTTTTT",
+    "T.................D..T",
+    "T.bb...c.............T",
+    "T....................T",
+    "T....................T",
+    "T....................T",
+    "T....................T",
+    "T....................T",
+    "T....................T",
+    "TTTTTTTTTTT1TTTTTTTTTT"
+   ],
+   "portals": [
+    {
+     "tx": 11,
+     "ty": 9,
+     "to": {
+      "mapId": "rpg_village",
+      "tx": 5,
+      "ty": 5
+     }
+    }
+   ],
+   "npcs": [],
+   "monsters": [],
+   "soil": []
+  },
+  {
+   "id": "rpg_store",
+   "name": "잡화점",
+   "w": 22,
+   "h": 10,
+   "theme": "indoor_wood",
+   "rows": [
+    "TTTTTTTTTTTTTTTTTTTTTT",
+    "T.ccc............ccc.T",
+    "T.........N..........T",
+    "T.......CCCCCC.......T",
+    "T....................T",
+    "T....................T",
+    "T....................T",
+    "T....................T",
+    "T....................T",
+    "TTTTTTTTTTT1TTTTTTTTTT"
+   ],
+   "portals": [
+    {
+     "tx": 11,
+     "ty": 9,
+     "to": {
+      "mapId": "rpg_village",
+      "tx": 15,
+      "ty": 5
+     }
+    }
+   ],
+   "npcs": [
+    {
+     "npcId": "npc_momo",
+     "tx": 10,
+     "ty": 2
+    }
+   ],
+   "monsters": [],
+   "soil": []
+  },
+  {
+   "id": "rpg_smith",
+   "name": "대장간",
+   "w": 22,
+   "h": 10,
+   "theme": "indoor_wood",
+   "rows": [
+    "TTTTTTTTTTTTTTTTTTTTTT",
+    "T....................T",
+    "T................cc..T",
+    "T.........A.N........T",
+    "T....................T",
+    "T....................T",
+    "T....................T",
+    "T....................T",
+    "T....................T",
+    "TTTTTTTTTTT1TTTTTTTTTT"
+   ],
+   "portals": [
+    {
+     "tx": 11,
+     "ty": 9,
+     "to": {
+      "mapId": "rpg_village",
+      "tx": 25,
+      "ty": 5
+     }
+    }
+   ],
+   "npcs": [
+    {
+     "npcId": "npc_bolt",
+     "tx": 12,
+     "ty": 3
+    }
+   ],
+   "monsters": [],
+   "soil": []
+  },
+  {
+   "id": "rpg_chief",
+   "name": "촌장집",
+   "w": 22,
+   "h": 10,
+   "theme": "indoor_wood",
+   "rows": [
+    "TTTTTTTTTTTTTTTTTTTTTT",
+    "T.cc.................T",
+    "T....................T",
+    "T..........N.........T",
+    "T....................T",
+    "T....................T",
+    "T....................T",
+    "T....................T",
+    "T....................T",
+    "TTTTTTTTTTT1TTTTTTTTTT"
+   ],
+   "portals": [
+    {
+     "tx": 11,
+     "ty": 9,
+     "to": {
+      "mapId": "rpg_village",
+      "tx": 5,
+      "ty": 10
+     }
+    }
+   ],
+   "npcs": [
+    {
+     "npcId": "npc_onbyeol",
+     "tx": 11,
+     "ty": 3
+    }
+   ],
+   "monsters": [],
+   "soil": []
+  },
+  {
+   "id": "rpg_field1",
+   "name": "이슬별 들판",
+   "w": 36,
+   "h": 16,
+   "theme": "field_dew",
+   "rows": [
+    "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+    "T..................................T",
+    "T..................................T",
+    "T....TT....................tt......T",
+    "T....T..........m.............TT...T",
+    "T......m...........................T",
+    "T.................TT...............T",
+    "1..................................2",
+    "1..............T..............m....2",
+    "T...........m......................T",
+    "T.......~~~~............m..........T",
+    "T.......~~~~..........TT...........T",
+    "T.......~~~~........m.......m......T",
+    "T.............m....................T",
+    "T..................................T",
+    "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT"
+   ],
+   "portals": [
+    {
+     "tx": 0,
+     "ty": 7,
+     "to": {
+      "mapId": "rpg_village",
+      "tx": 33,
+      "ty": 7
+     }
+    },
+    {
+     "tx": 0,
+     "ty": 8,
+     "to": {
+      "mapId": "rpg_village",
+      "tx": 33,
+      "ty": 8
+     }
+    },
+    {
+     "tx": 35,
+     "ty": 7,
+     "to": {
+      "mapId": "rpg_field2",
+      "tx": 2,
+      "ty": 10
+     }
+    },
+    {
+     "tx": 35,
+     "ty": 8,
+     "to": {
+      "mapId": "rpg_field2",
+      "tx": 2,
+      "ty": 11
+     }
+    }
+   ],
+   "npcs": [],
+   "monsters": [
+    {
+     "monsterId": "mon_jelly",
+     "tx": 7,
+     "ty": 5
+    },
+    {
+     "monsterId": "mon_jelly",
+     "tx": 12,
+     "ty": 9
+    },
+    {
+     "monsterId": "mon_jelly",
+     "tx": 20,
+     "ty": 12
+    },
+    {
+     "monsterId": "mon_hopper",
+     "tx": 16,
+     "ty": 4
+    },
+    {
+     "monsterId": "mon_hopper",
+     "tx": 24,
+     "ty": 10
+    },
+    {
+     "monsterId": "mon_seedgunner",
+     "tx": 14,
+     "ty": 13
+    },
+    {
+     "monsterId": "mon_seedgunner",
+     "tx": 28,
+     "ty": 12
+    },
+    {
+     "monsterId": "mon_thornback",
+     "tx": 30,
+     "ty": 8
+    }
+   ],
+   "soil": []
+  },
+  {
+   "id": "rpg_field2",
+   "name": "가랑비 숲길",
+   "w": 48,
+   "h": 22,
+   "theme": "forest_rain",
+   "rows": [
+    "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+    "T...................~~.........................T",
+    "T...................~~................BBBBBBBBBT",
+    "T...................~~..TT............BBBBBBBBBT",
+    "T.......TT..........~~................BBBBBBBBBT",
+    "T.......T...........~~....m...........BBBBBBBBBT",
+    "T...................~~................BBBB2BBBBT",
+    "T...................~~.........................T",
+    "T.............TT....~~............m............T",
+    "T...................~~....TT...................T",
+    "1..............................................T",
+    "1..............................................T",
+    "T...................~~..............TT..m......T",
+    "T...................~~.........................T",
+    "T...................~~........m................T",
+    "T...................~~...........TT............T",
+    "T............m......~~.........................T",
+    "T...................~~......................m..T",
+    "T.........TT........~~......m..................T",
+    "T...................~~.........................T",
+    "T...................~~.........................T",
+    "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT"
+   ],
+   "portals": [
+    {
+     "tx": 0,
+     "ty": 10,
+     "to": {
+      "mapId": "rpg_field1",
+      "tx": 33,
+      "ty": 7
+     }
+    },
+    {
+     "tx": 0,
+     "ty": 11,
+     "to": {
+      "mapId": "rpg_field1",
+      "tx": 33,
+      "ty": 8
+     }
+    },
+    {
+     "tx": 42,
+     "ty": 6,
+     "to": {
+      "mapId": "rpg_den1",
+      "tx": 11,
+      "ty": 8
+     }
+    }
+   ],
+   "npcs": [],
+   "monsters": [
+    {
+     "monsterId": "mon_drizzler",
+     "tx": 26,
+     "ty": 5
+    },
+    {
+     "monsterId": "mon_drizzler",
+     "tx": 30,
+     "ty": 14
+    },
+    {
+     "monsterId": "mon_drizzler",
+     "tx": 13,
+     "ty": 16
+    },
+    {
+     "monsterId": "mon_moonowl",
+     "tx": 34,
+     "ty": 8
+    },
+    {
+     "monsterId": "mon_moonowl",
+     "tx": 28,
+     "ty": 18
+    },
+    {
+     "monsterId": "mon_shadeshard",
+     "tx": 40,
+     "ty": 12
+    },
+    {
+     "monsterId": "mon_shadeshard",
+     "tx": 44,
+     "ty": 17
+    }
+   ],
+   "soil": []
+  },
+  {
+   "id": "rpg_den1",
+   "name": "먹구름 요새 1번 방(전투)",
+   "w": 22,
+   "h": 10,
+   "theme": "den_cloud",
+   "rows": [
+    "TTTTTTTTTTTTTTTTTTTTTT",
+    "T....................T",
+    "T....T..........T....T",
+    "T.....m..............T",
+    "T..........m.........2",
+    "T....................T",
+    "T..............m.....T",
+    "T....T..........T....T",
+    "T....................T",
+    "TTTTTTTTTTT1TTTTTTTTTT"
+   ],
+   "portals": [
+    {
+     "tx": 11,
+     "ty": 9,
+     "to": {
+      "mapId": "rpg_field2",
+      "tx": 42,
+      "ty": 7
+     }
+    },
+    {
+     "tx": 21,
+     "ty": 4,
+     "to": {
+      "mapId": "rpg_den2",
+      "tx": 2,
+      "ty": 4
+     }
+    }
+   ],
+   "npcs": [],
+   "monsters": [
+    {
+     "monsterId": "mon_drizzler",
+     "tx": 6,
+     "ty": 3
+    },
+    {
+     "monsterId": "mon_drizzler",
+     "tx": 15,
+     "ty": 6
+    },
+    {
+     "monsterId": "mon_shadeshard",
+     "tx": 11,
+     "ty": 4
+    }
+   ],
+   "soil": []
+  },
+  {
+   "id": "rpg_den2",
+   "name": "먹구름 요새 2번 방(수집)",
+   "w": 22,
+   "h": 10,
+   "theme": "den_cloud",
+   "rows": [
+    "TTTTTTTTTTTTTTTTTTTTTT",
+    "T....................T",
+    "T....c........c......T",
+    "T......m.............T",
+    "1....................T",
+    "T....................2",
+    "T...........m....c...T",
+    "T..~~...c............T",
+    "T....................T",
+    "TTTTTTTTTTTTTTTTTTTTTT"
+   ],
+   "portals": [
+    {
+     "tx": 0,
+     "ty": 4,
+     "to": {
+      "mapId": "rpg_den1",
+      "tx": 19,
+      "ty": 4
+     }
+    },
+    {
+     "tx": 21,
+     "ty": 5,
+     "to": {
+      "mapId": "rpg_den3",
+      "tx": 2,
+      "ty": 5
+     }
+    }
+   ],
+   "npcs": [],
+   "monsters": [
+    {
+     "monsterId": "mon_drizzler",
+     "tx": 7,
+     "ty": 3
+    },
+    {
+     "monsterId": "mon_shadeshard",
+     "tx": 12,
+     "ty": 6
+    }
+   ],
+   "soil": []
+  },
+  {
+   "id": "rpg_den3",
+   "name": "먹구름 요새 3번 방(보스)",
+   "w": 22,
+   "h": 10,
+   "theme": "den_cloud",
+   "rows": [
+    "TTTTTTTTTTTTTTTTTTTTTT",
+    "T....................T",
+    "T.............T......T",
+    "T....................T",
+    "T................e...T",
+    "1...........m........T",
+    "T....................T",
+    "T.............T......T",
+    "T....................T",
+    "TTTTTTTTTTTTTTTTTTTTTT"
+   ],
+   "portals": [
+    {
+     "tx": 0,
+     "ty": 5,
+     "to": {
+      "mapId": "rpg_den2",
+      "tx": 19,
+      "ty": 5
+     }
+    }
+   ],
+   "npcs": [],
+   "monsters": [
+    {
+     "monsterId": "mon_cloudking",
+     "tx": 12,
+     "ty": 5
+    }
+   ],
+   "soil": []
+  }
+ ]
+}

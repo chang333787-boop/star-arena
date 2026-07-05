@@ -1,0 +1,275 @@
+{
+  "_meta": {
+    "schema": "RPG_DB",
+    "version": "1.0.0",
+    "source": "RPG모드_PRD.md v1.0 (§3.1·§4.2~4.6·§5.3·§5.5·§6·§7.1·§7.5)",
+    "date": "2026-07-05",
+    "excluded": {
+      "maps": "별도 에이전트 담당 — 빈 배열 자리만 유지 (habitat·portals 참조 검증은 맵 병합 후)",
+      "dialog": "별도 에이전트 담당 — npcs.dialog는 빈 배열, quests.dialogStart/dialogEnd/nextHint는 빈 문자열"
+    },
+    "conventions": [
+      "monsters.asset = 팔레트 스왑 대상 기존 에셋 id (index.html PVE_ENEMY_TYPES 실측 키)",
+      "뿔깡총 speed=70은 시간가중 평균(0↔240, patternArgs.hopTime 0.35s/restTime 0.85s → 240×0.35/1.2=70) — §7.5 버짓 산정 규칙",
+      "reward.itemId가 crop id면 '그 작물의 씨앗' 지급(리프 상점의 crop itemRef와 동일 관례), itemCount는 수량 확장 필드",
+      "칭호 '별빛 수호자'는 mq07 reward.title(확장 필드) — 아이템 아님. 보스 드랍은 골드만",
+      "unlocks[] = 완료 시 열리는 플래그/콘텐츠(대장간 개방·전직·작물 해금·밭 확장·할인권 등) 확장 필드",
+      "mq03·sq01의 collect 대상(별조각 가루)은 이벤트 픽업 스폰으로 공급(부슬이 상시 드랍과 동일 아이템) — 티어2 진입 강요 없음",
+      "mq07 requires에 sq02(콩 배달 대작전) 포함 = '원정 도시락(별방울 콩×3 납품)' 게이트(교차점 2)의 데이터 구현",
+      "반짝 부메랑은 weapons.craft(낡은 부메랑+별조각×3, inheritEnhance=강화 승계)로 제작 — mq06 보상이 재료를 선지급(순환 의존 해소)"
+    ]
+  },
+  "monsters": [
+    {
+      "id": "mob_jelly", "name": "그림자 젤리", "asset": "soft_jelly",
+      "hp": 15, "atk": 4, "speed": 100,
+      "pattern": ["chase"], "patternArgs": {},
+      "exp": 6, "gold": [2, 4],
+      "drops": [{ "itemId": "it_jelly_bit", "chance": 0.5 }],
+      "habitat": ["rpg_field1"], "tier": 1, "isBoss": false, "phases": null
+    },
+    {
+      "id": "mob_hornhop", "name": "뿔깡총", "asset": "bounce_bubble",
+      "hp": 26, "atk": 6, "speed": 70,
+      "pattern": ["hop"], "patternArgs": { "hopSpeed": 240, "hopTime": 0.35, "restTime": 0.85 },
+      "exp": 8, "gold": [3, 6],
+      "drops": [{ "itemId": "it_horn_piece", "chance": 0.3 }],
+      "habitat": ["rpg_field1"], "tier": 1, "isBoss": false, "phases": null
+    },
+    {
+      "id": "mob_seedgunner", "name": "씨앗총사", "asset": "paper_drone",
+      "hp": 22, "atk": 5, "speed": 0,
+      "pattern": ["turret"], "patternArgs": { "fireCd": 1.5, "bulletSpeed": 220, "range": 330 },
+      "exp": 8, "gold": [3, 6],
+      "drops": [{ "itemId": "it_seed_bundle", "chance": 0.4 }],
+      "habitat": ["rpg_field1"], "tier": 1, "isBoss": false, "phases": null
+    },
+    {
+      "id": "mob_thorn", "name": "가시딱지", "asset": "shield_block",
+      "hp": 60, "atk": 7, "speed": 70,
+      "pattern": ["chase", "frontGuard"], "patternArgs": { "guardDeg": 120, "guardReduce": 0.6 },
+      "exp": 12, "gold": [6, 10],
+      "drops": [{ "itemId": "it_thorn_shell", "chance": 0.35 }],
+      "habitat": ["rpg_field1"], "tier": 1, "isBoss": false, "phases": null
+    },
+    {
+      "id": "mob_busuri", "name": "부슬이", "asset": "star_bug",
+      "hp": 38, "atk": 8, "speed": 150,
+      "pattern": ["dash"], "patternArgs": { "warn": 0.7, "dashSpeed": 420, "dashCd": 3 },
+      "exp": 11, "gold": [5, 9],
+      "drops": [{ "itemId": "it_stardust_powder", "chance": 0.3 }],
+      "habitat": ["rpg_field2"], "tier": 2, "isBoss": false, "phases": null
+    },
+    {
+      "id": "mob_moonowl", "name": "달빛 부엉이", "asset": "cloud_ghost",
+      "hp": 48, "atk": 6, "speed": 115,
+      "pattern": ["ghost", "fan"], "patternArgs": { "fanCount": 3, "fanDeg": 40, "fireCd": 2.2, "bulletSpeed": 300 },
+      "exp": 14, "gold": [8, 12],
+      "drops": [{ "itemId": "it_moon_feather", "chance": 0.25 }],
+      "habitat": ["rpg_field2"], "tier": 2, "isBoss": false, "phases": null
+    },
+    {
+      "id": "mob_shade", "name": "그늘 조각", "asset": "cushion_block",
+      "hp": 110, "atk": 8, "speed": 130,
+      "pattern": ["chase", "blink"], "patternArgs": { "blinkCd": 3, "blinkDist": 160 },
+      "exp": 28, "gold": [15, 25],
+      "drops": [
+        { "itemId": "wp_toy_starbow", "chance": 0.15 },
+        { "itemId": "ar_wind_brooch", "chance": 0.2 }
+      ],
+      "habitat": ["rpg_field2", "rpg_den1", "rpg_den2"], "tier": 2, "isBoss": false, "elite": true, "phases": null
+    },
+    {
+      "id": "mob_boss_munge", "name": "뭉게대왕", "asset": "boss_king",
+      "hp": 900, "atk": 12, "speed": 95,
+      "pattern": ["fan"], "patternArgs": { "bulletDmg": 8, "dashDmg": 12, "fanCount": 5, "fanDeg": 50, "warn": 0.7 },
+      "exp": 150, "gold": [100, 100],
+      "drops": [],
+      "habitat": ["rpg_den3"], "tier": 3, "isBoss": true,
+      "phases": [
+        { "hpAbove": 0.66, "patterns": ["fan"], "summon": { "monsterId": "mob_busuri", "count": 2, "cd": 12 } },
+        { "hpAbove": 0.33, "patterns": ["fan", "dash"], "summon": { "monsterId": "mob_busuri", "count": 2, "cd": 15 } },
+        { "hpAbove": 0.0, "patterns": ["fan", "dash", "cloudVeil"], "summon": null }
+      ]
+    }
+  ],
+  "weapons": [
+    { "id": "wp_fist", "name": "맨손", "kind": "melee", "dmg": 5, "cd": 0.5, "range": 60, "arcDeg": 90, "bulletSpeed": 0, "levelReq": 1, "price": 0, "source": "start" },
+    { "id": "wp_hoe", "name": "호미", "kind": "melee", "dmg": 9, "cd": 0.6, "range": 80, "arcDeg": 90, "bulletSpeed": 0, "levelReq": 1, "price": 0, "source": "mq01" },
+    { "id": "wp_old_boomerang", "name": "낡은 부메랑", "kind": "boomerang", "dmg": 7, "returnDmg": 7, "cd": 0.7, "range": 300, "arcDeg": 0, "bulletSpeed": 320, "levelReq": 3, "price": 0, "source": "mq03" },
+    { "id": "wp_star_dagger", "name": "별조각 단검", "kind": "melee", "dmg": 8, "cd": 0.35, "range": 70, "arcDeg": 80, "bulletSpeed": 0, "levelReq": 3, "price": 60, "source": "shop" },
+    { "id": "wp_iron_starsword", "name": "무쇠 별검", "kind": "melee", "dmg": 16, "cd": 0.75, "range": 90, "arcDeg": 110, "bulletSpeed": 0, "levelReq": 5, "price": 0, "source": "mq04" },
+    { "id": "wp_toy_starbow", "name": "장난감 별활", "kind": "ranged", "dmg": 13, "cd": 0.85, "range": 420, "arcDeg": 0, "bulletSpeed": 480, "levelReq": 6, "price": 200, "source": "elite_drop|shop" },
+    {
+      "id": "wp_sparkle_boomerang", "name": "반짝 부메랑", "kind": "boomerang", "dmg": 10, "returnDmg": 10, "cd": 0.6, "range": 380, "arcDeg": 0, "bulletSpeed": 360, "levelReq": 9, "price": 0, "source": "craft",
+      "craft": { "base": "wp_old_boomerang", "materials": [{ "itemId": "it_starpiece", "count": 3 }], "inheritEnhance": true }
+    }
+  ],
+  "armors": [
+    { "id": "ar_cloth_vest", "name": "천 조끼", "slot": "body", "hpAdd": 12, "defAdd": 0, "spdMul": 1.0, "regenAdd": 0, "price": 40, "source": "shop" },
+    { "id": "ar_starhide_vest", "name": "별가죽 조끼", "slot": "body", "hpAdd": 22, "defAdd": 1, "spdMul": 1.0, "regenAdd": 0, "price": 0, "source": "quest" },
+    { "id": "ar_firefly_necklace", "name": "반딧불 목걸이", "slot": "charm", "hpAdd": 0, "defAdd": 0, "spdMul": 1.0, "regenAdd": 4, "price": 90, "source": "shop" },
+    { "id": "ar_star_boots", "name": "별빛 장화", "slot": "charm", "hpAdd": 0, "defAdd": 0, "spdMul": 1.05, "regenAdd": 0, "price": 150, "source": "shop" },
+    { "id": "ar_guard_necklace", "name": "수호 목걸이", "slot": "charm", "hpAdd": 15, "defAdd": 0, "spdMul": 1.0, "regenAdd": 0, "price": 250, "source": "shop" },
+    { "id": "ar_wind_brooch", "name": "바람 깃털 브로치", "slot": "charm", "hpAdd": 0, "defAdd": 0, "spdMul": 1.08, "regenAdd": 0, "price": 0, "source": "elite_drop" }
+  ],
+  "items": [
+    { "id": "it_jelly_bit", "name": "젤리 조각", "kind": "재료", "healAmt": 0, "price": 3, "desc": "말랑말랑 반짝이는 조각이에요. 그림자 젤리가 떨어뜨려요." },
+    { "id": "it_horn_piece", "name": "뿔조각", "kind": "재료", "healAmt": 0, "price": 4, "desc": "뿔깡총의 단단한 뿔 조각이에요." },
+    { "id": "it_seed_bundle", "name": "풀씨 뭉치", "kind": "재료", "healAmt": 0, "price": 4, "desc": "씨앗총사가 쏘다 남긴 폭신한 풀씨 뭉치예요." },
+    { "id": "it_thorn_shell", "name": "가시 껍질", "kind": "재료", "healAmt": 0, "price": 5, "desc": "가시딱지의 튼튼한 껍질이에요. 볼트가 아주 좋아해요." },
+    { "id": "it_stardust_powder", "name": "별조각 가루", "kind": "재료", "healAmt": 0, "price": 7, "desc": "반짝반짝 빛나는 별의 가루예요." },
+    { "id": "it_moon_feather", "name": "달빛 깃털", "kind": "재료", "healAmt": 0, "price": 9, "desc": "달빛 부엉이의 은은하게 빛나는 깃털이에요." },
+    { "id": "it_starpiece", "name": "별조각", "kind": "퀘스트품", "healAmt": 0, "price": 0, "desc": "반짝 부메랑을 만드는 소중한 재료예요. 팔 수 없어요." },
+    { "id": "it_jelly_candy", "name": "젤리 사탕", "kind": "소모품", "healAmt": 25, "price": 15, "maxCarry": 5, "desc": "먹으면 기운이 나는 달콤한 사탕이에요. (Q키로 사용)" },
+    { "id": "it_dim_starpiece", "name": "빛나지 않는 별조각", "kind": "퀘스트품", "healAmt": 0, "price": 0, "desc": "빛을 잃은 이상한 별조각… 왜 빛나지 않을까요?" }
+  ],
+  "skills": [
+    { "id": "sk_spin_slash", "name": "빙글 베기", "type": "active", "slot": "X", "form": "around", "dmgMul": 1.2, "radius": 110, "cd": 5, "gauge": null, "acquire": { "by": "level", "value": 3 } },
+    { "id": "sk_starfall_smash", "name": "별똥별 내리치기", "type": "active", "slot": "X", "form": "front", "dmgMul": 2.0, "radius": 120, "cd": 8, "gauge": null, "knockback": true, "acquire": { "by": "job", "value": "job_swordsman" } },
+    { "id": "sk_triple_throw", "name": "세갈래 던지기", "type": "active", "slot": "X", "form": "throw", "dmgMul": 0.7, "radius": 0, "cd": 7, "gauge": null, "shots": 3, "acquire": { "by": "job", "value": "job_hunter" } },
+    { "id": "sk_sparkle_dash", "name": "반짝 질주", "type": "active", "slot": "C", "form": "dash", "dmgMul": 0, "radius": 0, "cd": null, "gauge": { "max": 100, "perHit": 12 }, "duration": 0.8, "spdMul": 1.45, "invincible": true, "acquire": { "by": "quest", "value": "mq05" } },
+    { "id": "sk_ambush", "name": "기습", "type": "passive", "slot": null, "form": null, "dmgMul": 0, "radius": 0, "cd": null, "gauge": null, "backstabMul": 1.2, "acquire": { "by": "level", "value": 1 } },
+    { "id": "sk_starlight_regen", "name": "별빛 회복", "type": "passive", "slot": null, "form": null, "dmgMul": 0, "radius": 0, "cd": null, "gauge": null, "regenTo": 12, "acquire": { "by": "level", "value": 7 } }
+  ],
+  "jobs": [
+    { "id": "job_novice", "name": "별빛 견습생", "statMods": {}, "grantSkills": [], "reqLevel": 1, "reqQuest": null, "parent": null, "trial": null },
+    { "id": "job_swordsman", "name": "별빛 검사", "statMods": { "hpAdd": 15, "meleeDmgMul": 1.15 }, "grantSkills": ["sk_starfall_smash"], "reqLevel": 5, "reqQuest": "mq05", "parent": "job_novice", "trial": { "target": "mob_thorn", "count": 3 } },
+    { "id": "job_hunter", "name": "바람 사냥꾼", "statMods": { "spdMul": 1.08, "rangeMul": 1.15 }, "grantSkills": ["sk_triple_throw"], "reqLevel": 5, "reqQuest": "mq05", "parent": "job_novice", "trial": { "target": "mob_seedgunner", "count": 5 } }
+  ],
+  "crops": [
+    { "id": "crop_byeolmu", "name": "별무", "seedPrice": 10, "growDays": 1, "regrowDays": 0, "sellPrice": 18, "stages": 2, "sellable": true, "reqQuest": null },
+    { "id": "crop_galaxy_wheat", "name": "은하밀", "seedPrice": 12, "growDays": 2, "regrowDays": 0, "sellPrice": 30, "stages": 3, "sellable": true, "reqQuest": null },
+    { "id": "crop_sparkle_carrot", "name": "반짝당근", "seedPrice": 15, "growDays": 2, "regrowDays": 0, "sellPrice": 34, "stages": 3, "sellable": true, "reqQuest": null },
+    { "id": "crop_star_strawberry", "name": "별딸기", "seedPrice": 35, "growDays": 3, "regrowDays": 2, "sellPrice": 28, "stages": 4, "sellable": true, "reqQuest": null },
+    { "id": "crop_starbell_bean", "name": "별방울 콩", "seedPrice": 40, "growDays": 4, "regrowDays": 0, "sellPrice": 95, "stages": 5, "sellable": true, "reqQuest": "mq05" },
+    { "id": "crop_lightwood_sapling", "name": "빛나무 묘목", "seedPrice": 25, "growDays": 1, "regrowDays": 0, "sellPrice": 0, "stages": 2, "sellable": false, "reqQuest": "mq05" }
+  ],
+  "quests": [
+    {
+      "id": "mq01", "name": "별마중 마을 도착", "giver": null,
+      "goal": { "type": "talk", "target": "npc_onbyeol", "count": 1, "item": null, "to": null },
+      "reward": { "exp": 15, "gold": 0, "itemId": "crop_byeolmu", "itemCount": 5 },
+      "requires": [], "unlocks": ["wp_hoe"],
+      "dialogStart": "", "dialogEnd": "", "nextHint": ""
+    },
+    {
+      "id": "mq02", "name": "밤손님", "giver": "npc_onbyeol",
+      "goal": { "type": "harvest", "target": "crop_byeolmu", "count": 3, "item": null, "to": null },
+      "reward": { "exp": 40, "gold": 30, "itemId": null },
+      "requires": ["mq01"], "unlocks": [],
+      "dialogStart": "", "dialogEnd": "", "nextHint": ""
+    },
+    {
+      "id": "mq03", "name": "별조각 도둑", "giver": "npc_onbyeol",
+      "goal": { "type": "collect", "target": "it_stardust_powder", "count": 3, "item": null, "to": null },
+      "reward": { "exp": 60, "gold": 40, "itemId": null },
+      "requires": ["mq02"], "unlocks": ["wp_old_boomerang"],
+      "dialogStart": "", "dialogEnd": "", "nextHint": ""
+    },
+    {
+      "id": "mq04", "name": "마을의 부탁", "giver": "npc_onbyeol",
+      "goal": { "type": "deliver", "target": null, "count": 3, "item": "crop_galaxy_wheat", "to": "npc_momo" },
+      "reward": { "exp": 80, "gold": 60, "itemId": null },
+      "requires": ["mq03"], "unlocks": ["smith_open", "wp_iron_starsword"],
+      "dialogStart": "", "dialogEnd": "", "nextHint": ""
+    },
+    {
+      "id": "mq05", "name": "안개 간부 보슬보슬", "giver": "npc_onbyeol",
+      "goal": { "type": "kill", "target": "mob_busuri", "count": 5, "item": null, "to": null },
+      "reward": { "exp": 100, "gold": 80, "itemId": "it_dim_starpiece" },
+      "requires": ["mq04"], "unlocks": ["job_change", "crop_starbell_bean", "crop_lightwood_sapling", "sk_sparkle_dash"],
+      "dialogStart": "", "dialogEnd": "", "nextHint": ""
+    },
+    {
+      "id": "mq06", "name": "별광맥 방어전", "giver": "npc_onbyeol",
+      "goal": { "type": "kill", "target": "mob_moonowl", "count": 4, "item": null, "to": null },
+      "reward": { "exp": 130, "gold": 100, "itemId": "it_starpiece", "itemCount": 3 },
+      "requires": ["mq05"], "unlocks": ["farm_expand"],
+      "dialogStart": "", "dialogEnd": "", "nextHint": ""
+    },
+    {
+      "id": "mq07", "name": "먹구름 요새 — 뭉게대왕", "giver": "npc_onbyeol",
+      "goal": { "type": "kill", "target": "mob_boss_munge", "count": 1, "item": null, "to": null },
+      "reward": { "exp": 175, "gold": 150, "itemId": null, "title": "별빛 수호자" },
+      "requires": ["mq06", "sq02"], "unlocks": ["chapter1_clear"],
+      "dialogStart": "", "dialogEnd": "", "nextHint": ""
+    },
+    {
+      "id": "sq01", "name": "도망간 반딧별", "giver": "npc_pico",
+      "goal": { "type": "collect", "target": "it_stardust_powder", "count": 4, "item": null, "to": null },
+      "reward": { "exp": 30, "gold": 40, "itemId": null },
+      "requires": ["mq02"], "unlocks": [],
+      "dialogStart": "", "dialogEnd": "", "nextHint": ""
+    },
+    {
+      "id": "sq02", "name": "콩 배달 대작전", "giver": "npc_momo",
+      "goal": { "type": "deliver", "target": null, "count": 3, "item": "crop_starbell_bean", "to": "npc_momo" },
+      "reward": { "exp": 60, "gold": 80, "itemId": null },
+      "requires": ["mq05"], "unlocks": [],
+      "dialogStart": "", "dialogEnd": "", "nextHint": ""
+    },
+    {
+      "id": "sq03", "name": "껍질 수집가", "giver": "npc_bolt",
+      "goal": { "type": "collect", "target": "it_thorn_shell", "count": 5, "item": null, "to": null },
+      "reward": { "exp": 40, "gold": 0, "itemId": null },
+      "requires": ["mq04"], "unlocks": ["smith_discount20"],
+      "dialogStart": "", "dialogEnd": "", "nextHint": ""
+    }
+  ],
+  "npcs": [
+    {
+      "id": "npc_onbyeol", "name": "온별", "role": "quest_hub",
+      "dialog": [], "speechTic": "어디까지 얘기했더라…?",
+      "shop": [],
+      "secret": "마을 전설의 뒷부분을 사실은 기억하고 있을지도 모른다."
+    },
+    {
+      "id": "npc_momo", "name": "모모", "role": "general_shop",
+      "dialog": [], "speechTic": "오! 그거 내 수집 목록에 있는 건데!",
+      "shop": [
+        { "itemRef": "it_jelly_candy" },
+        { "itemRef": "ar_cloth_vest" },
+        { "itemRef": "ar_firefly_necklace" },
+        { "itemRef": "ar_star_boots" },
+        { "itemRef": "ar_guard_necklace" }
+      ],
+      "secret": "창고 깊은 곳에 아직 정리 못 한 수집품 상자가 있다."
+    },
+    {
+      "id": "npc_bolt", "name": "볼트", "role": "blacksmith",
+      "dialog": [], "speechTic": "삐빅! 수리 완료!",
+      "shop": [
+        { "itemRef": "wp_star_dagger" },
+        { "itemRef": "wp_toy_starbow" }
+      ],
+      "secret": "고쳐 준 도구마다 몰래 별 스티커를 붙인다."
+    },
+    {
+      "id": "npc_leaf", "name": "리프", "role": "seed_shop",
+      "dialog": [], "speechTic": "쉿! 지금 씨앗이 말하는 중이야.",
+      "shop": [
+        { "itemRef": "crop_byeolmu" },
+        { "itemRef": "crop_galaxy_wheat" },
+        { "itemRef": "crop_sparkle_carrot" },
+        { "itemRef": "crop_star_strawberry" },
+        { "itemRef": "crop_starbell_bean", "reqQuest": "mq05" },
+        { "itemRef": "crop_lightwood_sapling", "reqQuest": "mq05" }
+      ],
+      "secret": "정말로 작물과 대화할 수 있는 걸까? 아무도 모른다."
+    },
+    {
+      "id": "npc_meonbyeol", "name": "먼별", "role": "mystery", "appears": "night",
+      "dialog": [], "speechTic": "…별은 밤에 더 잘 보이는 법이지.",
+      "shop": [],
+      "secret": "정체 미공개 — 우리 반이 함께 채울 여백."
+    },
+    {
+      "id": "npc_pico", "name": "피코", "role": "recorder",
+      "dialog": [], "speechTic": "잠깐! 그거 노트에 적어야 해!",
+      "shop": [],
+      "secret": "피코의 관찰 노트가 바로 게임 속 '별의 도감'이 된다."
+    }
+  ],
+  "maps": []
+}
