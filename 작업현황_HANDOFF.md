@@ -5,15 +5,21 @@
 ## 최신 상태 (2026-07-05, 커밋 721a05c 기준)
 
 ### 지금 진행 중
-- **Fable(RPG 마라톤 세션, 2026-07-05 밤~)**: `RPG모드_PRD.md` v1.0.1 구현 — RPG-0(비코드)→RPG-1~4 Phase별 커밋. **index.html 소유(이 세션).** BIG-BATCH-2는 완료되어 소유권 인계받음.
-- **이미 반영(커밋됨)**: 로비 3층 개편(88ed94d) · GAMEPLAY-1 일부 · BIG-BATCH-2 전체(v1.38~v1.42, 하단 참조).
+- **RPG 별빛 마을 챕터 1 — 완료(v1.44, 커밋 3c8029d).** index.html 소유권 해제(작업 없음). RPG-0~4 전부 커밋·전종 하니스 PASS·미러 동일. 결과: `RPG_결과_20260706.md`.
+- **이미 반영(커밋됨)**: 로비 3층 개편(88ed94d) · GAMEPLAY-1 일부 · BIG-BATCH-2 전체(v1.38~v1.42) · RPG 챕터1(v1.44).
+
+### RPG 다음 할 일 (RPG-5 / 챕터 2+)
+- P2 학급 개방: `classes/{classCode}/flags/rpgOpen` 플래그 + **database.rules.json 확장·firebase deploy**(초안: `wiki/database.rules.초안.md`) + 로비 행 + **로비 터치화(하드 선행)**.
+- 학생 콘텐츠 클라우드 미러(T2 `starArce/rpgContent`) · 도감 8탭 · 게시판 학생 퀘스트 · 요리 · 2차 전직.
+- 챕터 2 지리 = 기존 캠페인 4구역 재활용. 열린 여백 7개가 학생 위키 확장 씨앗.
+- 학생 콘텐츠 반영 절차: 시트 → JSON → 교사 K키 승인(즉시) 또는 T3 `wiki/rpg_db.json` 병합 후 `python3 wiki/tools/inject_db.py` → 미러 동기 → 커밋.
 
 ### 오늘 완료 (아트 — 파일 커밋+푸시됨)
 - 보스 4종 치비 통일 / 지형 14장(바닥6·함정3·타일셋2·존5) / 프롭 4종 footprint 재작(수정·상자·바위·문)
 - ⚠️ **에셋 파일은 있으나 대부분 게임 미배선** — 야간 spec Phase1이 배선 담당.
 
 ### 문서 지도
-- **`RPG모드_PRD.md`** — 교사용 RPG 모드(별빛 마을·시고니 챕터1) 설계 확정 v1.0. **착수는 BIG-BATCH-2 완주 후**(RPG-0 비코드 산출물은 즉시 가능). 울트라코드 8스트림+검증 패널 5렌즈 반영.
+- **`RPG모드_PRD.md`** v1.0.1 / **`RPG_결과_20260706.md`**(구현 결과) — 교사용 RPG 모드 챕터1 **구현 완료**. 코드: index.html `const RPG_CONST`~`rpgDrawRpgReviewScreen`, STATE.RPG/RPG_REVIEW. 데이터: `wiki/`(rpg_db·rpg_maps·대사·변환표·시트양식·tools). 하니스: `harness_rpg.js`.
 - **`야간_통합_spec.md`** ← Fable 현재 작업 지시 (최상위)
 - `게임플레이_통합_spec.md` — 전투재설계+봇+모드+로비마감 (야간 spec의 근거)
 - `전투밸런스_재설계.md` · `모드_규칙_설계.md` — 밸런스·모드 의도
