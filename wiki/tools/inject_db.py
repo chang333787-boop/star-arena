@@ -15,6 +15,17 @@ legend = mp["_legend"]
 solid = "".join(ch for ch, v in legend.items() if not v.get("passable", True))
 eng_legend = {"solid": solid, "soil": "f", "spawn": "*"}
 
+# ── 1.5) 맵↔DB 몬스터 id 통일: 맵 제작 에이전트(mon_*)와 DB 에이전트(mob_*)의 명명 차이 리매핑 ──
+MON_REMAP = {"mon_jelly": "mob_jelly", "mon_hopper": "mob_hornhop", "mon_seedgunner": "mob_seedgunner",
+             "mon_thornback": "mob_thorn", "mon_drizzler": "mob_busuri", "mon_moonowl": "mob_moonowl",
+             "mon_shadeshard": "mob_shade", "mon_cloudking": "mob_boss_munge"}
+mob_ids = {mo["id"] for mo in db["monsters"]}
+for m_ in mp["maps"]:
+    for s in m_.get("monsters", []):
+        s["monsterId"] = MON_REMAP.get(s["monsterId"], s["monsterId"])
+        if s["monsterId"] not in mob_ids:
+            print(f"맵 {m_['id']} 몬스터 유령 참조: {s['monsterId']}"); sys.exit(1)
+
 # ── 2) 맵 변환: 포탈 {tx,ty,to:{mapId,tx,ty}} → {at:[c,r],to,tx,ty} · 특수문자 → objects[] ──
 OBJ_CHARS = {"b": "bed", "c": "chest", "G": "board", "D": "cellar", "V": "vein",
              "W": "well", "A": "anvil", "t": "camp", "e": "egg"}

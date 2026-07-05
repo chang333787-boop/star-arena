@@ -44,6 +44,8 @@ script += `
   rpgTalkTo, rpgDialogAdvance, rpgChoicePick, rpgOpenShop, rpgShopRows, rpgShopBuy, rpgShopSell, rpgSellAllCrops,
   rpgInvAdd, rpgInvCount, rpgInvRemove, rpgUseCandy, rpgSleep, rpgInteract, rpgScanContext, rpgCheckWarp,
   rpgCollides, rpgSolidAt, rpgAddGold, rpgAddExp,
+  rpgAttack, rpgCastX, rpgCastC, rpgHurtPlayer, rpgDie, rpgInvenUse, rpgBulletsUpdate,
+  rpgMakeMob, rpgHitMob, rpgWeapon, rpgDef, rpgLearnSkills, rpgSkillX, rpgMobUpdate,
   handleRpgKey, handleKeyPress, keysDown,
   loadAccounts, createStudent, studentLogin, logout, resetStudent, accountToProfile, mergeProfile, saveProfile, loadProfile,
   AccountStore, PROFILE_KEY,
@@ -193,5 +195,90 @@ run("계정 왕복", ()=>{
   R.logout();
 });
 
-console.log("\n결과: " + (fails===0 ? "RPG1_PASS ✅" : (fails+"건 실패 ❌")));
+console.log("=== RPG-6) 전투: 스폰·근접·기습/가드·원거리·스킬·피격·부활 (RPG-2) ===");
+run("스폰·근접 처치", ()=>{
+  R.profile.rpg=null;   // 새 캐릭터로
+  R.rpgEnter();
+  R.rpgLoadMap("rpg_field1",-1,-1);
+  check("이슬별 들판 몬스터 8 스폰", R.RPG.mobs.length===8);
+  R.rpgInvAdd("wp_hoe",1);
+  R.rpgInvenUse(R.RPG.save.inventory.findIndex(s=>s.id==="wp_hoe"));
+  check("호미 장착", R.RPG.save.equip.weapon==="wp_hoe");
+  const jelly=R.RPG.mobs.find(m=>m.id==="mob_jelly");
+  R.RPG.p.x=jelly.x-44; R.RPG.p.y=jelly.y; R.RPG.p.facing=0;
+  const g0=R.RPG.save.gold;
+  let n=0; while(!jelly.dead&&n<10){ R.RPG.p.attackCd=0; R.rpgAttack(); n++; }
+  check("호미 2타 처치(15HP vs 11뎀)", jelly.dead&&n===2);
+  check("처치 보상: 도감 킬 1·골드 2~4·경험치 6", R.RPG.save.kills.mob_jelly===1&&R.RPG.save.gold>=g0+2&&R.RPG.save.gold<=g0+4&&R.RPG.save.exp===6);
+});
+run("기습·정면 가드", ()=>{
+  const thorn=R.RPG.mobs.find(m=>m.id==="mob_thorn");
+  R.RPG.save.skills.indexOf("sk_ambush")>=0||R.RPG.save.skills.push("sk_ambush");
+  // 정면(가드): 가시딱지가 나를 보게 → 감쇄
+  thorn.facing=0; R.RPG.p.x=thorn.x+50; R.RPG.p.y=thorn.y;
+  const h1=thorn.hp; R.rpgHitMob(thorn,10);
+  const frontDmg=h1-thorn.hp;
+  // 등 뒤(기습): 반대편 → +20%
+  R.RPG.p.x=thorn.x-50; R.RPG.p.y=thorn.y;
+  const h2=thorn.hp; R.rpgHitMob(thorn,10);
+  const backDmg=h2-thorn.hp;
+  check("정면 가드 감쇄(10→"+frontDmg+") < 등뒤 기습(10→"+backDmg+")", frontDmg===4&&backDmg===12);
+});
+run("레벨업·스킬 자동습득·X 시전", ()=>{
+  R.rpgAddExp(120);   // Lv1→4 부근
+  check("레벨업(≥3)·빙글 베기 자동 습득+X 장착", R.RPG.save.level>=3&&R.RPG.save.skills.indexOf("sk_spin_slash")>=0&&R.RPG.save.skillX==="sk_spin_slash");
+  const near=R.RPG.mobs.filter(m=>!m.dead&&R.rpgFind("monsters",m.id))[0];
+  R.RPG.p.x=near.x+60; R.RPG.p.y=near.y;
+  const h0=near.hp; R.RPG.p.skillCd=0; R.rpgCastX();
+  check("X 시전: 피해 발생+쿨다운 시작", near.hp<h0&&R.RPG.p.skillCd>0);
+});
+run("부메랑 왕복 2타", ()=>{
+  R.rpgInvAdd("wp_old_boomerang",1);
+  R.rpgInvenUse(R.RPG.save.inventory.findIndex(s=>s.id==="wp_old_boomerang"));
+  check("낡은 부메랑 장착(Lv3+)", R.RPG.save.equip.weapon==="wp_old_boomerang");
+  const tgt=R.RPG.mobs.find(m=>!m.dead&&m.id==="mob_seedgunner")||R.RPG.mobs.find(m=>!m.dead);
+  tgt.hp=tgt.maxHp=999;   // 왕복 2타 계수용
+  R.RPG.p.x=tgt.x-150; R.RPG.p.y=tgt.y; R.RPG.p.facing=0; R.RPG.p.attackCd=0;
+  R.rpgAttack();
+  check("부메랑 발사(boomer 탄)", R.RPG.bullets.length===1&&R.RPG.bullets[0].boomer===true);
+  const h0=tgt.hp, perHit=7+2+(R.RPG.save.level-1);   // w.dmg 7 + BASE_ATK 2 + 레벨당 1
+  for(let i=0;i<200&&R.RPG.bullets.length;i++) R.rpgBulletsUpdate(0.03);
+  check("왕복 2타(나가며 1+돌아오며 1 = "+(2*perHit)+"뎀)", R.RPG.bullets.length===0 && (h0-tgt.hp)===2*perHit);
+});
+run("C 게이지·질주", ()=>{
+  R.RPG.save.skills.push("sk_sparkle_dash");
+  R.RPG.gauge=100; R.rpgCastC();
+  check("질주 발동: 게이지 소모+가속/무적 타이머", R.RPG.gauge===0&&R.RPG.p.dashT>0&&R.RPG.p.dashInvulT>0);
+});
+run("피격·무적·사망/부활", ()=>{
+  R.RPG.p.invulT=0; R.RPG.p.dashInvulT=0;
+  const h0=R.RPG.save.hp;
+  R.rpgHurtPlayer(8);
+  check("피격 8뎀(방어 0)", R.RPG.save.hp===h0-8&&R.RPG.p.invulT>0);
+  R.rpgHurtPlayer(8);
+  check("무적 프레임 중 추가 피격 무시", R.RPG.save.hp===h0-8);
+  R.rpgInvAdd("ar_cloth_vest",1);
+  R.rpgInvenUse(R.RPG.save.inventory.findIndex(s=>s.id==="ar_cloth_vest"));
+  check("천 조끼 장착 → 최대 HP +12", R.rpgMaxHpFor(R.RPG.save)===60+8*(R.RPG.save.level-1)+12);
+  R.RPG.save.hp=3; R.RPG.p.invulT=0;
+  R.rpgHurtPlayer(50);
+  check("사망 → 별우물(마을) 부활·HP 전량·페널티 0", R.RPG.map.id==="rpg_village"&&R.RPG.save.hp===R.rpgMaxHpFor(R.RPG.save));
+});
+run("한 방 ≤10% 헌장(§0.4 — 몬스터×권장 레벨 데이터 검증)", ()=>{
+  const tierLv={1:3,2:6,3:8};
+  let bad=[];
+  for(const mo of R.rpgDb().monsters){
+    if(mo.isBoss){
+      const hp9=60+8*8;
+      const worst=Math.max(mo.atk, (mo.patternArgs&&mo.patternArgs.dashDmg)||0, (mo.patternArgs&&mo.patternArgs.bulletDmg)||0);
+      if(worst/hp9>0.101) bad.push(mo.id+"(보스 "+worst+"/"+hp9+")");
+    } else {
+      const lv=tierLv[mo.tier]||3, hp=60+8*(lv-1);
+      if(mo.atk/hp>0.101) bad.push(mo.id+"("+mo.atk+"/"+hp+")");
+    }
+  }
+  check("전 몬스터 한 방 ≤10% (위반: "+(bad.join(",")||"없음")+")", bad.length===0);
+});
+
+console.log("\n결과: " + (fails===0 ? "RPG2_PASS ✅" : (fails+"건 실패 ❌")));
 process.exit(fails===0?0:1);
