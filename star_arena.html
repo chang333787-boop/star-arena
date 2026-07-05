@@ -2327,6 +2327,18 @@ function balanceFields(){
     num("r.paint.gaugeAmt","칠 10칸당 궁 게이지",R.paint,"gaugeAmt",0,10,1,{group:"별빛 칠하기"})
   ]});
 
+  // ── 6.4) 캠페인(CAMPAIGN-2) ──
+  cats.push({ name:"캠페인", fields:[
+    mk("cmp.hpStart","시작 HP 배율(s1)",()=>CAMP_CONFIG.hpAnchor[0][1],v=>{CAMP_CONFIG.hpAnchor[0][1]=v;},0.3,1.5,0.05,{dec:2}),
+    mk("cmp.hpEnd","최종 HP 배율(s20)",()=>CAMP_CONFIG.hpAnchor[4][1],v=>{CAMP_CONFIG.hpAnchor[4][1]=v;},0.8,3,0.05,{dec:2}),
+    mk("cmp.cntStart","시작 스폰 배율(s1)",()=>CAMP_CONFIG.cntAnchor[0][1],v=>{CAMP_CONFIG.cntAnchor[0][1]=v;},0.4,1.5,0.05,{dec:2}),
+    mk("cmp.cntEnd","최종 스폰 배율(s20)",()=>CAMP_CONFIG.cntAnchor[4][1],v=>{CAMP_CONFIG.cntAnchor[4][1]=v;},0.8,2.5,0.05,{dec:2}),
+    num("cmp.zoneGold","구역 클리어 골드",CAMP_CONFIG,"zoneBonusGold",0,300,10),
+    num("cmp.enrageMul","보스 분노 배율",CAMP_CONFIG,"enrageMul",1,1.6,0.05,{dec:2}),
+    num("cmp.holdPerSec","거점 초당 게이지",CAMP_CONFIG,"holdPerSec",2,30,1),
+    num("cmp.sgFail","별 수호 실패 개수",CAMP_CONFIG,"sgFail",2,12,1),
+    num("cmp.sgTime","별 수호 시간(초)",CAMP_CONFIG,"sgTime",30,240,10)
+  ]});
   // ── 6.5) 플랫포머 물리(§3.3) ──
   cats.push({ name:"별빛 점프", fields:[
     num("pf.GRAVITY","중력(px/s²)",PF_CONST,"GRAVITY",1000,4000,100),
@@ -3726,7 +3738,12 @@ function drawBuffOrbs(){
 function currentMap(){
   return isTeamOnline()?getMap(tMapId):(isOnlineState()?getMap(onlineMapId()):((MATCH&&MATCH.map)?MATCH.map:getMap(selectedMapId)));
 }
-function currentTraps(){ const m=currentMap(); return (m&&m.traps)||[]; }
+let tCampTraps=[];   /* CAMPAIGN-2 §1: 구역 테마 함정(스테이지 로드마다 설정) */
+function currentTraps(){
+  const m=currentMap(), base=(m&&m.traps)||[];
+  if(tCampTraps.length && isTeamOnline() && getOnlineMode(OnlineManager.mode).modeType==="pve") return base.concat(tCampTraps);
+  return base;
+}
 // 둔화/버프 반영 이동속도
 function effSpeed(f){
   let s=f.moveSpeed||0;
@@ -5250,7 +5267,11 @@ function _worldImgKey(){
 }
 function drawStaticWorld(){
   const map=isTeamOnline()?getMap(tMapId):(isOnlineState()?getMap(onlineMapId()):((MATCH&&MATCH.map)?MATCH.map:getMap(selectedMapId)));
-  const key=map.id+"|"+OBSTACLES.length+"|"+BUSHES.length+"|"+_worldImgKey();
+  let key=map.id+"|"+OBSTACLES.length+"|"+BUSHES.length+"|"+_worldImgKey();
+  if(isTeamOnline() && getOnlineMode(OnlineManager.mode).modeType==="pve"){
+    const si=(OnlineManager.role==="host")?tPve.stageIndex:((OnlineManager.onlineState&&OnlineManager.onlineState.pve)?OnlineManager.onlineState.pve.stageIndex:0);
+    key+="|z"+campZoneIdx(si||0)+"|t"+tCampTraps.length;    // CAMPAIGN-2: 구역 바닥·함정이 바뀌면 재합성
+  }
   if(_worldLayerKey!==key){
     if(_worldLayer===null){
       try{ const cv=document.createElement("canvas");
@@ -5276,7 +5297,12 @@ function drawArenaFloor(){
   ctx.fillStyle=map.floorColor; roundRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h,18); ctx.fill();
   ctx.beginPath(); ctx.rect(ARENA.x,ARENA.y,ARENA.w,ARENA.h); ctx.clip();
   // OVERNIGHT-1: 바닥 테마 타일 — 맵의 floor 필드로 6테마 선택, 렌더 224px(=4×56 격자 정렬 — 256px이던 어긋남 수정)
-  const theme=map.floor||null;
+  let theme=map.floor||null;
+  // CAMPAIGN-2 §1: 캠페인은 구역 테마 바닥으로 오버라이드
+  if(isTeamOnline() && getOnlineMode(OnlineManager.mode).modeType==="pve"){
+    const si=(OnlineManager.role==="host")?tPve.stageIndex:((OnlineManager.onlineState&&OnlineManager.onlineState.pve)?OnlineManager.onlineState.pve.stageIndex:0);
+    theme=CAMP_ZONES[campZoneIdx(si||0)].floor;
+  }
   const fimg=theme?worldImage(FLOOR_THEMES[theme]||"tile_floor"):null;
   if(fimg){
     const FT=224;   // 56의 배수 — 바닥이 격자·오브젝트와 맞물림
@@ -6651,7 +6677,8 @@ function updateOnlineFighter(f, input, dt){
 // UPDATE-1 P3: 게스트 자기 예측용(충돌 이동만 — moveEntity 사용, moveSpeed 프로퍼티 기반)
 function predictMoveAim(pr, inp, dt){
   let mx=0,my=0;
-  if(typeof inp.mvx==="number" || typeof inp.mvy==="number"){ mx=clamp(inp.mvx||0,-1,1); my=clamp(inp.mvy||0,-1,1); }
+  const hasAnalog=(typeof inp.mvx==="number"||typeof inp.mvy==="number") && (Math.abs(inp.mvx||0)>0.01 || Math.abs(inp.mvy||0)>0.01);
+  if(hasAnalog){ mx=clamp(inp.mvx||0,-1,1); my=clamp(inp.mvy||0,-1,1); }
   else { if(inp.up)my-=1; if(inp.down)my+=1; if(inp.left)mx-=1; if(inp.right)mx+=1; }
   const ml=Math.hypot(mx,my), hasAim=(typeof inp.aim==="number");
   if(ml>0.01){ if(ml>1){mx/=ml;my/=ml;} moveEntity(pr, mx*pr.moveSpeed*dt, my*pr.moveSpeed*dt); if(!hasAim) pr.facing=Math.atan2(my,mx); }
@@ -6661,7 +6688,9 @@ function predictMoveAim(pr, inp, dt){
 // aim(라디안)이 오면 조준을 이동과 분리(마우스/터치 무빙샷) — 키보드 패킷(aim=null)은 기존처럼 이동 방향.
 function applyIntentMoveAim(f, input, dt){
   let mx=0,my=0;
-  if(typeof input.mvx==="number" || typeof input.mvy==="number"){ mx=clamp(input.mvx||0,-1,1); my=clamp(input.mvy||0,-1,1); }
+  // 아날로그(mvx/mvy)가 실제 값일 때만 사용 — 0,0인데 불리언이 참인 패킷(시뮬·구형 혼합)은 불리언으로(UPDATE-1 호환 수정)
+  const hasAnalog=(typeof input.mvx==="number"||typeof input.mvy==="number") && (Math.abs(input.mvx||0)>0.01 || Math.abs(input.mvy||0)>0.01);
+  if(hasAnalog){ mx=clamp(input.mvx||0,-1,1); my=clamp(input.mvy||0,-1,1); }
   else { if(input.up)my-=1; if(input.down)my+=1; if(input.left)mx-=1; if(input.right)mx+=1; }
   const ml=Math.hypot(mx,my), hasAim=(typeof input.aim==="number");
   if(ml>0.01){
@@ -7298,6 +7327,7 @@ function tDamageEnemy(e, id, dmg, killer){
   if(e.hp<=0){
     if(killer){ killer.score+=e.score;
       grantGrowth(killer, nextGrowthTypeFor(killer)); }   // GAMEPLAY-1 1D: 캠페인 성장 — 처치자에게 즉시 부여(동기화 불가침)
+    if(tPve && tPve.sgStars) for(const s of tPve.sgStars) if(s.carrier===id){ s.carrier=null; s.x=e.x; s.y=e.y; }   // CAMPAIGN-2: 운반자 처치 → 별 드랍
     delete tEnemies[id];
   }
 }
@@ -7481,7 +7511,9 @@ function tHostWriteState(){
     st.enemies=en;
     st.structs=tPackStructs();                                       // v1.22 구조물(숫자만, ≤6개)
     st.pve={ stageIndex:tPve.stageIndex, waveIndex:tPve.waveIndex, teamLives:tPve.teamLives, status:tPve.status, phase:tPve.phase, enemiesRemaining:Object.keys(tEnemies).length, mapId:tMapId,
-      dfT:Math.max(0,Math.ceil(tPve.defendT||0)), gates:tGatesAlive() };
+      dfT:Math.max(0,Math.ceil(tPve.defendT||0)), gates:tGatesAlive(),
+      hg:Math.round(tPve.holdG||0), sgT:Math.max(0,Math.ceil(tPve.sgT||0)), sgL:tPve.sgLost||0,
+      sgS:(tPve.sgStars||[]).map(s=>({x:Math.round(s.x),y:Math.round(s.y)})), it:Math.max(0,Math.round((tPve.introT||0)*10)/10) };
     if(tPve.upg){ const ug={}; for(const s in tPve.upg){ const o=tPve.upg[s]; ug[s]={c:o.c, r:o.r, p:o.picked?1:0, pi:o.pi}; } st.pve.upg=ug; }   // 강화 후보(문자 id 3개·숫자만)
   }
   OnlineManager.writeHostState(st);
@@ -7688,57 +7720,93 @@ const PVE_ENEMY_TYPES = {
 /* PRD 12.5 — 협동 PVE 20스테이지 고정 구성(4구역 × 5). 적 수는 1인 기준, 인원·스테이지 배율은 tPveStartWave에서 적용.
    방어/호위/봉쇄/생존/거점형 목표는 이번 단계에서는 '고정 웨이브 전멸'로 대체 구현(적 구성·의도는 표 그대로 유지),
    구조물(방어 수정·몬스터 문·웨이브 문)은 다음 단계 대상. 보스 5·10·15·20 = 체크포인트. */
+/* =======================================================================
+   CAMPAIGN-2 "별빛 원정" — 구역 테마 · 난이도 곡선 · 변형 스테이지 · 성장 아크
+   ======================================================================= */
+const CAMP_CONFIG={
+  hpAnchor:[[1,0.75],[5,0.95],[10,1.1],[15,1.3],[20,1.5]],      // §4 스테이지 HP 배율(선형 보간·연속)
+  cntAnchor:[[1,0.85],[5,1.0],[10,1.1],[15,1.2],[20,1.3]],      // §4 스폰 수 배율
+  zoneBonusGold:60, zoneBonusExp:30,                            // §5 구역 보스 격파 보너스(솔로)
+  enrageAt:0.5, enrageMul:1.15,                                 // §5 보스 분노(HP 50%)
+  holdPerSec:8, holdGoal:100, holdRadius:110,                   // §2-1 거점 사수전
+  sgSpawnEvery:8, sgFail:5, sgTime:90, sgFleeMul:1.2            // §2-2 별 수호전
+};
+const CAMP_ZONES=[
+  { name:"별빛 초원",   floor:"grass", intro:"🌿 별빛 초원 — 원정의 시작! 처치하면 버프가 자라요" },
+  { name:"얼음 동굴",   floor:"snow",  intro:"❄ 얼음 동굴 — 바닥이 미끄러워요!" },
+  { name:"나무 요새",   floor:"wood",  intro:"🌳 나무 요새 — 좁은 통로, 기습 조심!" },
+  { name:"어둠의 심연", floor:"void_", intro:"🌑 어둠의 심연 — 최종장, 모든 것이 몰려온다!" }
+];
+function campZoneIdx(si){ return Math.min(CAMP_ZONES.length-1, Math.floor(si/5)); }
+function campLerpAnchor(anchor, si){
+  const st=si+1;
+  for(let i=1;i<anchor.length;i++){
+    const [s0,v0]=anchor[i-1], [s1,v1]=anchor[i];
+    if(st<=s1) return v0+(v1-v0)*((st-s0)/(s1-s0));
+  }
+  return anchor[anchor.length-1][1];
+}
+function campStageHpMul(si){ return campLerpAnchor(CAMP_CONFIG.hpAnchor, si); }
+function campStageCntMul(si){ return campLerpAnchor(CAMP_CONFIG.cntAnchor, si); }
+// §3 성장 아크: 구역이 바뀌면 버프 스택 리셋(체력 스택은 최대체력 되돌림)
+function resetGrowth(f){
+  if(!f || !f.growth) return;
+  const hpStacks=f.growth.hp||0;
+  if(hpStacks>0){ f.maxHp-=GROWTH.hpAdd*hpStacks; f.hp=Math.min(f.hp, f.maxHp); }
+  f.growth={aspd:0,atk:0,hp:0}; f._growCycle=0;
+}
 const PVE_STAGES = [
   // ── 1구역: 별빛 훈련장 ──
   { id:"c01", name:"1구역 1: 훈련장 입문",     mapId:"training", teamLives:12,
     waves:[ {enemies:[{type:"soft_jelly",count:5}]}, {enemies:[{type:"soft_jelly",count:7}]} ] },
   { id:"c02", name:"1구역 2: 통통 방울 습격",  mapId:"training", teamLives:12,
     waves:[ {enemies:[{type:"bounce_bubble",count:4}]}, {enemies:[{type:"soft_jelly",count:6},{type:"bounce_bubble",count:3}]} ] },
-  { id:"c03", name:"1구역 3: 드론 혼성전",     mapId:"training", teamLives:12,
-    waves:[ {enemies:[{type:"paper_drone",count:2},{type:"soft_jelly",count:5}]}, {enemies:[{type:"paper_drone",count:3},{type:"soft_jelly",count:6}]}, {enemies:[{type:"bounce_bubble",count:4}]} ] },
+  { id:"c03", name:"1구역 3: 별벌레 돌진",     mapId:"training", teamLives:12,   /* CAMPAIGN-2 §4: 원거리(드론)는 2구역부터 — 1구역은 근접 주연 */
+    waves:[ {enemies:[{type:"soft_jelly",count:5},{type:"bounce_bubble",count:4}]}, {enemies:[{type:"star_bug",count:2},{type:"soft_jelly",count:5}]}, {enemies:[{type:"bounce_bubble",count:5}]} ] },
   { id:"c04", name:"1구역 4: 수정 지키기",     mapId:"training", teamLives:12,
     objective:"defend", defendTime:75, structures:[{kind:"core",x:640,y:480}],   /* v1.22: 방어 수정 75초 보호(PRD 12.5) */
-    waves:[ {enemies:[{type:"soft_jelly",count:10}]}, {enemies:[{type:"bounce_bubble",count:6}]}, {enemies:[{type:"paper_drone",count:4}]} ] },
+    waves:[ {enemies:[{type:"soft_jelly",count:10}]}, {enemies:[{type:"bounce_bubble",count:6}]}, {enemies:[{type:"star_bug",count:3}]} ] },
   { id:"c05", name:"1구역 보스: 별빛 훈련 로봇", mapId:"training", teamLives:12, boss:true,
     waves:[ {enemies:[{type:"boss_robot",count:1}]} ] },
   // ── 2구역: 수정 동굴 ──
-  { id:"c06", name:"2구역 6: 좁은 통로 전투",  mapId:"crystal_cave", teamLives:12,
-    waves:[ {enemies:[{type:"cushion_block",count:2},{type:"soft_jelly",count:7}]}, {enemies:[{type:"cushion_block",count:3},{type:"paper_drone",count:3}]} ] },
-  { id:"c07", name:"2구역 7: 별벌레 정예",     mapId:"crystal_cave", teamLives:12,
-    waves:[ {enemies:[{type:"star_bug",count:2},{type:"bounce_bubble",count:6}]} ] },
+  { id:"c06", name:"2구역 6: 얼음 방울 계곡",  mapId:"crystal_cave", teamLives:12,   /* CAMPAIGN-2 §1: 2구역 주연 = 얼음방울·방패·쿠션 */
+    waves:[ {enemies:[{type:"cushion_block",count:2},{type:"ice_bubble",count:3}]}, {enemies:[{type:"cushion_block",count:3},{type:"ice_bubble",count:4}]} ] },
+  { id:"c07", name:"2구역 7: 방패 부대",       mapId:"crystal_cave", teamLives:12,
+    waves:[ {enemies:[{type:"shield_block",count:2},{type:"ice_bubble",count:3}]}, {enemies:[{type:"cushion_block",count:2},{type:"bounce_bubble",count:5}]} ] },
   { id:"c08", name:"2구역 8: 갈라진 두 방",    mapId:"crystal_cave", teamLives:12,
     structures:[{kind:"wall",x:450,y:550},{kind:"wall",x:830,y:150}],            /* v1.22: 파괴 가능 엄폐 벽 */
-    waves:[ {enemies:[{type:"paper_drone",count:5}]}, {enemies:[{type:"cushion_block",count:3},{type:"soft_jelly",count:6}]} ] },
+    waves:[ {enemies:[{type:"ice_bubble",count:5}]}, {enemies:[{type:"cushion_block",count:3},{type:"shield_block",count:2}]} ] },
   { id:"c09", name:"2구역 9: 몬스터 문 봉쇄",  mapId:"crystal_cave", teamLives:12,
     objective:"blockade",                                                        /* v1.22: 문 3개가 계속 소환 → 문 전파괴 후 최종 웨이브(PRD 12.5) */
     structures:[{kind:"gate",x:330,y:135},{kind:"gate",x:330,y:530},{kind:"gate",x:1080,y:450}],   /* v1.23: 문1·문3 좌표 이동 — 데미지 트랩·풀숲 겹침 해소(코덱스 회차8) */
-    gateSpawn:{ enemies:[{type:"soft_jelly",count:2},{type:"paper_drone",count:1}], interval:6, cap:4 },
-    waves:[ {enemies:[{type:"star_bug",count:2}]} ] },
+    gateSpawn:{ enemies:[{type:"soft_jelly",count:2},{type:"ice_bubble",count:1}], interval:6, cap:4 },   /* CAMPAIGN-2 §1: 2구역 팔레트 */
+    waves:[ {enemies:[{type:"shield_block",count:2}]} ] },
   { id:"c10", name:"2구역 보스: 별빛 수정 거북", mapId:"crystal_cave", teamLives:12, boss:true,
     waves:[ {enemies:[{type:"boss_turtle",count:1}]} ] },
   // ── 3구역: 은하 정원 ──
   { id:"c11", name:"3구역 11: 풀숲 기습",      mapId:"galaxy_garden", teamLives:10,
     waves:[ {enemies:[{type:"cloud_ghost",count:5}]}, {enemies:[{type:"cloud_ghost",count:6},{type:"bounce_bubble",count:5}]} ] },
   { id:"c12", name:"3구역 12: 회복 요정 사냥", mapId:"galaxy_garden", teamLives:10,
-    waves:[ {enemies:[{type:"heal_fairy",count:2},{type:"soft_jelly",count:8},{type:"cushion_block",count:2}]} ] },
+    waves:[ {enemies:[{type:"heal_fairy",count:2},{type:"paper_drone",count:4},{type:"cloud_ghost",count:3}]} ] },
   { id:"c13", name:"3구역 13: 사방 생존전",    mapId:"galaxy_garden", teamLives:10,
-    waves:[ {enemies:[{type:"cloud_ghost",count:8}]}, {enemies:[{type:"paper_drone",count:6}]}, {enemies:[{type:"star_bug",count:4}]} ] },
-  { id:"c14", name:"3구역 14: 씨앗 호위길",    mapId:"galaxy_garden", teamLives:10,
-    waves:[ {enemies:[{type:"cushion_block",count:3},{type:"paper_drone",count:5}]}, {enemies:[{type:"cloud_ghost",count:5}]} ] },
+    waves:[ {enemies:[{type:"cloud_ghost",count:8}]}, {enemies:[{type:"paper_drone",count:6}]}, {enemies:[{type:"heal_fairy",count:2},{type:"paper_drone",count:4}]} ] },
+  { id:"c14", name:"3구역 14: ✨ 거점 사수전",  mapId:"galaxy_garden", teamLives:10,   /* CAMPAIGN-2 §2-1: 점령전 기술 재활용 — 게이지 100 채우면 클리어 */
+    objective:"hold",
+    waves:[ {enemies:[{type:"paper_drone",count:4},{type:"cloud_ghost",count:4}]}, {enemies:[{type:"cushion_block",count:3},{type:"cloud_ghost",count:4}]} ] },
   { id:"c15", name:"3구역 보스: 종이비행기 대장", mapId:"galaxy_garden", teamLives:10, boss:true,
     waves:[ {enemies:[{type:"boss_plane",count:1}]} ] },
   // ── 4구역: 3라인 실험장 ──
-  { id:"c16", name:"4구역 16: 세 라인 전멸",   mapId:"lane3", teamLives:10,
-    waves:[ {enemies:[{type:"soft_jelly",count:5},{type:"bounce_bubble",count:3}]}, {enemies:[{type:"soft_jelly",count:5},{type:"bounce_bubble",count:3}]}, {enemies:[{type:"soft_jelly",count:5},{type:"bounce_bubble",count:3}]} ] },
-  { id:"c17", name:"4구역 17: 거점 수비",      mapId:"lane3", teamLives:10,
-    waves:[ {enemies:[{type:"paper_drone",count:6},{type:"cushion_block",count:4}]}, {enemies:[{type:"cloud_ghost",count:4}]} ] },
+  { id:"c16", name:"4구역 16: 혼돈의 세 라인", mapId:"lane3", teamLives:10,   /* CAMPAIGN-2 §1: 4구역 = 전 몬스터 혼합 + 정예 */
+    waves:[ {enemies:[{type:"soft_jelly",count:6},{type:"paper_drone",count:3}]}, {enemies:[{type:"cloud_ghost",count:4},{type:"ice_bubble",count:4}]}, {enemies:[{type:"elite",count:2},{type:"star_bug",count:3}]} ] },
+  { id:"c17", name:"4구역 17: 정예 강습",      mapId:"lane3", teamLives:10,
+    waves:[ {enemies:[{type:"cushion_block",count:4},{type:"paper_drone",count:5}]}, {enemies:[{type:"elite",count:2},{type:"heal_fairy",count:2}]} ] },
   { id:"c18", name:"4구역 18: 정예 연속전",    mapId:"lane3", teamLives:10,
-    waves:[ {enemies:[{type:"shield_block",count:2}]}, {enemies:[{type:"ice_bubble",count:5}]}, {enemies:[{type:"star_bug",count:4}]} ] },
-  { id:"c19", name:"4구역 19: 최종 전초전",    mapId:"lane3", teamLives:10,
-    structures:[{kind:"wall",x:280,y:350},{kind:"wall",x:1000,y:350},{kind:"wall",x:900,y:150},{kind:"wall",x:380,y:570}],   /* v1.22 엄폐 벽 */
-    waves:[ {enemies:[{type:"soft_jelly",count:3},{type:"bounce_bubble",count:2},{type:"paper_drone",count:3}]},
-            {enemies:[{type:"soft_jelly",count:4},{type:"cloud_ghost",count:3},{type:"ice_bubble",count:3}]},
-            {enemies:[{type:"star_bug",count:2},{type:"shield_block",count:2},{type:"heal_fairy",count:2}]} ] },
+    waves:[ {enemies:[{type:"shield_block",count:2},{type:"elite",count:1}]}, {enemies:[{type:"ice_bubble",count:5}]}, {enemies:[{type:"star_bug",count:4},{type:"elite",count:2}]} ] },
+  { id:"c19", name:"4구역 19: ⭐ 별 수호전",   mapId:"lane3", teamLives:10,   /* CAMPAIGN-2 §2-2: 별모으기 기술 재활용 — 별 5개 뺏기면 실패·90초 버티면 클리어 */
+    objective:"starguard",
+    waves:[ {enemies:[{type:"soft_jelly",count:4},{type:"bounce_bubble",count:3},{type:"paper_drone",count:2}]},
+            {enemies:[{type:"cloud_ghost",count:4},{type:"ice_bubble",count:3}]},
+            {enemies:[{type:"star_bug",count:2},{type:"elite",count:2}]} ] },
   { id:"c20", name:"최종 보스: 거대 젤리킹",   mapId:"lane3", teamLives:10, boss:true,
     waves:[ {enemies:[{type:"boss_king",count:1}]} ] }
 ];
@@ -7801,6 +7869,15 @@ function tPveSetupStructures(){
   BUSHES=getMap(tMapId).bushes;
   tPve.defendT = stage.objective==="defend" ? (stage.defendTime||75) : 0;
   tPve.finalSpawned=false;
+  // CAMPAIGN-2: 변형 스테이지 상태 + 구역 인트로 배너 + 구역 테마 함정
+  tPve.holdG = 0;                                                             // §2-1 거점 사수 게이지
+  tPve.sgT = stage.objective==="starguard" ? CAMP_CONFIG.sgTime : 0;          // §2-2 별 수호 남은 시간
+  tPve.sgLost = 0; tPve.sgStars = []; tPve.sgSpawnAcc = CAMP_CONFIG.sgSpawnEvery-2;
+  if(tPve.stageIndex%5===0) tPve.introT=2.5;                                  // §1 구역 첫 스테이지 인트로
+  tCampTraps = (campZoneIdx(tPve.stageIndex)===1)                             // §1 2구역: 얼음 함정 칸 소량(테마 체감)
+    ? [ {x:ARENA.x+5*56, y:ARENA.y+2*56, w:112, h:56, type:"ice"},
+        {x:ARENA.x+14*56, y:ARENA.y+7*56, w:112, h:56, type:"ice"} ]
+    : [];
   if(!stage.structures) return;
   const nP=tActivePlayerCount();
   let gi=0, wi=0;
@@ -7883,12 +7960,14 @@ function tPveStartWave(){
   }
   // PRD 19장 스케일링: 인원(N) + 스테이지 상승 배율. 보스는 stageHpMul 미적용·인원 보스 배율만(15.6/24.1).
   const n=tActivePlayerCount(), st=tPve.stageIndex+1, map=getMap(tMapId);
-  const stageHpMul=1+0.025*(st-1), stageDmgMul=1+0.015*(st-1);
+  // CAMPAIGN-2 §4: 스테이지 선형 곡선(0.75→1.5) — 구역 경계에서도 연속. 피해는 기존 완만 상승 유지.
+  const stageHpMul=campStageHpMul(tPve.stageIndex), stageCntMul=campStageCntMul(tPve.stageIndex);
+  const stageDmgMul=1+0.015*(st-1);
   const nHpMul=1+0.12*(n-1), nCntMul=1+0.35*(n-1), nBossMul=1+0.60*(n-1);
   for(const grp of wave.enemies){
     const def=PVE_ENEMY_TYPES[grp.type]||{};
     const isBossGrp=!!def.isBossType || grp.type==="boss";
-    const cnt=isBossGrp ? grp.count : Math.max(1,Math.round(grp.count*nCntMul));
+    const cnt=isBossGrp ? grp.count : Math.max(1,Math.round(grp.count*nCntMul*stageCntMul));
     const hpMul=isBossGrp ? nBossMul : nHpMul*stageHpMul;
     const dmgMul=isBossGrp ? 1 : stageDmgMul;                 // 보스 피해는 인원·스테이지로 증가 없음
     for(let i=0;i<cnt;i++){ if(Object.keys(tEnemies).length>=40) break; tSpawnEnemy(grp.type, hpMul, map, dmgMul); }
@@ -7897,6 +7976,44 @@ function tPveStartWave(){
 }
 function tNearestPlayer(e){ let best=null,bd=Infinity; for(const s in tFighters){ const f=tFighters[s]; if(f.dead||f.inactive) continue; const d=dist(e.x,e.y,f.x,f.y); if(d<bd){bd=d;best=f;} } return best; }
 
+/* CAMPAIGN-2 §2-2: 별 수호전 틱 — 별광맥 스폰 → 몬스터가 물고 가장자리로 도주 → 이탈=별 상실 */
+function tCampTick(dt){
+  if(tPve.introT>0) tPve.introT-=dt;
+  tPve.runTime=(tPve.runTime||0)+dt;
+  const stage=PVE_STAGES[tPve.stageIndex];
+  if(!stage || stage.objective!=="starguard" || tPve.status!=="playing" || tPve.phase!=="wave") return;
+  const C=CAMP_CONFIG, cx=LOGW/2, cy=ARENA.y+ARENA.h/2;
+  // 별 스폰(동시 3개 상한)
+  tPve.sgSpawnAcc+=dt;
+  if(tPve.sgSpawnAcc>=C.sgSpawnEvery && tPve.sgStars.length<3){
+    tPve.sgSpawnAcc=0;
+    tPve.sgStars.push({ x:cx+rand(-60,60), y:cy+rand(-40,40), carrier:null });
+  }
+  for(let i=tPve.sgStars.length-1;i>=0;i--){
+    const s=tPve.sgStars[i];
+    if(s.carrier){
+      const e=tEnemies[s.carrier];
+      if(!e){ s.carrier=null; continue; }                  // 운반자가 처치됨 → 그 자리에 드랍(tDamageEnemy 후 위치 유지)
+      s.x=e.x; s.y=e.y;
+      // 가장자리 도달 → 별 상실 + 몬스터 이탈 (moveEntity가 반지름만큼 안쪽으로 클램프하므로 r 기준 판정 — 하니스가 잡은 버그)
+      const eg=e.r+6;
+      if(e.x<ARENA.x+eg || e.x>ARENA.x+ARENA.w-eg || e.y<ARENA.y+eg || e.y>ARENA.y+ARENA.h-eg){
+        tPve.sgLost++; delete tEnemies[s.carrier]; tPve.sgStars.splice(i,1);
+        showToast("⭐ 별을 뺏겼다! ("+tPve.sgLost+"/"+C.sgFail+")");
+        continue;
+      }
+    } else {
+      // 미운반 별: 근접 몬스터가 탈취(보스 제외)
+      for(const id in tEnemies){ const e=tEnemies[id];
+        if(e.dead || e.isBoss || e.flee) continue;
+        if(dist(e.x,e.y,s.x,s.y) < e.r+16){
+          s.carrier=id; e.flee=true; e.speed*=C.sgFleeMul;   // 도주 몬스터 이속 +20%
+          break;
+        }
+      }
+    }
+  }
+}
 function tPveUpdateHost(dt){
   const players=OnlineManager.players||{};
   for(const slot in tFighters){ const f=tFighters[slot];
@@ -7910,6 +8027,7 @@ function tPveUpdateHost(dt){
   }
   for(const id in tEnemies) tEnemyUpdate(tEnemies[id], dt);
   tPveTickStructures(dt);                                   // v1.22 봉쇄: 살아있는 문이 주기 소환
+  tCampTick(dt);                                            // CAMPAIGN-2: 별 수호전·인트로·원정 통계
   tResolveCollisions();                                     // 몸싸움: 몹-플레이어/몹-몹 겹침 방지(근접 사격 가능)
   tPveUpdateBullets(dt);
   tickSkillZones(dt, envTeam());
@@ -8008,6 +8126,29 @@ function tEnemyUpdate(e,dt){
   if(e.atkSlowTimer>0) e.atkSlowTimer-=dt;                 // 눈꽃 서리: 공속 둔화(몬스터)
   if(e.freezeTimer>0){ e.freezeTimer-=dt; return; }        // 빙결: 이동·공격 불가
   let spdMul=(e.wSlowTimer>0)?(1-(e.wSlowPct||0)):1;
+  // CAMPAIGN-2 §2-2: 별 운반 도주 — 최근접 가장자리로 직행(전투 무시)
+  if(e.flee){
+    const dl=e.x-ARENA.x, dr=ARENA.x+ARENA.w-e.x, du=e.y-ARENA.y, dd=ARENA.y+ARENA.h-e.y;
+    const mn=Math.min(dl,dr,du,dd);
+    let vx=0, vy=0;
+    if(mn===dl) vx=-1; else if(mn===dr) vx=1; else if(mn===du) vy=-1; else vy=1;
+    e.facing=Math.atan2(vy,vx);
+    const st=e.speed*spdMul*dt, ox=e.x, oy=e.y;
+    moveEntity(e, vx*st, vy*st);
+    if(Math.hypot(e.x-ox,e.y-oy)<st*0.3){                 // 벽 → 수직 우회
+      moveEntity(e, -vy*st, vx*st);
+    }
+    return;
+  }
+  // CAMPAIGN-2 §5: 범용 보스 분노(HP 50%) — 이속·발사 +15%, 플래시
+  if(e.isBoss && !e.campEnraged && e.hp<=e.maxHp*CAMP_CONFIG.enrageAt){
+    e.campEnraged=true;
+    if(e.baseSpeed!==undefined) e.baseSpeed*=CAMP_CONFIG.enrageMul; else e.speed*=CAMP_CONFIG.enrageMul;
+    if(e.baseFireCd!==undefined) e.baseFireCd/=CAMP_CONFIG.enrageMul; else if(e.fireCd) e.fireCd/=CAMP_CONFIG.enrageMul;
+    e.hitFlash=0.5;
+    effects.push({kind:"superwave", x:e.x, y:e.y, t:0, life:0.6, radius:e.r*2.2});
+    showToast("😡 보스가 분노했다!");
+  }
   // 보스 2페이즈/분노(PRD 15.5 간이): HP 비율로 공격 간격·속도 조정
   if(e.baseFireCd){
     let cdMul=1, spMul=1;
@@ -8236,6 +8377,33 @@ function tPveProgress(dt){
         tPve.waveIndex=stageNow.waves.length-1;             // 마지막 웨이브 취급 → 아래에서 stageclear
       }
     }
+    // CAMPAIGN-2 §2-1 거점 사수전(hold): 아군만 거점 안 → 게이지 상승 · 몬스터 있으면 정지 · 100 = 클리어. 웨이브는 무한 순환.
+    if(stageNow.objective==="hold"){
+      const cx=LOGW/2, cy=ARENA.y+ARENA.h/2, R=CAMP_CONFIG.holdRadius;
+      let ally=0, foe=0;
+      for(const s in tFighters){ const f=tFighters[s]; if(f.dead||f.inactive) continue; if(dist(f.x,f.y,cx,cy)<=R) ally++; }
+      for(const id in tEnemies){ const e=tEnemies[id]; if(!e.dead && dist(e.x,e.y,cx,cy)<=R){ foe=1; break; } }
+      if(ally>0 && !foe) tPve.holdG=Math.min(CAMP_CONFIG.holdGoal, tPve.holdG+CAMP_CONFIG.holdPerSec*dt);
+      if(tPve.holdG>=CAMP_CONFIG.holdGoal){
+        tEnemies={}; tBullets=tBullets.filter(b=>b.team==="pve");
+        tPve.waveIndex=stageNow.waves.length-1;                        // 클리어 경로로 합류
+      } else {
+        if(alive===0){ tPve.waveIndex=(tPve.waveIndex+1)%stageNow.waves.length; tPveStartWave(); }
+        return;
+      }
+    }
+    // CAMPAIGN-2 §2-2 별 수호전(starguard): 별 5개 뺏기면 실패 · 90초 버티면 클리어. 웨이브 무한 순환.
+    if(stageNow.objective==="starguard"){
+      if(tPve.sgLost>=CAMP_CONFIG.sgFail){ if(tPveBeginRetry()) return; tPve.status="failed"; tPveEnd(); return; }
+      tPve.sgT-=dt;
+      if(tPve.sgT<=0){
+        tEnemies={}; tBullets=tBullets.filter(b=>b.team==="pve"); tPve.sgStars=[];
+        tPve.waveIndex=stageNow.waves.length-1;
+      } else {
+        if(alive===0){ tPve.waveIndex=(tPve.waveIndex+1)%stageNow.waves.length; tPveStartWave(); }
+        return;
+      }
+    }
     // v1.22 봉쇄(blockade): 문이 남아있으면 계속 소환되므로 클리어 판정 보류, 전파괴 시 최종 웨이브 1회
     if(stageNow.objective==="blockade"){
       if(tGatesAlive()>0) return;
@@ -8264,7 +8432,13 @@ function tPveProgress(dt){
         if(!o.picked && tFighters[s]){ o.picked=true; o.pi=Math.floor(Math.random()*3); tPveApplyUpgrade(tFighters[s], o.c[o.pi], o.r===1); } }
         tPve.upg=null; }
       const wasBoss=!!PVE_STAGES[tPve.stageIndex].boss;
+      const zoneBefore=campZoneIdx(tPve.stageIndex);
+      // CAMPAIGN-2 §5: 구역 보스 격파 보너스(솔로 원정만 — 온라인 협동은 무보상 정책 유지)
+      if(wasBoss && !OnlineManager.roomRef){ addGold(CAMP_CONFIG.zoneBonusGold); addExp(CAMP_CONFIG.zoneBonusExp);
+        showToast("🏆 구역 클리어! +"+CAMP_CONFIG.zoneBonusGold+"G · 경험치 +"+CAMP_CONFIG.zoneBonusExp); try{ saveProfile(); }catch(e){} }
       tPve.stageIndex++; tPve.waveIndex=0;
+      // CAMPAIGN-2 §3: 구역이 바뀌면 성장버프 스택 리셋(구역 = 성장 아크)
+      if(campZoneIdx(tPve.stageIndex)!==zoneBefore){ for(const s in tFighters) resetGrowth(tFighters[s]); }
       if(wasBoss){ tPve.checkpoint=tPve.stageIndex; tPve.retryUsed=false; }   // v1.24 PRD 12.6: 5·10·15 클리어 직후 저장(새 체크포인트마다 재도전 1회 리필)
       const st=PVE_STAGES[tPve.stageIndex]; tMapId=st.mapId;
       tPveSetupStructures();                               // v1.22: 맵+구조물 충돌 재구성(OBSTACLES/BUSHES 포함)
@@ -8332,7 +8506,10 @@ function tPveGetDrawData(){
     out.zones=packZones();
     out.structs=tPackStructs();                                      // v1.22
     out.pve={ stageIndex:tPve.stageIndex, waveIndex:tPve.waveIndex, teamLives:tPve.teamLives, status:tPve.status, phase:tPve.phase, enemiesRemaining:Object.keys(tEnemies).length,
-      dfT:Math.max(0,Math.ceil(tPve.defendT||0)), gates:tGatesAlive() };
+      dfT:Math.max(0,Math.ceil(tPve.defendT||0)), gates:tGatesAlive(),
+      hg:Math.round(tPve.holdG||0), sgT:Math.max(0,Math.ceil(tPve.sgT||0)), sgL:tPve.sgLost||0,
+      sgS:(tPve.sgStars||[]).map(s=>({x:Math.round(s.x),y:Math.round(s.y)})), it:Math.max(0,Math.round((tPve.introT||0)*10)/10),
+      rt:Math.round(tPve.runTime||0) };
     if(tPve.upg){ const ug={}; for(const s in tPve.upg){ const o=tPve.upg[s]; ug[s]={c:o.c, r:o.r, p:o.picked?1:0, pi:o.pi}; } out.pve.upg=ug; }
   } else {
     const st=OnlineManager.onlineState;
@@ -8405,13 +8582,30 @@ function tPveRender(){
   const data=tPveGetDrawData();
   const me=data.fighters.find(f=>f.isMe); _viewer = me ? { x:me.x, y:me.y, team:"pve" } : null;
   drawStructsPacked(data.structs);                                   // v1.22 구조물(수정/문/벽 + HP바)
+  const pve=data.pve||{ stageIndex:0, waveIndex:0, teamLives:0, enemiesRemaining:0, status:"playing", phase:"wave" };
+  const stage=PVE_STAGES[pve.stageIndex]||PVE_STAGES[0];
+  // CAMPAIGN-2 §2-1: 거점 링(파이터 아래층)
+  if(stage.objective==="hold"){
+    const hx=LOGW/2, hy=ARENA.y+ARENA.h/2, R=CAMP_CONFIG.holdRadius, p2=0.5+0.5*Math.sin(uiTime*3);
+    ctx.save();
+    ctx.globalAlpha=0.16+0.08*p2; ctx.fillStyle="#7dffb0"; ctx.beginPath(); ctx.arc(hx,hy,R,0,Math.PI*2); ctx.fill();
+    ctx.globalAlpha=0.85; ctx.strokeStyle="#7dffb0"; ctx.lineWidth=3; ctx.setLineDash([12,8]);
+    ctx.beginPath(); ctx.arc(hx,hy,R,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+    ctx.restore();
+  }
+  // CAMPAIGN-2 §2-2: 지켜야 할 별
+  if(stage.objective==="starguard" && pve.sgS){
+    for(const s of pve.sgS){
+      const simg=worldImage("star_pickup"), p3=0.5+0.5*Math.sin(uiTime*5+s.x);
+      if(simg) ctx.drawImage(simg, s.x-16, s.y-16-p3*3, 32, 32);
+      else drawStar(s.x, s.y-p3*3, 5, 14, 6, "#ffe14d");
+    }
+  }
   drawSkillZonesPacked(data.zones);
   for(const b of data.bullets) drawOnlineBullet(b);
   for(const e of data.enemies) tDrawEnemy(e);
   for(const f of data.fighters) tDrawFighter(f);
   drawEffects();
-  const pve=data.pve||{ stageIndex:0, waveIndex:0, teamLives:0, enemiesRemaining:0, status:"playing", phase:"wave" };
-  const stage=PVE_STAGES[pve.stageIndex]||PVE_STAGES[0];
   ctx.save();
   ctx.fillStyle="rgba(10,12,32,0.72)"; ctx.fillRect(0,0,LOGW,64); ctx.textBaseline="middle";
   ctx.textAlign="left"; ctx.fillStyle="#9fe0ff"; ctx.font="bold 17px 'Malgun Gothic',sans-serif"; ctx.fillText(stage.name,24,24);
@@ -8419,6 +8613,8 @@ function tPveRender(){
   let objTxt="웨이브 "+(pve.waveIndex+1)+"/"+stage.waves.length+" · 남은 적 "+pve.enemiesRemaining;
   if(stage.objective==="defend" && pve.dfT>0) objTxt="🛡 수정 지키기 "+pve.dfT+"초 · 남은 적 "+pve.enemiesRemaining;
   else if(stage.objective==="blockade" && pve.gates>0) objTxt="🚪 몬스터 문 "+pve.gates+"개 파괴!";
+  else if(stage.objective==="hold") objTxt="✨ 거점을 지켜라! 게이지 "+(pve.hg||0)+"/"+CAMP_CONFIG.holdGoal+" (거점 안에 있어야 참)";
+  else if(stage.objective==="starguard") objTxt="⭐ 별 수호! 뺏긴 별 "+(pve.sgL||0)+"/"+CAMP_CONFIG.sgFail+" · 남은 시간 "+(pve.sgT||0)+"초";
   ctx.fillStyle="#aab4e0"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.fillText(objTxt,24,46);
   ctx.textAlign="right"; ctx.fillStyle="#ff8f8f"; ctx.font="bold 20px 'Malgun Gothic',sans-serif"; ctx.fillText("팀 목숨 합계 ♥ "+pve.teamLives,LOGW-24,32);
   ctx.fillStyle="rgba(10,12,32,0.72)"; ctx.fillRect(0,656,LOGW,64);
@@ -8438,6 +8634,11 @@ function tPveRender(){
   // 보스 첫 등장 연출(호스트/게스트 모두 draw data 기준)
   if(boss && !_pveBossSeen){ _pveBossSeen=true; effects.push({kind:"bossArrival",x:LOGW/2,y:LOGH/2,t:0,life:1.6,color:"#ff4d6d"}); }
   else if(!boss) _pveBossSeen=false;
+  if(pve.it>0 && pve.status==="playing" && !data.waiting){   // CAMPAIGN-2 §1: 구역 인트로 배너(2.5초)
+    drawCenterBanner(CAMP_ZONES[campZoneIdx(pve.stageIndex)].intro, "#ffe066");
+  }
+  if(pve.it>0 && pve.status==="playing" && !data.waiting)   // CAMPAIGN-2 §1: 구역 인트로 배너(2.5초)
+    drawCenterBanner(CAMP_ZONES[campZoneIdx(pve.stageIndex)].intro, "#ffe066");
   if(data.waiting) drawCenterBanner("동기화 대기 중…","#9fe0ff");
   else if(pve.status==="failed") drawCenterBanner("실패…","#ff7a7a");
   else if(pve.status==="complete") drawCenterBanner("올 클리어! 🎉","#ffe066");
@@ -8487,6 +8688,12 @@ function tPveDrawOver(){
   ctx.shadowColor=col; ctx.shadowBlur=30; ctx.fillStyle=col; ctx.font="bold 64px 'Malgun Gothic',sans-serif"; ctx.fillText(txt,LOGW/2,180); ctx.shadowBlur=0;
   let reached=tPve.stageIndex+1; const st=(OnlineManager.onlineState&&OnlineManager.onlineState.pve)?OnlineManager.onlineState.pve:null; if(st) reached=st.stageIndex+1;
   ctx.fillStyle="#fff"; ctx.font="bold 24px 'Malgun Gothic',sans-serif"; ctx.fillText("도달 스테이지: "+reached+" / "+PVE_STAGES.length,LOGW/2,250);
+  {  // CAMPAIGN-2 §5: 원정 누적 통계(총 처치 = 파이터 score 합, 시간)
+    let kills=0; for(const s in tFighters) kills+=(tFighters[s].score||0);
+    const rt=(OnlineManager.onlineState&&OnlineManager.onlineState.pve&&OnlineManager.onlineState.pve.rt)||Math.round(tPve.runTime||0);
+    ctx.fillStyle="#9fe0ff"; ctx.font="bold 17px 'Malgun Gothic',sans-serif";
+    ctx.fillText("총 처치 "+kills+" · 원정 시간 "+Math.floor(rt/60)+"분 "+(rt%60)+"초",LOGW/2,282);
+  }
   ctx.fillStyle="#aab4e0"; ctx.font="17px 'Malgun Gothic',sans-serif"; ctx.fillText("온라인 베타는 골드 보상이 없어요.",LOGW/2,300);
   drawRematchHint(360);
   ctx.restore();
