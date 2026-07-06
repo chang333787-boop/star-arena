@@ -51,7 +51,11 @@ s+=`;globalThis.__t={ OM:OnlineManager, emptyInput, STATE, get state(){return ga
   tTeamStars, tFightersList, setRule:(r)=>{onlineSelectedRule=r;}, tRuleId, effSpeed, castTagSpecial, TAG_X_ALLOW,
   get OBSTACLES(){return OBSTACLES;}, RULE_CONFIG, GAME_CONFIG,
   setSel:(c,w)=>{selectedCharacterId=c;selectedWeaponId=w;profile.selectedCharacterId=c;profile.selectedWeaponId=w;},
-  setMyTag:v=>{tMyTagRole=v;}, tComputeResultText };`;
+  setMyTag:v=>{tMyTagRole=v;}, tComputeResultText,
+  tUpdateGuest, onlineReconcile, onlineInterpTarget, onlineSnapPush, onlineInputBtnSig, readLocalInput,
+  get tRenderFighters(){return tRenderFighters;}, get tSnapBuf(){return tSnapBuf;}, get tPredict(){return tPredict;},
+  setGuestState:v=>{OnlineManager.onlineState=v;},
+  resetGuestView:()=>{tRenderFighters={};tPredict=null;tSnapBuf=[];tInterpClock=0;tLastStateRef=null;tBulletsView=[];} };`;
 let api; try{ (0,eval)(s); api=globalThis.__t; }catch(e){ console.log("LOAD_FAIL:",e.stack); process.exit(1); }
 let fails=0; const check=(n,c)=>{console.log((c?"  ok  ":"FAIL  ")+n); if(!c)fails++;};
 const run=(n,fn)=>{ try{fn(); }catch(e){console.log("THROW ["+n+"]: "+(e.stack||e.message)); fails++;} };
@@ -259,6 +263,82 @@ run("PVE(onlinePve6) 1인 방 — 같은 tPackFighter 경로 + pve 필드 엄격
   const st=hostState(code);
   check("state 기록(fighters+pve)", !!st && !!st.fighters && !!st.pve);
   check("p1 am=숫자", typeof st.fighters.p1.am==="number");
+});
+
+console.log("=== 9) 온라인긴급 P1: inputs 분리·페어 보간·연속 화해·패킷 다이어트 ===");
+run("inputs/$slot 분리 노드 — 쓰기 경로·host 구독 왕복", ()=>{
+  const {code,rr,room}=setupRoom("tdm");
+  const saveSlot=OM.mySlot, saveRole=OM.role;
+  OM.mySlot="p2"; OM.role="guest";
+  const inp=api.emptyInput(); inp.attack=true; inp.mvx=0.5;
+  OM.writeInput(inp);
+  OM.mySlot=saveSlot; OM.role=saveRole;
+  check("rooms/*/inputs/p2 에 기록(players 아님)", !!room.inputs && !!room.inputs.p2 && room.inputs.p2.attack===true
+    && !(room.players.p2 && room.players.p2.input && room.players.p2.input.attack===true));
+  check("host 리스너 → OnlineManager.inputs 반영", !!OM.inputs && !!OM.inputs.p2 && OM.inputs.p2.mvx===0.5);
+});
+run("입력 버튼 시그니처(캐핑 예외 판별)", ()=>{
+  const a=api.emptyInput(), b=api.emptyInput();
+  b.mvx=0.7; b.aim=1.05;   // 아날로그만 변화
+  check("아날로그 변화는 버튼 시그니처 동일(20Hz 캡 대상)", api.onlineInputBtnSig(a)===api.onlineInputBtnSig(b));
+  b.special=true;          // 버튼 변화
+  check("버튼 변화는 시그니처 상이(즉시 전송)", api.onlineInputBtnSig(a)!==api.onlineInputBtnSig(b));
+});
+run("게스트 스냅샷 페어 보간(순간이동 없음)", ()=>{
+  setupRoom("tdm");
+  const saveRole=OM.role; OM.role="guest"; OM.mySlot="p1";
+  api.resetGuestView();
+  const mk=x=>({ timeLeft:90, teamScores:{blue:0,red:0}, bullets:[],
+    fighters:{ p1:{x:300,y:300,facing:0,dead:false,hp:100}, p2:{x:x,y:200,facing:0,dead:false,hp:100} } });
+  const s1=mk(100);
+  api.setGuestState(s1);
+  for(let i=0;i<3;i++) api.tUpdateGuest(1/15);        // 워밍업(버퍼 적재 + 시계 진행)
+  const s2=mk(200);                                    // 다음 스냅샷: p2가 +100px
+  api.setGuestState(s2);
+  api.tUpdateGuest(1/30);
+  const rx=api.tRenderFighters.p2.x;
+  check("스냅샷 점프(+100px)를 즉시 스냅하지 않음(중간값)", rx>105 && rx<195);
+  const s3=mk(200);                                    // 같은 위치의 후속 스냅샷들 → 수렴
+  api.setGuestState(s3);
+  for(let i=0;i<20;i++) api.tUpdateGuest(1/15);
+  check("후속 스냅샷으로 목표 수렴", Math.abs(api.tRenderFighters.p2.x-200)<4);
+  OM.role=saveRole;
+});
+run("자기 캐릭터 연속 화해(70px 하드스냅 제거)", ()=>{
+  const pred={x:0,y:0}, auth={x:100,y:0};
+  api.onlineReconcile(pred, auth, 1/60);
+  check("100px 오차: 프레임당 일부만 흡수(점진)", pred.x>3 && pred.x<40);
+  let last=pred.x;
+  for(let i=0;i<200;i++) api.onlineReconcile(pred, auth, 1/60);
+  check("연속 적용 시 수렴(잔차 ≤6px 데드존)", Math.abs(pred.x-100)<=6.5);
+  const pred2={x:0,y:0};
+  api.onlineReconcile(pred2, {x:300,y:0}, 1/60);
+  check("220px 초과(리스폰/워프급)만 즉시 스냅", pred2.x===300);
+});
+run("패킷 다이어트: 탄 48발 패킹 + 페인트 RLE 조건 전송", ()=>{
+  const {code}=setupRoom("paint");
+  for(let i=0;i<80;i++) api.pushBullet({ x:100+i, y:100, vx:10, vy:0, r:6, color:"#fff", wid:null, owner:"p1", team:"blue", traveled:0, maxRange:400 });
+  let _p1=false;   // 그리드 변화(픽셀 좌표 — 차단 칸 회피 위해 칠해질 때까지 순회)
+  for(let c=1;c<20&&!_p1;c++) _p1=api.tPaintCellBy(24+c*56+28, 70+2*56+28, "blue", "p1");
+  api.tHostWriteState();
+  const st1=hostState(code);
+  check("시뮬 탄 80발 → 패킷은 최신 48발", api.tBullets.length>=48 && st1.bullets.length===48);
+  check("그리드 변화 직후 패킷엔 RLE 포함", typeof st1.rule.g==="string");
+  api.tHostWriteState();
+  const st2=hostState(code);
+  check("그리드 무변화 → g 생략(고정 비용 제거)", st2.rule.g===undefined);
+  let _p2=false;
+  for(let c=1;c<20&&!_p2;c++) _p2=api.tPaintCellBy(24+c*56+28, 70+6*56+28, "red", "p4");
+  api.tHostWriteState();
+  const st3=hostState(code);
+  check("그리드 변화 → g 재전송", typeof st3.rule.g==="string");
+  // 게스트: g 생략 패킷을 받아도 이전 그리드 유지(중간에 초기화되지 않음)
+  const role=OM.role; OM.role="guest"; api.tSetupRule();
+  api.tGuestApplyRule(JSON.parse(JSON.stringify(st3)));
+  const g3=api.tPaintRLE();
+  api.tGuestApplyRule(JSON.parse(JSON.stringify(st2)));   // g 없음
+  check("g 생략 패킷 → 그리드 유지", api.tPaintRLE()===g3);
+  OM.role=role;
 });
 
 console.log("\n결과: "+(fails===0?"ALL PASS ✅":(fails+"건 실패 ❌")));

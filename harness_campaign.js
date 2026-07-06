@@ -81,7 +81,8 @@ function mkRoom(chars){
   }
   api.setState(api.STATE.ONLINE_LOBBY); api.tStartMatch();
   OM.mySlot="p0";
-  if(!OM.players.p1) OM.players.p1={connected:true,input:api.emptyInput()};
+  if(!OM.players.p1) OM.players.p1={connected:true};
+  if(!OM.inputs) OM.inputs={};   // 온라인긴급 P1: 입력은 inputs/$slot 분리 노드
   OM.writeHostState=()=>{}; OM.writeMetaStatus=()=>{}; OM.writeInput=()=>{};
   return code;
 }
@@ -196,10 +197,10 @@ function simStage(si, capSec){
   api.jumpStage(si);
   const dt=1/30; let t=0;
   while(t<capSec){
-    for(const sl of Object.keys(api.tFighters)){ const f=api.tFighters[sl]; if(OM.players[sl]) OM.players[sl].input=ctrl(f); }
+    for(const sl of Object.keys(api.tFighters)){ const f=api.tFighters[sl]; if(OM.players[sl]) OM.inputs[sl]=ctrl(f); }   // P1: inputs 노드
     api.tPveUpdateHost(dt); t+=dt;
     if(process.env.CAMPDBG && Math.abs(t-3)<dt/2){
-      const f=api.tFighters.p1, inp=OM.players.p1&&OM.players.p1.input;
+      const f=api.tFighters.p1, inp=OM.inputs.p1;
       console.log("    [t=3s] p1 pos",Math.round(f.x),Math.round(f.y),"inp",JSON.stringify(inp&&{u:inp.up,d:inp.down,l:inp.left,r:inp.right,a:inp.attack}),"inactive",f.inactive,"frozen",f.freezeTimer>0,"phase",api.pve.phase);
     }
     if(api.pve.status==="failed") return {ok:false, why:"failed", t:t};
