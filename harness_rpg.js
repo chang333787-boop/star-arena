@@ -44,6 +44,7 @@ script += `
   rpgTalkTo, rpgDialogAdvance, rpgChoicePick, rpgOpenShop, rpgShopRows, rpgShopBuy, rpgShopSell, rpgSellAllCrops,
   rpgInvAdd, rpgInvCount, rpgInvRemove, rpgUseCandy, rpgSleep, rpgInteract, rpgScanContext, rpgCheckWarp,
   rpgCollides, rpgSolidAt, rpgAddGold, rpgAddExp,
+  rpgCamTarget, rpgCamSnap, rpgCamUpdate, rpgOnScreen, rpgChestOpen, rpgUseObject,
   rpgAttack, rpgCastX, rpgCastC, rpgHurtPlayer, rpgDie, rpgInvenUse, rpgBulletsUpdate,
   rpgMakeMob, rpgHitMob, rpgWeapon, rpgDef, rpgLearnSkills, rpgSkillX, rpgMobUpdate,
   rpgFarmDo, rpgFarmActionFor, rpgFarmCell, rpgFarmNeed, rpgFarmDone, rpgPlant, rpgWater, rpgHarvest,
@@ -102,7 +103,12 @@ console.log("=== RPG-2) 진입·이동·충돌·워프 ===");
 run("진입", ()=>{
   R.rpgEnter();
   check("진입: state=rpg · 맵=별마중 마을", R.state==="rpg" && R.RPG.map.id==="rpg_village");
-  check("줌아웃 카메라(36×16 → s<1)", R.RPG.cam.s<1 && R.RPG.cam.s>0.5);
+  // EXPLORE-1 추적 카메라: 1.0 스케일 + clamp 추적(마을 2016×896 → maxX=784, maxY=320)
+  check("추적 카메라 clamp 한계(마을 784×320)", R.RPG.cam.maxX===784 && R.RPG.cam.maxY===320);
+  {
+    const t={ x:Math.max(0,Math.min(R.RPG.cam.maxX,R.RPG.p.x-616)), y:Math.max(0,Math.min(R.RPG.cam.maxY,R.RPG.p.y-288)) };
+    check("로드 직후 즉시 스냅(cam===target)", Math.abs(R.RPG.cam.x-t.x)<0.01 && Math.abs(R.RPG.cam.y-t.y)<0.01);
+  }
   check("스폰 위치 통행 가능", !R.rpgCollides(R.RPG.p.x, R.RPG.p.y));
   check("온보딩: 첫 진입 인트로 대화+mq01 자동 시작", R.RPG.ui==="dialog"&&R.rpgQuestActive("mq01"));
   clearIntro();
@@ -131,6 +137,46 @@ run("워프 왕복", ()=>{
   R.rpgCheckWarp();
   check("농가→마을 복귀 워프", R.RPG.map.id==="rpg_village");
   check("워프 직후 재워프 잠금", R.RPG.p.warpLock===true);
+});
+run("EXPLORE-1 카메라·지도·보물상자", ()=>{
+  // 실내(농가 22×10 → 1232×560 ≤ 뷰포트): 카메라 이동 0 = 픽셀 동일 회귀 무결
+  R.rpgLoadMap("rpg_home",-1,-1);
+  check("실내 맵 카메라 고정(maxX=maxY=0)", R.RPG.cam.maxX===0 && R.RPG.cam.maxY===0 && R.RPG.cam.x===0 && R.RPG.cam.y===0);
+  check("실내 중앙 정렬 오프셋(offY=8)", R.RPG.cam.offX===0 && R.RPG.cam.offY===8);
+  // 필드(들판 36×16): lerp 추적 — 순간이동 후 스냅 없이 서서히 목표 수렴
+  R.rpgLoadMap("rpg_field1",2,7);
+  const c0=R.RPG.cam.x;
+  R.RPG.p.x=(30+0.5)*56; R.RPG.p.y=(8+0.5)*56;   // 동쪽으로 순간이동(테스트용)
+  R.rpgCamUpdate(0.05);
+  const t=R.rpgCamTarget();
+  check("lerp 추적: 1틱에 스냅하지 않음", R.RPG.cam.x>c0 && R.RPG.cam.x<t.x);
+  for(let i=0;i<200;i++) R.rpgCamUpdate(0.05);
+  check("lerp 수렴: 목표 도달", Math.abs(R.RPG.cam.x-t.x)<1 && Math.abs(R.RPG.cam.y-t.y)<1);
+  check("컬링: 화면 밖 좌표 false·안 true", R.rpgOnScreen(R.RPG.p.x,R.RPG.p.y) && !R.rpgOnScreen(-800,-800));
+  // 워프 스냅(멀미 4계명 ③)
+  R.rpgLoadMap("rpg_village",33,7);
+  const tv=R.rpgCamTarget();
+  check("맵 로드 즉시 스냅", Math.abs(R.RPG.cam.x-tv.x)<0.01 && Math.abs(R.RPG.cam.y-tv.y)<0.01);
+  // M키 전체지도 토글
+  R.RPG.ui="field"; R.handleRpgKey("KeyM");
+  check("M키 → 지도 열림", R.RPG.ui==="map");
+  R.handleRpgKey("KeyM");
+  check("M키 → 지도 닫힘", R.RPG.ui==="field");
+  // 보물상자: 1회성 루팅 + 재개봉 방지
+  const chest=R.RPG.objects.find(o=>o.type==="chest"&&o.loot&&o.loot.gold);
+  check("마을 보물상자 데이터(30G)", !!chest && chest.loot.gold===30);
+  const g0=R.RPG.save.gold;
+  R.rpgUseObject(chest);
+  check("상자 개봉: +30G + 플래그", R.RPG.save.gold===g0+30 && R.RPG.save.flags["chest_rpg_village_"+chest.tx+"_"+chest.ty]===1);
+  drainDialog();
+  R.rpgUseObject(chest);
+  check("재개봉 방지(골드 불변)", R.RPG.save.gold===g0+30);
+  drainDialog();
+  const db=R.rpgDb();
+  let lootChests=0;
+  for(const mp of db.maps) for(const o of (mp.objects||[])) if(o.type==="chest"&&o.loot) lootChests++;
+  check("루팅 보물상자 총 10개(들판2·숲길3·마을1·요새4)", lootChests===10);
+  R.RPG.ui="field";
 });
 
 console.log("=== RPG-3) 대화·선택지·상점 ===");

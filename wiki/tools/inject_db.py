@@ -39,16 +39,19 @@ for m in mp["maps"]:
            # soil을 [c,r] 배열로 정규화(맵 생성기는 {tx,ty} 객체 — 엔진은 soil[i][0/1] 배열 접근)
            "soil": [([s["tx"], s["ty"]] if isinstance(s, dict) else s) for s in m.get("soil", [])]}
     objs, seen_bed = [], set()
+    explicit = m.get("objects", [])                  # 명시 오브젝트(loot 보물상자 등) — 같은 좌표의 문자 파생을 대체
+    expl_at = {(o["tx"], o["ty"]) for o in explicit}
     for r, row in enumerate(m["rows"]):
         for c, ch in enumerate(row):
             if ch in OBJ_CHARS:
+                if (c, r) in expl_at: continue
                 t = OBJ_CHARS[ch]
                 if t == "bed":                       # 붙은 침대(bb)는 1개로 합침
                     key = (m["id"],)
                     if key in seen_bed: continue
                     seen_bed.add(key)
                 objs.append({"type": t, "tx": c, "ty": r})
-    rec["objects"] = objs
+    rec["objects"] = objs + explicit
     maps_out.append(rec)
 
 # ── 3) NPC 표시 속성(emoji/color) 기본값 ──

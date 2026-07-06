@@ -257,6 +257,16 @@
      "tx": 6,
      "ty": 13
     }
+   ],
+   "objects": [
+    {
+     "type": "chest",
+     "tx": 33,
+     "ty": 13,
+     "loot": {
+      "gold": 30
+     }
+    }
    ]
   },
   {
@@ -514,7 +524,26 @@
      "ty": 8
     }
    ],
-   "soil": []
+   "soil": [],
+   "objects": [
+    {
+     "type": "chest",
+     "tx": 33,
+     "ty": 2,
+     "loot": {
+      "item": "it_jelly_candy",
+      "qty": 2
+     }
+    },
+    {
+     "type": "chest",
+     "tx": 5,
+     "ty": 13,
+     "loot": {
+      "gold": 40
+     }
+    }
+   ]
   },
   {
    "id": "rpg_field2",
@@ -613,7 +642,36 @@
      "ty": 17
     }
    ],
-   "soil": []
+   "soil": [],
+   "objects": [
+    {
+     "type": "chest",
+     "tx": 3,
+     "ty": 2,
+     "loot": {
+      "item": "seed_crop_sparkle_carrot",
+      "qty": 5
+     }
+    },
+    {
+     "type": "chest",
+     "tx": 45,
+     "ty": 19,
+     "loot": {
+      "item": "it_stardust_powder",
+      "qty": 3
+     }
+    },
+    {
+     "type": "chest",
+     "tx": 30,
+     "ty": 9,
+     "loot": {
+      "item": "ar_wind_brooch",
+      "qty": 1
+     }
+    }
+   ]
   },
   {
    "id": "rpg_den1",
@@ -724,7 +782,44 @@
      "ty": 6
     }
    ],
-   "soil": []
+   "soil": [],
+   "objects": [
+    {
+     "type": "chest",
+     "tx": 5,
+     "ty": 2,
+     "loot": {
+      "item": "it_jelly_candy",
+      "qty": 2
+     }
+    },
+    {
+     "type": "chest",
+     "tx": 14,
+     "ty": 2,
+     "loot": {
+      "gold": 50
+     }
+    },
+    {
+     "type": "chest",
+     "tx": 17,
+     "ty": 6,
+     "loot": {
+      "item": "it_stardust_powder",
+      "qty": 2
+     }
+    },
+    {
+     "type": "chest",
+     "tx": 8,
+     "ty": 7,
+     "loot": {
+      "item": "seed_crop_byeolmu",
+      "qty": 5
+     }
+    }
+   ]
   },
   {
    "id": "rpg_den3",
