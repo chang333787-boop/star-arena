@@ -73,6 +73,7 @@ dialogs = {"npcs": dlg_npcs, "quests": dg.get("quests", {}), "tutorial": dg.get(
 
 # ── 5) 최종 RPG_DB 조립 + 참조 사전 검증(유령 id) ──
 out = {k: db[k] for k in ["monsters", "weapons", "armors", "items", "skills", "jobs", "crops", "npcs", "quests"]}
+out["dailies"] = db.get("dailies", [])   # POLISH-2: 일일 의뢰 템플릿(day 시드 추첨)
 out["maps"] = maps_out
 out["legend"] = eng_legend
 out["dialogs"] = dialogs

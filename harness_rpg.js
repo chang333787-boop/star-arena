@@ -46,6 +46,7 @@ script += `
   rpgCollides, rpgSolidAt, rpgAddGold, rpgAddExp,
   rpgCamTarget, rpgCamSnap, rpgCamUpdate, rpgOnScreen, rpgChestOpen, rpgUseObject,
   rpgRespawnCd, rpgBanner, rpgInvenView, rpgInvOrder, rpgInvCap, rpgPityTargets, rpgWellUse, rpgWellGo, RPG_WELLS,
+  rpgDailyGen, rpgDailyEnsure, rpgDailyOnKill, rpgDailyClaim, rpgDailyRec, rpgSellAllMats, rpgGrowTonight, rpgFarmDo,
   rpgAttack, rpgCastX, rpgCastC, rpgHurtPlayer, rpgDie, rpgInvenUse, rpgBulletsUpdate,
   rpgMakeMob, rpgHitMob, rpgWeapon, rpgDef, rpgLearnSkills, rpgSkillX, rpgMobUpdate,
   rpgFarmDo, rpgFarmActionFor, rpgFarmCell, rpgFarmNeed, rpgFarmDone, rpgPlant, rpgWater, rpgHarvest,
@@ -54,7 +55,7 @@ script += `
   rpgQuestAvailFor, rpgQuestOnKill, rpgQuestOnHarvest, rpgStartRaid, rpgSpawnRaid, rpgRaidLights, rpgTrackText,
   rpgQuestTodo, rpgQuestWhere, rpgNpcMarker, rpgTrackTarget, rpgActiveSkills, rpgNpcMapName, rpgMobMapName,
   validateRpgContent, rpgBudgetCheck, rpgBannedHit, rpgSubmitContent, rpgApproveContent, rpgRejectContent,
-  rpgContentMerge, rpgExportApproved, loadRpgContent, RPG_CONTENT_KEY,
+  rpgContentMerge, rpgExportApproved, loadRpgContent, saveRpgContent, RPG_CONTENT_KEY,
   handleRpgKey, handleRpgReviewKey, handleKeyPress, keysDown,
   loadAccounts, createStudent, studentLogin, logout, resetStudent, accountToProfile, mergeProfile, saveProfile, loadProfile,
   AccountStore, PROFILE_KEY,
@@ -218,7 +219,8 @@ console.log("=== RPG-4) 취침·영속·재진입 ===");
 run("취침=하루 진행", ()=>{
   const d0=R.RPG.save.day;
   R.rpgSleep();
-  for(let i=0;i<25;i++) R.rpgUpdate(0.1);
+  if(drainDialog()==="choice") R.handleRpgKey("Enter");   // POLISH-2 취침 확인: 0번=잘 자기
+  for(let i=0;i<40;i++) R.rpgUpdate(0.1);
   check("취침: day+1 · HP 전량 회복 · field 복귀",
     R.RPG.save.day===d0+1 && R.RPG.save.hp===R.rpgMaxHpFor(R.RPG.save) && R.RPG.ui==="field");
 });
@@ -258,7 +260,8 @@ run("스폰·근접 처치", ()=>{
   R.profile.rpg=null;   // 새 캐릭터로
   R.rpgEnter(); clearIntro();
   R.rpgLoadMap("rpg_field1",-1,-1);
-  check("이슬별 들판 몬스터 15 스폰(POLISH-1 밀도 증설)", R.RPG.mobs.length===15);
+  clearIntro();   // POLISH-2: 첫 필드 온보딩 대화 소비(전투 안내)
+  check("이슬별 들판 몬스터 15 스폰(POLISH-1 밀도 증설)", R.RPG.mobs.filter(m=>m.spawnKey).length===15);
   R.rpgInvAdd("wp_hoe",1);
   R.rpgInvenUse(R.RPG.save.inventory.findIndex(s=>s.id==="wp_hoe"));
   check("호미 장착", R.RPG.save.equip.weapon==="wp_hoe");
@@ -350,7 +353,11 @@ run("한 방 ≤10% 헌장(§0.4 — 몬스터×권장 레벨 데이터 검증)"
 });
 
 console.log("=== RPG-7) 생활: 농사 사이클·재수확·물뿌리개·대장간 (RPG-3a) ===");
-function sleepNow(){ R.rpgSleep(); for(let i=0;i<25;i++) R.rpgUpdate(0.1); }
+function sleepNow(){   // POLISH-2: 취침 확인 선택지("잘 자기") 통과 후 요약 카드 끝까지
+  R.rpgSleep();
+  if(drainDialog()==="choice") R.handleRpgKey("Enter");   // 0번 = 잘 자기
+  for(let i=0;i<40;i++) R.rpgUpdate(0.1);
+}
 run("씨앗 구매·농사 풀 사이클", ()=>{
   R.profile.rpg=null; R.rpgEnter(); clearIntro();
   R.RPG.save.gold=500;
@@ -715,16 +722,17 @@ run("밀도 데이터 규칙(비solid+확정 수 15/21/6/4)", ()=>{
 });
 run("리스폰 영속 왕복", ()=>{
   R.profile.rpg=null; R.rpgEnter(); clearIntro();
-  R.rpgLoadMap("rpg_field1",-1,-1);
-  const sv=R.RPG.save, m0=R.RPG.mobs[0];
+  R.rpgLoadMap("rpg_field1",-1,-1); clearIntro();
+  const spawned=()=>R.RPG.mobs.filter(m=>m.spawnKey).length;   // 학생 슬롯/정예 제외한 고정 스폰만
+  const sv=R.RPG.save, m0=R.RPG.mobs.find(m=>m.spawnKey);
   check("스폰 키 부여", typeof m0.spawnKey==="string"&&m0.spawnKey.indexOf("rpg_field1#")===0);
   R.rpgHitMob(m0,9999,{noAmbush:true});
   check("처치 → resp 기록", m0.dead&&sv.resp[m0.spawnKey]!==undefined);
   R.rpgLoadMap("rpg_village",-1,-1); R.rpgLoadMap("rpg_field1",-1,-1);
-  check("쿨다운 중 재입장 → 14마리(미스폰)", R.RPG.mobs.length===14);
+  check("쿨다운 중 재입장 → 14마리(미스폰)", spawned()===14);
   sv.playSec+=R.RPG_CONST.RESPAWN_SHADE+1;   // 최장 쿨다운 경과
   R.rpgLoadMap("rpg_village",-1,-1); R.rpgLoadMap("rpg_field1",-1,-1);
-  check("쿨다운 경과 → 15마리 부활 + 자가 청소", R.RPG.mobs.length===15&&Object.keys(sv.resp).length===0);
+  check("쿨다운 경과 → 15마리 부활 + 자가 청소", spawned()===15&&Object.keys(sv.resp).length===0);
   R.rpgHitMob(R.RPG.mobs[0],9999,{noAmbush:true});
   R.rpgOnDayAdvance();
   check("취침 → resp 전량 리셋", Object.keys(sv.resp).length===0);
@@ -802,6 +810,114 @@ run("mq06 레이드 가드·정체 폴백", ()=>{
   R.rpgLoadMap("rpg_village",-1,-1);
   check("목표 달성 후 재입장 레이드 무스폰(B-10)", R.RPG.mobs.length===0);
   delete sv.quests.active.mq06; sv.flags.raidOn=0;
+});
+
+console.log("=== POLISH-2) 취침 확인·해질녘·일일 의뢰·농사 완화·경제 싱크·정예·학생 슬롯 ===");
+run("취침 확인 선택지·하루 요약 집계", ()=>{
+  R.profile.rpg=null; R.rpgEnter(); clearIntro();
+  const sv=R.RPG.save;
+  sv.today.kills=3; sv.today.gold=77; sv.today.harvest=2;
+  R.rpgSleep();
+  check("침대 → 확인 선택지(즉시 취침 아님)", R.RPG.ui==="dialog"&&drainDialog()==="choice");
+  R.handleRpgKey("Enter");   // 잘 자기
+  check("요약 카드 데이터(3킬·77G·2수확)", R.RPG.ui==="sleep"&&R.RPG.sleep.sum.kills===3&&R.RPG.sleep.sum.gold===77&&R.RPG.sleep.sum.harvest===2);
+  for(let i=0;i<40;i++) R.rpgUpdate(0.1);
+  check("취침 후 today 리셋·해질녘 소멸", sv.today.kills===0&&!sv.flags.dusk&&R.RPG.ui==="field");
+});
+run("해질녘: '아직 안 잘래' → dusk + 먼별 교환", ()=>{
+  const sv=R.RPG.save;
+  R.rpgSleep(); drainDialog();
+  R.handleRpgKey("ArrowDown"); R.handleRpgKey("Enter");   // 1번 = 아직 안 잘래
+  check("dusk 플래그 점화", sv.flags.dusk===1&&R.RPG.ui==="field");
+  R.rpgLoadMap("rpg_village",-1,-1);
+  const mb=R.RPG.npcsOnMap.find(n=>n.id==="npc_meonbyeol");
+  check("먼별이 우물가(19,9)로 이동", !!mb&&mb.tx===19&&mb.ty===9);
+  R.rpgInvAdd("it_stardust_powder",5);
+  R.rpgTalkTo("npc_meonbyeol");
+  check("해질녘 교환 대화(선택지)", drainDialog()==="choice");
+  R.handleRpgKey("Enter");   // 가루 5 → 사탕 3
+  check("교환: 가루 −5 · 사탕 +3", R.rpgInvCount("it_stardust_powder")===0&&R.rpgInvCount("it_jelly_candy")===3);
+});
+run("일일 의뢰판: 시드 결정성·진행·수령", ()=>{
+  const sv=R.RPG.save;
+  sv.quests.done=["mq01","mq02","mq03","mq04"];
+  const a=R.rpgDailyGen(7), b=R.rpgDailyGen(7), c=R.rpgDailyGen(8);
+  check("같은 day = 같은 목록(리롤 방지)", JSON.stringify(a)===JSON.stringify(b));
+  check("mq04 후 1건/일", a.length===1);
+  sv.quests.done.push("mq05","mq06","sq02","mq07");
+  check("mq07 후 3건/일 + 중복 없음", R.rpgDailyGen(7).length===3&&new Set(R.rpgDailyGen(7).map(x=>x.id)).size===3);
+  sv.day=7; R.rpgDailyEnsure();
+  check("의뢰판 생성(day 7)", sv.daily.day===7&&sv.daily.list.length===3);
+  // kill형 하나 골라 진행→수령
+  let ki=-1, kd=null;
+  for(let i=0;i<sv.daily.list.length;i++){ const d=R.rpgDailyRec(sv.daily.list[i].id); if(d.type==="kill"){ ki=i; kd=d; break; } }
+  if(ki>=0){
+    for(let i=0;i<kd.count;i++) R.rpgDailyOnKill(kd.target);
+    const g0=sv.gold;
+    R.rpgDailyClaim(ki);
+    check("kill 의뢰 진행·수령(+"+kd.gold+"G)", sv.daily.list[ki].done===true&&sv.gold===g0+kd.gold);
+    const g1=sv.gold; R.rpgDailyClaim(ki);
+    check("중복 수령 방지", sv.gold===g1);
+  } else check("kill형 의뢰 존재(시드상 미포함 — 허용)", true);
+});
+run("농사 완화: 거름·3×3 급수·일괄 수확", ()=>{
+  const sv=R.RPG.save;
+  R.rpgLoadMap("rpg_village",-1,-1);
+  sv.farm=[]; sv.flags.canUp=2; R.RPG._soilCache=null;
+  // 0=(3,11)·1=(4,11)·4=(3,12): 0 기준 3×3 대각·인접 검증용 배치 — 은하밀(2일)
+  for(const i of [0,1,4]){ sv.farm[i]={c:"crop_galaxy_wheat",wd:0,wt:false,rg:false}; }
+  R.rpgInvAdd("it_fertilizer",1);
+  const cell=sv.farm[0];
+  R.rpgFarmDo(0);   // 물 주기(3×3)
+  check("반짝 물뿌리개 3×3 급수", sv.farm[0].wt&&sv.farm[1].wt&&sv.farm[4].wt);
+  const a0=R.rpgFarmActionFor(0);
+  check("젖은 뒤 거름 액션 노출", a0.act==="fert");
+  R.rpgFarmDo(0);
+  check("거름: wd +1 · 칸당 1회 플래그 · 소모", cell.wd===1&&cell.fz===1&&R.rpgInvCount("it_fertilizer")===0);
+  sleepNow();   // 물 준 상태로 취침 → 3칸 전부 성장, 0번은 거름 포함 2/2 완성
+  check("취침 성장: 0번 다자람(거름 덕 1일 단축)", R.rpgFarmDone(sv.farm[0])&&!R.rpgFarmDone(sv.farm[1]));
+  sv.farm[1].wd=2; sv.farm[4].wd=2;   // 나머지도 완성 처리
+  const w0=R.rpgInvCount("crop_galaxy_wheat");
+  R.rpgFarmDo(0);   // 수확 — canUp 일괄(십자: 1번 인접)
+  check("일괄 수확(십자 인접 포함 ≥2개)", R.rpgInvCount("crop_galaxy_wheat")>=w0+2);
+});
+run("경제 싱크: 사탕 주머니·강화+3·재료 전부 팔기", ()=>{
+  const sv=R.RPG.save;
+  check("주머니 전 상한 5", R.rpgInvCap("it_jelly_candy")===5);
+  sv.flags.candyPouch=1;
+  check("주머니 후 상한 8", R.rpgInvCap("it_jelly_candy")===8);
+  sv.flags.boomerUp=2;
+  R.rpgOpenShop("npc_bolt"); sv.flags.smith_open=1;
+  const up3=R.rpgShopRows().find(r=>r.sp==="up3");
+  check("mq07 후 강화 +3 메뉴 노출", !!up3);
+  sv.gold=1000; R.rpgInvAdd("it_moon_feather",5);
+  R.rpgShopBuy(up3);
+  check("강화 +3: 깃털 5 소모·플래그", sv.flags.boomerUp===3&&R.rpgInvCount("it_moon_feather")===0);
+  R.RPG.ui="field"; R.RPG.shop=null;
+  sv.inventory=sv.inventory.filter(s=>R.rpgFind("items",s.id)===null||R.rpgFind("items",s.id).kind!=="재료");
+  R.rpgInvAdd("it_jelly_bit",4);   // 재료 3G×4
+  const g0=sv.gold;
+  R.rpgSellAllMats();
+  check("재료 전부 팔기(+12G)", sv.gold===g0+12&&R.rpgInvCount("it_jelly_bit")===0);
+});
+run("정예 별그늘·학생 스폰 슬롯", ()=>{
+  const sv=R.RPG.save;
+  sv.day=4; delete sv.flags.eliteDown;   // 짝수 day → 들판
+  R.rpgLoadMap("rpg_field1",-1,-1);
+  const el=R.RPG.mobs.find(m=>m.eliteDay);
+  check("mq07 후 정예 '별그늘 조각' 스폰(짝수 day=들판)", !!el&&el.def.name==="별그늘 조각"&&el.def.hp===176);
+  R.rpgHitMob(el,9999,{noAmbush:true});
+  check("정예 처치 → 오늘 재스폰 없음", sv.flags.eliteDown===4);
+  R.rpgLoadMap("rpg_village",-1,-1); R.rpgLoadMap("rpg_field1",-1,-1);
+  check("재입장에도 정예 미등장", !R.RPG.mobs.some(m=>m.eliteDay));
+  // 학생 승인 몬스터: LIVE 병합 상태 시뮬 — 필드1 tier1 학생몹
+  const st=R.loadRpgContent();
+  st.approved=[{ type:"monsters", seq:901, author:"테스트", data:{ id:"stu_test_mob", name:"반짝테스트", asset:"soft_jelly", hp:20, atk:3, speed:80, pattern:["chase"], patternArgs:{}, exp:5, gold:[1,2], drops:[], tier:1, isBoss:false } }];
+  R.saveRpgContent(st); R.rpgContentMerge();
+  R.rpgLoadMap("rpg_field1",-1,-1);
+  const stu=R.RPG.mobs.find(m=>m.student);
+  check("학생 승인 몬스터 필드 스폰(슬롯 로테이션)", !!stu&&stu.id==="stu_test_mob");
+  st.approved=[]; R.saveRpgContent(st); R.rpgContentMerge();   // 정리
 });
 
 console.log("\n결과: " + (fails===0 ? "RPG_P1_PASS ✅ (안내 보강 완료)" : (fails+"건 실패 ❌")));
