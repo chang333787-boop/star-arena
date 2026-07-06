@@ -673,7 +673,9 @@ const WORLD_ASSETS={
   /* L1 바닥 테마 6종(맵 데이터 floor 필드로 선택) */
   tile_floor:"tiles/ground_basic.png", tile_grass:"tiles/ground_grass.png", tile_snow:"tiles/ground_snow.png",
   tile_sand:"tiles/ground_sand.png", tile_wood:"tiles/ground_wood.png", tile_void:"tiles/ground_void.png",
-  tile_path:"tiles/ground_path.png"
+  tile_path:"tiles/ground_path.png",
+  rpg_sheet:"rpg/kenney_roguelike_sheet.png",   /* RPG 작물 등 — Kenney Roguelike pack(CC0, ASSET_GUIDE 참고) */
+  rpg_char:"rpg/kenney_roguelike_char.png"      /* RPG NPC — Kenney Roguelike Characters(CC0) */
 };
 // 성능(코드감사): worldImage는 바닥/함정/구조물 렌더에서 매 프레임 수십 번 호출된다 — 경로 문자열을 1회만 조립해 둔다
 const WORLD_ASSET_PATHS={};
@@ -3324,6 +3326,22 @@ function rpgOnDayAdvance(){   // §5.1·§7.3: 젖은 날만 성장 +1(wateredDa
 /* ── RPG-3a 생활: 농사 상태기계·씨앗 선택·물뿌리개(§5.2 — 도구 인벤 없음, 문맥 버튼이 전부) ── */
 const RPG_CROP_EMOJI={ crop_byeolmu:"🥬", crop_galaxy_wheat:"🌾", crop_sparkle_carrot:"🥕",
   crop_star_strawberry:"🍓", crop_starbell_bean:"🫛", crop_lightwood_sapling:"🌳" };
+/* 작물 스프라이트(Kenney Roguelike 시트 [col,row] — 16px·1px 마진): [중간 단계, 다자람] · seed=공용 새싹 */
+const RPG_CROP_SHEET={ _seed:[28,11],
+  crop_byeolmu:[[0,9],[3,9]], crop_galaxy_wheat:[[0,15],[2,15]], crop_sparkle_carrot:[[0,18],[2,18]],
+  crop_star_strawberry:[[0,6],[2,7]], crop_starbell_bean:[[0,12],[2,13]], crop_lightwood_sapling:[[28,9],[13,9]] };
+function rpgSheetDraw(g,pos,dx,dy,dw,sheetKey){   // 시트 타일 1장 크리스프 확대(16px·1px 마진)
+  const img=(typeof worldImage==="function")?worldImage(sheetKey||"rpg_sheet"):null;
+  if(!img||!pos) return false;
+  const prev=g.imageSmoothingEnabled;
+  g.imageSmoothingEnabled=false;
+  g.drawImage(img, pos[0]*17, pos[1]*17, 16, 16, dx, dy, dw, dw);
+  g.imageSmoothingEnabled=prev;
+  return true;
+}
+/* NPC 스프라이트(Kenney Roguelike Characters 시트 — 조합 완성 캐릭터 열) */
+const RPG_NPC_SHEET={ npc_onbyeol:[1,11], npc_momo:[0,5], npc_bolt:[1,6],
+  npc_leaf:[1,5], npc_meonbyeol:[0,10], npc_pico:[1,8] };
 function rpgSoil(){   // 밭 좌표(맵이 단일 출처) + 확장 구매 시 8×5 영역(§5.5 — 통행 가능 칸만)
   if(!RPG.map) return [];
   if(RPG._soilCache) return RPG._soilCache;
@@ -4149,9 +4167,13 @@ function rpgDrawNpc(n){
   const npc=rpgFind("npcs",n.id);
   ctx.save(); ctx.translate(n.x,n.y);
   ctx.fillStyle="rgba(0,0,0,0.25)"; ctx.beginPath(); ctx.ellipse(0,14,16,6,0,0,Math.PI*2); ctx.fill();
-  ctx.fillStyle=(npc&&npc.color)||"#8fd0ff"; ctx.beginPath(); ctx.arc(0,-4,16,0,Math.PI*2); ctx.fill();
-  ctx.strokeStyle="rgba(255,255,255,0.5)"; ctx.stroke();
-  ctx.font="17px sans-serif"; ctx.textAlign="center"; ctx.fillText((npc&&npc.emoji)||"🙂", 0, 3);
+  const drew=rpgSheetDraw(ctx, RPG_NPC_SHEET[n.id], -22, -30, 44, "rpg_char");   // 공개 에셋 NPC(CC0)
+  if(!drew){
+    ctx.fillStyle=(npc&&npc.color)||"#8fd0ff"; ctx.beginPath(); ctx.arc(0,-4,16,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle="rgba(255,255,255,0.5)"; ctx.stroke();
+    ctx.font="17px sans-serif"; ctx.textAlign="center"; ctx.fillText((npc&&npc.emoji)||"🙂", 0, 3);
+  }
+  ctx.textAlign="center";
   ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#ffffff"; ctx.fillText(npc?npc.name:n.id, 0, -28);
   const mk=rpgNpcMarker(n.id);   // 퀘스트 마커(❗새 부탁 · ❓보고 · …진행)
   if(mk){ ctx.font="bold 22px sans-serif";
@@ -4466,11 +4488,17 @@ function rpgRender(){
       for(let k=1;k<4;k++){ ctx.beginPath(); ctx.moveTo(x+7,y+k*14); ctx.lineTo(x+49,y+k*14); ctx.stroke(); } }
     if(cell.c){
       if(cell.wt){ ctx.fillStyle="rgba(80,140,255,0.22)"; ctx.fillRect(x+3,y+3,50,50); }
-      const pr=cell.wd/rpgFarmNeed(cell);
-      const em=(pr>=1)?(RPG_CROP_EMOJI[cell.c]||"🌟"):(pr>=0.5?"🌿":"🌱");
-      ctx.font=(pr>=1?"30px":"22px")+" sans-serif"; ctx.textAlign="center";
-      ctx.fillText(em, x+28, y+40); ctx.textAlign="left";
-      if(pr>=1&&(uiTime%1)<0.6){ ctx.font="14px sans-serif"; ctx.fillText("✨", x+40, y+18); }
+      const pr=cell.wd/rpgFarmNeed(cell), sh=RPG_CROP_SHEET[cell.c];
+      let drew=false;
+      if(pr<0.5) drew=rpgSheetDraw(ctx, RPG_CROP_SHEET._seed, x+12, y+12, 32);        // 새싹(공용)
+      else if(pr<1) drew=sh&&rpgSheetDraw(ctx, sh[0], x+7, y+7, 42);                   // 중간
+      else drew=sh&&rpgSheetDraw(ctx, sh[1], x+5, y+5, 46);                            // 다자람
+      if(!drew){   // 시트 미로딩 폴백=이모지
+        const em=(pr>=1)?(RPG_CROP_EMOJI[cell.c]||"🌟"):(pr>=0.5?"🌿":"🌱");
+        ctx.font=(pr>=1?"30px":"22px")+" sans-serif"; ctx.textAlign="center";
+        ctx.fillText(em, x+28, y+40); ctx.textAlign="left";
+      }
+      if(pr>=1&&(uiTime%1)<0.6){ ctx.font="14px sans-serif"; ctx.textAlign="left"; ctx.fillText("✨", x+40, y+16); }
     }
   }
   const _starImg=(typeof worldImage==="function")?worldImage("star_pickup"):null;
@@ -11972,6 +12000,11 @@ function startLoopOnce(){
           profile.rpg=null; rpgEnter();
           const mid=h.slice("#dev_rpg_".length);
           if(mid&&rpgFind("maps",mid)){ RPG.save.level=9; RPG.save.hp=rpgMaxHpFor(RPG.save); rpgLoadMap(mid,-1,-1,{noSave:true}); }
+          if(mid==="farm"&&RPG){   // 데모 밭: 작물 6종 × 성장 3단계(아트 검증용)
+            const crops=["crop_byeolmu","crop_galaxy_wheat","crop_sparkle_carrot","crop_star_strawberry","crop_starbell_bean","crop_lightwood_sapling"];
+            for(let i=0;i<12;i++){ const c=crops[i%6], need=rpgFind("crops",c).growDays;
+              RPG.save.farm[i]={ c:c, wd:(i<6)?need:(i<9?Math.ceil(need/2):0), wt:(i>=9), rg:false }; }
+          }
           if(RPG){ RPG.dialog=null; RPG.ui="field"; }
         }catch(e){}
       }, 900);   // 에셋 로딩 후 진입(스크린샷 대기와 맞춤)

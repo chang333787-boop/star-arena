@@ -1,0 +1,26 @@
+<!doctype html><meta charset="utf-8">
+<!-- 공개 에셋 스프라이트시트 좌표 판독기(검증 틀) — ?img=경로&x=시작col&y=시작row&cols=n&rows=n&tile=16&margin=1&scale=6 -->
+<body style="margin:0;background:#222">
+<canvas id="c"></canvas>
+<script>
+const q=new URLSearchParams(location.search);
+const img=new Image();
+img.onload=()=>{
+  const t=+q.get("tile")||16, m=+q.get("margin")||1, s=+q.get("scale")||6;
+  const x0=+q.get("x")||0, y0=+q.get("y")||0;
+  const cols=+q.get("cols")||12, rows=+q.get("rows")||12;
+  const cv=document.getElementById("c"), g=cv.getContext("2d");
+  cv.width=cols*(t*s+22)+40; cv.height=rows*(t*s+22)+40;
+  g.fillStyle="#333"; g.fillRect(0,0,cv.width,cv.height);
+  g.imageSmoothingEnabled=false;
+  for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
+    const sx=(x0+c)*(t+m), sy=(y0+r)*(t+m);
+    const dx=20+c*(t*s+22), dy=20+r*(t*s+22);
+    g.fillStyle="#555"; g.fillRect(dx-1,dy-1,t*s+2,t*s+2);
+    g.drawImage(img,sx,sy,t,t,dx,dy,t*s,t*s);
+    g.fillStyle="#ffd93d"; g.font="11px monospace";
+    g.fillText((x0+c)+","+(y0+r),dx,dy+t*s+12);
+  }
+};
+img.src=q.get("img")||"../../"+ "assets/README.md";
+</script>

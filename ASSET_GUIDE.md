@@ -134,3 +134,10 @@ let ASSETS_ENABLED = false;  // → true 로 바꾸면 PNG 사용
 > `ASSETS_ENABLED` 를 true 로 바꾸고, index.html / star_arena.html 동기화한 뒤
 > 4개 harness 테스트를 돌리고, F2 에셋 확인 화면에서 6슬롯이 모두 연결됐는지 점검해줘.
 > 게임 기능·온라인·밸런스는 바꾸지 말고, 누락된 그림은 fallback으로 두면 돼.
+
+## RPG 공개 에셋 (2026-07-06 · RPG 아트 사이클 3)
+- `assets/rpg/kenney_roguelike_sheet.png` — Kenney "Roguelike/RPG pack" (1,700타일). **CC0 (퍼블릭 도메인)** — 출처 표기 의무 없음(감사 표기 권장: kenney.nl). 용도: RPG 작물 성장 단계(새싹/중간/다자람 — `RPG_CROP_SHEET` 좌표), 확장 여지(가구·지형).
+- `assets/rpg/kenney_roguelike_char.png` — Kenney "Roguelike Characters". **CC0**. 용도: RPG NPC 6인(`RPG_NPC_SHEET` 좌표 — 온별[1,11]·모모[0,5]·볼트[1,6]·리프[1,5]·먼별[0,10]·피코[1,8]).
+- 좌표 판독 도구: `wiki/tools/sheet_slicer.html` (?img=&x=&y=&cols=&rows=&scale=) — 헤드리스 크롬 스크린샷과 함께 사용.
+- 시각 검증 훅: 게임을 `#dev_rpg_맵id` 또는 `#dev_rpg_farm`(작물 데모 밭)으로 열면 해당 화면 자동 진입.
+- 원칙: **별빛 자체 에셋 우선, 없는 것만 공개 에셋(CC0)** — 학생 그림이 들어오면 교체.
