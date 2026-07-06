@@ -114,3 +114,11 @@ rpgWorldBegin: translate(24−cam.x, 70−cam.y)             // 자체 카메라
 - 숲길(+14): 부슬이 (6,3)(15,7)(7,14)(10,19)(17,12)(23,8) · 부엉이 (25,2)(32,4)(24,12)(36,16)(30,20)(33,19) · 그늘 조각 (41,14)(44,12)
 - den1(+3): 부슬이 (4,5)(18,8) · 그늘 조각 (3,7) / den2(+2): 부슬이 (17,3) · 그늘 조각 (10,8)
 - 규모 총계: EXPLORE-1 ≈120줄 / POLISH-1 ≈300줄(역스케일 축소분 반영)+데이터 / POLISH-2 ≈600줄 / POLISH-3 ≈300줄. 구현 순서: **EXPLORE-1 → POLISH-1(한 세트) → 2 → 3**. 세이브 마이그레이션 v1→2 1회(playSec·resp·daily·today·flags 신규 키 — 전부 rpgDefaultSave+rpgMergeSave 동시 등록 필수).
+
+---
+
+## 구현 완료 기록 (2026-07-06, Fable RPG 폴리시 세션)
+- **EXPLORE-1 → v1.46 (34741a8)** / **POLISH-1 → v1.47 (b66dfed)** / **POLISH-2 → v1.48 (f31fca5)** / **POLISH-3 → v1.49 (79ffc10)** — 전 배치 배포(GitHub Pages).
+- 검증: harness_rpg 확장(+19 블록: 카메라·상자·리스폰 영속 왕복·pity 확정·밀도 전수·사탕 캡/쿨·가방 매핑·워프망·의뢰 시드 결정성·거름/3×3/일괄 수확·정예·학생 슬롯·재도전·기부) — 전 하니스 PASS·index↔star_arena 동일. 세이브 v1→2 마이그레이션(playSec·resp·pity·today·daily — rpgDefaultSave+rpgMergeSave 동시 등록 규칙 준수).
+- 보류(§POLISH-3 선택 항목): 치장(틴트 파이프라인 검증 필요) · 트리클 리스폰 · Lv2 돌팔매.
+- 렌즈 충돌 조정(§B) 전부 결정대로 구현: playSec 시계 / 발밑 이름표 / 별샘 워프망(체크포인트 기각) / dusk 플래그(밤 모드 기각) / 사탕 상한+쿨+주머니.
