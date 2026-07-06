@@ -1320,7 +1320,12 @@ const OnlineManager = {
     try{
       const self=this, cref=this.db.ref(".info/connected");
       const cb=function(snap){ const was=self.connected; self.connected = snap.val()===true;
-        if(!was && self.connected){ try{ AccountStore.flushPending(); }catch(e){} } };   // 재연결 시 오프라인 변경 동기화
+        if(!was && self.connected){
+          try{ AccountStore.flushPending(); }catch(e){}   // 재연결 시 오프라인 변경 동기화
+          // 온라인긴급 P1b: 재연결 시 presence 재-set — onDisconnect가 connected=false를 이미 쐈다면
+          // 이걸 다시 true로 되돌리고 onDisconnect도 재무장(없으면 복귀 불가·봇 상태 영구 잔류)
+          try{ if(self.roomRef){ const k=self.mySlot||self.role; if(k) self.setPresence(k); } }catch(e){}
+        } };
       cref.on("value", cb);
       this.unsubs.push(function(){ try{ cref.off("value", cb); }catch(e){} });
     }catch(e){}
@@ -10790,6 +10795,8 @@ function tUpdateHost(dt){
     const f=tFighters[slot];
     // 끊긴 실제 플레이어는 AI 봇이 인계(가만히 멈춰 점수 공급원이 되지 않게)
     if(!f.isBot && slot!==OnlineManager.mySlot){ const p=players[slot]; if(!p || p.connected===false) f.isBot=true; }
+    // P1b: 복귀 역전이 — 재연결로 connected가 true로 돌아오면 봇 인계 해제(원래 봇 슬롯은 players 레코드가 없어 무해)
+    else if(f.isBot && slot!==OnlineManager.mySlot){ const p=players[slot]; if(p && p.connected===true && p.isBot===false) f.isBot=false; }
     if(f.isBot){ tBotUpdate(f, dt); continue; }
     let input;
     if(slot===OnlineManager.mySlot) input=readLocalInput();
@@ -11530,6 +11537,15 @@ function tUpdateGuest(dt){
       if(!tRenderFighters[slot] || p.dead) tRenderFighters[slot]={ x:p.x,y:p.y,facing:p.facing||0 };
       else tRenderFighters[slot]=onlineInterpTarget(tSnapBuf, tInterpClock, function(ss){ return (ss&&ss.fighters)?ss.fighters[slot]:null; }, tRenderFighters[slot], dt);   // P1: 페어 보간
     }
+  }
+  if(s.enemies){   // P1b: PVE 적도 페어 보간 — 적 최대 40마리가 15Hz마다 뚝뚝 점프하던 것(파이터와 동일 헬퍼)
+    for(const id in s.enemies){
+      const e=s.enemies[id];
+      if(e.dead){ delete tEnemiesView[id]; continue; }
+      if(!tEnemiesView[id]) tEnemiesView[id]={ x:e.x, y:e.y, facing:e.facing||0 };
+      else tEnemiesView[id]=onlineInterpTarget(tSnapBuf, tInterpClock, function(ss){ const en=(ss&&ss.enemies)?ss.enemies[id]:null; return (en&&!en.dead)?en:null; }, tEnemiesView[id], dt);
+    }
+    for(const id in tEnemiesView){ if(!s.enemies[id]) delete tEnemiesView[id]; }
   }
 }
 
@@ -12523,7 +12539,8 @@ function tPveGetDrawData(){
       else if(tRenderFighters[s] && !p.dead){ rx=tRenderFighters[s].x; ry=tRenderFighters[s].y; rf=tRenderFighters[s].facing; }
       out.fighters.push({ x:rx,y:ry,facing:rf,hp:p.hp,maxHp:p.maxHp||tRosterMaxHp(s),dead:p.dead,inv:p.inv,charId:p.charId||tRosterCharId(s),team:"pve",slot:s,isMe:s===myslot,fr:p.fr }); }
     const en=st.enemies||{}; for(const id in en){ const e=en[id]; if(e.dead) continue; const def=getEnemyDef(e.type);
-      out.enemies.push({ x:e.x,y:e.y,r:e.r||def.r,hp:e.hp,maxHp:e.maxHp,facing:e.facing,color:e.color||def.color,boss:(e.boss!==undefined?e.boss:(e.type==="boss"||e.type==="miniBoss")),type:e.type }); }
+      const v=tEnemiesView[id]||e;   // P1b: 보간 뷰 우선(hp/type 등 이산값은 최신 스냅샷)
+      out.enemies.push({ x:v.x,y:v.y,r:e.r||def.r,hp:e.hp,maxHp:e.maxHp,facing:(v.facing!==undefined?v.facing:e.facing),color:e.color||def.color,boss:(e.boss!==undefined?e.boss:(e.type==="boss"||e.type==="miniBoss")),type:e.type }); }
     out.bullets=tBulletsView.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.c,w:b.w||null,vx:b.vx,vy:b.vy }));
     out.zones=(st.zones||[]);
     out.structs=st.structs||[];                                      // v1.22
@@ -12765,6 +12782,39 @@ function gameLoop(ts){
   if(dt>0.05) dt=0.05;          // 탭 복귀 시 큰 점프 방지
   update(dt); render();
 }
+/* 온라인긴급 P1b: 호스트 탭 숨김 = rAF 완전 정지 → 방 전체가 멈추고(state 쓰기 중단) 게스트는
+   '동기화 대기/고무줄'에 갇힘 — 교실에서 방장이 탭만 바꿔도 발생. 숨김 중에만 Web Worker 타이머
+   (백그라운드 스로틀 제외 대상)로 온라인 호스트 시뮬을 30Hz 유지한다. render는 생략(화면 안 보임). */
+let _hiddenTicker=null, _hiddenLast=0;
+function _hiddenTickStep(){
+  if(!document.hidden || gameState!==STATE.ONLINE_PLAYING || OnlineManager.role!=="host") return;   // 전환 순간 잔여 메시지 가드
+  const now=Date.now();
+  let dt=(now-_hiddenLast)/1000; _hiddenLast=now;
+  if(dt<=0) return;
+  while(dt>0){ const step=Math.min(dt,0.05); update(step); dt-=step; }   // 스로틀 폴백에서도 서브스텝으로 실시간 유지
+}
+function _hiddenTickerStart(){
+  if(_hiddenTicker) return;
+  _hiddenLast=Date.now();
+  try{
+    const w=new Worker(URL.createObjectURL(new Blob(["setInterval(function(){postMessage(0)},33);"],{type:"text/javascript"})));
+    w.onmessage=_hiddenTickStep;
+    _hiddenTicker={ stop:function(){ try{ w.terminate(); }catch(e){} } };
+  }catch(e){   // Worker 불가 환경: setInterval(백그라운드 1s 스로틀)이라도 서브스텝으로 완전 정지만은 방지
+    const iv=setInterval(_hiddenTickStep, 250);
+    _hiddenTicker={ stop:function(){ clearInterval(iv); } };
+  }
+}
+function _hiddenTickerStop(){ if(_hiddenTicker){ _hiddenTicker.stop(); _hiddenTicker=null; lastTime=0; } }   // lastTime=0 → 복귀 첫 프레임 dt=0(이중 스텝 방지)
+document.addEventListener("visibilitychange", function(){
+  try{
+    if(document.hidden){
+      if(loopStarted && gameState===STATE.ONLINE_PLAYING && OnlineManager.role==="host") _hiddenTickerStart();
+      // 게스트가 탭을 숨기면 마지막 입력이 host에 잔류해 유령 이동 — 빈 입력을 1회 즉시 전송
+      if(gameState===STATE.ONLINE_PLAYING && OnlineManager.role==="guest") OnlineManager.writeInput(emptyInput());
+    } else _hiddenTickerStop();
+  }catch(e){}
+});
 function startLoopOnce(){
   if(loopStarted) return;
   loopStarted=true;

@@ -53,7 +53,7 @@ s+=`;globalThis.__t={ OM:OnlineManager, emptyInput, STATE, get state(){return ga
   setSel:(c,w)=>{selectedCharacterId=c;selectedWeaponId=w;profile.selectedCharacterId=c;profile.selectedWeaponId=w;},
   setMyTag:v=>{tMyTagRole=v;}, tComputeResultText,
   tUpdateGuest, onlineReconcile, onlineInterpTarget, onlineSnapPush, onlineInputBtnSig, readLocalInput,
-  get tRenderFighters(){return tRenderFighters;}, get tSnapBuf(){return tSnapBuf;}, get tPredict(){return tPredict;},
+  get tRenderFighters(){return tRenderFighters;}, get tSnapBuf(){return tSnapBuf;}, get tPredict(){return tPredict;}, get tEnemiesView(){return tEnemiesView;},
   setGuestState:v=>{OnlineManager.onlineState=v;},
   resetGuestView:()=>{tRenderFighters={};tPredict=null;tSnapBuf=[];tInterpClock=0;tLastStateRef=null;tBulletsView=[];} };`;
 let api; try{ (0,eval)(s); api=globalThis.__t; }catch(e){ console.log("LOAD_FAIL:",e.stack); process.exit(1); }
@@ -339,6 +339,40 @@ run("패킷 다이어트: 탄 48발 패킹 + 페인트 RLE 조건 전송", ()=>{
   api.tGuestApplyRule(JSON.parse(JSON.stringify(st2)));   // g 없음
   check("g 생략 패킷 → 그리드 유지", api.tPaintRLE()===g3);
   OM.role=role;
+});
+
+console.log("=== 10) 온라인긴급 P1b: 재접속 복귀·PVE 적 보간 ===");
+run("끊김→봇 인계→재연결 복귀(isBot 역전이)", ()=>{
+  setupRoom("tdm", 2);   // 사람 2(p1=host, p2) + 봇 4
+  const f2=api.tFighters.p2;
+  check("시작: p2는 사람", f2.isBot===false);
+  OM.players.p2.connected=false;
+  api.tUpdate(1/60);
+  check("끊김 → 봇 인계", f2.isBot===true);
+  OM.players.p2.connected=true;   // presence 재-set 재현(재연결)
+  api.tUpdate(1/60);
+  check("재연결 → 사람 복귀", f2.isBot===false);
+  const f3=api.tFighters.p3;
+  check("원래 봇 슬롯은 역전이 무해(봇 유지)", !!f3 && f3.isBot===true);
+});
+run("PVE 적 페어 보간(게스트 화면 점프 제거)", ()=>{
+  setupRoom("tdm");
+  const saveRole=OM.role; OM.role="guest"; OM.mySlot="p1";
+  api.resetGuestView();
+  const mk=x=>({ timeLeft:90, teamScores:{blue:0,red:0}, bullets:[],
+    fighters:{ p1:{x:300,y:300,facing:0,dead:false,hp:100} },
+    enemies:{ e1:{x:x,y:200,facing:0,hp:50,maxHp:50,type:"grunt",dead:false} } });
+  api.setGuestState(mk(100));
+  for(let i=0;i<3;i++) api.tUpdateGuest(1/15);
+  api.setGuestState(mk(200));
+  api.tUpdateGuest(1/30);
+  const ex=api.tEnemiesView.e1.x;
+  check("적 +100px 점프를 중간값으로 보간", ex>105 && ex<195);
+  const dead=mk(200); dead.enemies.e1.dead=true;
+  api.setGuestState(dead);
+  api.tUpdateGuest(1/30);
+  check("사망 적은 뷰에서 즉시 제거(시체 잔상 없음)", api.tEnemiesView.e1===undefined);
+  OM.role=saveRole;
 });
 
 console.log("\n결과: "+(fails===0?"ALL PASS ✅":(fails+"건 실패 ❌")));
