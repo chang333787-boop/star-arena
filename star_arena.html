@@ -1493,7 +1493,7 @@ const OnlineManager = {
           const pref=this.roomRef.child("players/"+slotKey);
           pref.child("connected").onDisconnect().cancel();
           pref.child("lastSeen").onDisconnect().cancel();
-          pref.child("input").onDisconnect().cancel();
+          this.roomRef.child("inputs/"+slotKey).onDisconnect().cancel();   // 온라인긴급 P1: setPresence가 inputs/$slot에 걸므로 여기서 취소(유령 조각 방지)
           if(this.role==="host") this.roomRef.child("meta/status").onDisconnect().cancel();
         }catch(e){}
       }
@@ -1508,7 +1508,7 @@ const OnlineManager = {
           else if(slotKey && isTeam){
             // 팀 모드: 매치는 계속, 내 슬롯만 비활성 처리(host가 빈자리로 다룸)
             this.roomRef.child("players/"+slotKey+"/connected").set(false);
-            this.roomRef.child("players/"+slotKey+"/input").set(emptyInput());
+            this.roomRef.child("inputs/"+slotKey).set(emptyInput());   // 온라인긴급 P1: 입력은 inputs 노드에서 비움
           }
           else if(slotKey){ // 1대1: 참가자가 1명뿐이라 매치 종료가 맞음
             this.roomRef.child("meta/status").set("ended");
