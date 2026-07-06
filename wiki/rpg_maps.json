@@ -522,6 +522,41 @@
      "monsterId": "mon_thornback",
      "tx": 30,
      "ty": 8
+    },
+    {
+     "monsterId": "mon_jelly",
+     "tx": 10,
+     "ty": 3
+    },
+    {
+     "monsterId": "mon_jelly",
+     "tx": 23,
+     "ty": 2
+    },
+    {
+     "monsterId": "mon_jelly",
+     "tx": 9,
+     "ty": 9
+    },
+    {
+     "monsterId": "mon_hopper",
+     "tx": 20,
+     "ty": 5
+    },
+    {
+     "monsterId": "mon_hopper",
+     "tx": 25,
+     "ty": 14
+    },
+    {
+     "monsterId": "mon_seedgunner",
+     "tx": 5,
+     "ty": 12
+    },
+    {
+     "monsterId": "mon_thornback",
+     "tx": 31,
+     "ty": 14
     }
    ],
    "soil": [],
@@ -640,6 +675,76 @@
      "monsterId": "mon_shadeshard",
      "tx": 44,
      "ty": 17
+    },
+    {
+     "monsterId": "mon_drizzler",
+     "tx": 6,
+     "ty": 3
+    },
+    {
+     "monsterId": "mon_drizzler",
+     "tx": 15,
+     "ty": 7
+    },
+    {
+     "monsterId": "mon_drizzler",
+     "tx": 7,
+     "ty": 14
+    },
+    {
+     "monsterId": "mon_drizzler",
+     "tx": 10,
+     "ty": 19
+    },
+    {
+     "monsterId": "mon_drizzler",
+     "tx": 17,
+     "ty": 12
+    },
+    {
+     "monsterId": "mon_drizzler",
+     "tx": 23,
+     "ty": 8
+    },
+    {
+     "monsterId": "mon_moonowl",
+     "tx": 25,
+     "ty": 2
+    },
+    {
+     "monsterId": "mon_moonowl",
+     "tx": 32,
+     "ty": 4
+    },
+    {
+     "monsterId": "mon_moonowl",
+     "tx": 24,
+     "ty": 12
+    },
+    {
+     "monsterId": "mon_moonowl",
+     "tx": 36,
+     "ty": 16
+    },
+    {
+     "monsterId": "mon_moonowl",
+     "tx": 30,
+     "ty": 20
+    },
+    {
+     "monsterId": "mon_moonowl",
+     "tx": 33,
+     "ty": 19
+    },
+    {
+     "monsterId": "mon_shadeshard",
+     "tx": 41,
+     "ty": 14
+    },
+    {
+     "monsterId": "mon_shadeshard",
+     "tx": 44,
+     "ty": 12
     }
    ],
    "soil": [],
@@ -727,9 +832,31 @@
      "monsterId": "mon_shadeshard",
      "tx": 11,
      "ty": 4
+    },
+    {
+     "monsterId": "mon_drizzler",
+     "tx": 4,
+     "ty": 5
+    },
+    {
+     "monsterId": "mon_drizzler",
+     "tx": 18,
+     "ty": 8
+    },
+    {
+     "monsterId": "mon_shadeshard",
+     "tx": 3,
+     "ty": 7
     }
    ],
-   "soil": []
+   "soil": [],
+   "objects": [
+    {
+     "type": "camp",
+     "tx": 12,
+     "ty": 8
+    }
+   ]
   },
   {
    "id": "rpg_den2",
@@ -780,6 +907,16 @@
      "monsterId": "mon_shadeshard",
      "tx": 12,
      "ty": 6
+    },
+    {
+     "monsterId": "mon_drizzler",
+     "tx": 17,
+     "ty": 3
+    },
+    {
+     "monsterId": "mon_shadeshard",
+     "tx": 10,
+     "ty": 8
     }
    ],
    "soil": [],

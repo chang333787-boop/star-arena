@@ -45,6 +45,7 @@ script += `
   rpgInvAdd, rpgInvCount, rpgInvRemove, rpgUseCandy, rpgSleep, rpgInteract, rpgScanContext, rpgCheckWarp,
   rpgCollides, rpgSolidAt, rpgAddGold, rpgAddExp,
   rpgCamTarget, rpgCamSnap, rpgCamUpdate, rpgOnScreen, rpgChestOpen, rpgUseObject,
+  rpgRespawnCd, rpgBanner, rpgInvenView, rpgInvOrder, rpgInvCap, rpgPityTargets, rpgWellUse, rpgWellGo, RPG_WELLS,
   rpgAttack, rpgCastX, rpgCastC, rpgHurtPlayer, rpgDie, rpgInvenUse, rpgBulletsUpdate,
   rpgMakeMob, rpgHitMob, rpgWeapon, rpgDef, rpgLearnSkills, rpgSkillX, rpgMobUpdate,
   rpgFarmDo, rpgFarmActionFor, rpgFarmCell, rpgFarmNeed, rpgFarmDone, rpgPlant, rpgWater, rpgHarvest,
@@ -257,7 +258,7 @@ run("스폰·근접 처치", ()=>{
   R.profile.rpg=null;   // 새 캐릭터로
   R.rpgEnter(); clearIntro();
   R.rpgLoadMap("rpg_field1",-1,-1);
-  check("이슬별 들판 몬스터 8 스폰", R.RPG.mobs.length===8);
+  check("이슬별 들판 몬스터 15 스폰(POLISH-1 밀도 증설)", R.RPG.mobs.length===15);
   R.rpgInvAdd("wp_hoe",1);
   R.rpgInvenUse(R.RPG.save.inventory.findIndex(s=>s.id==="wp_hoe"));
   check("호미 장착", R.RPG.save.equip.weapon==="wp_hoe");
@@ -699,6 +700,108 @@ run("추적 화살표 대상(같은 맵 NPC)", ()=>{
   R.rpgLoadMap("rpg_chief",-1,-1);
   const t=R.rpgTrackTarget();
   check("같은 맵(촌장집)에선 온별 좌표 반환", !!t&&typeof t.x==="number");
+});
+
+console.log("=== POLISH-1) 밀도·리스폰·pity·사탕·가방·워프망·배너·주스 ===");
+run("밀도 데이터 규칙(비solid+확정 수 15/21/6/4)", ()=>{
+  const db=R.rpgDb(), want={rpg_field1:15,rpg_field2:21,rpg_den1:6,rpg_den2:4};
+  let bad=0;
+  for(const mid in want){
+    const mp=db.maps.find(m=>m.id===mid);
+    if((mp.monsters||[]).length!==want[mid]) bad++;
+    for(const s of mp.monsters){ const ch=(mp.rows[s.ty]||"")[s.tx]; if(ch===undefined||db.legend.solid.indexOf(ch)>=0) bad++; }
+  }
+  check("스폰 좌표 전수 통행 가능 + 수 일치", bad===0);
+});
+run("리스폰 영속 왕복", ()=>{
+  R.profile.rpg=null; R.rpgEnter(); clearIntro();
+  R.rpgLoadMap("rpg_field1",-1,-1);
+  const sv=R.RPG.save, m0=R.RPG.mobs[0];
+  check("스폰 키 부여", typeof m0.spawnKey==="string"&&m0.spawnKey.indexOf("rpg_field1#")===0);
+  R.rpgHitMob(m0,9999,{noAmbush:true});
+  check("처치 → resp 기록", m0.dead&&sv.resp[m0.spawnKey]!==undefined);
+  R.rpgLoadMap("rpg_village",-1,-1); R.rpgLoadMap("rpg_field1",-1,-1);
+  check("쿨다운 중 재입장 → 14마리(미스폰)", R.RPG.mobs.length===14);
+  sv.playSec+=R.RPG_CONST.RESPAWN_SHADE+1;   // 최장 쿨다운 경과
+  R.rpgLoadMap("rpg_village",-1,-1); R.rpgLoadMap("rpg_field1",-1,-1);
+  check("쿨다운 경과 → 15마리 부활 + 자가 청소", R.RPG.mobs.length===15&&Object.keys(sv.resp).length===0);
+  R.rpgHitMob(R.RPG.mobs[0],9999,{noAmbush:true});
+  R.rpgOnDayAdvance();
+  check("취침 → resp 전량 리셋", Object.keys(sv.resp).length===0);
+});
+run("pity 확정 드랍", ()=>{
+  const sv=R.RPG.save;
+  sv.quests.active.mq03=0;   // collect it_stardust_powder
+  check("pity 대상 인식", R.rpgPityTargets().it_stardust_powder===1);
+  sv.pity.it_stardust_powder=3;   // 3킬 연속 미드랍 상태
+  const def=R.rpgFind("monsters","mob_busuri");
+  const m=R.rpgMakeMob(def,500,500); R.RPG.mobs.push(m);
+  const d0=R.RPG.drops.length;
+  R.rpgHitMob(m,9999,{noAmbush:true});
+  check("4킬째 확정 드랍 + 카운터 리셋", R.RPG.drops.some(d=>d.itemId==="it_stardust_powder")&&sv.pity.it_stardust_powder===0);
+  delete sv.quests.active.mq03; R.RPG.drops.length=d0>0?0:0;
+});
+run("사탕 캡·쿨·구매 가드", ()=>{
+  const sv=R.RPG.save;
+  sv.inventory=sv.inventory.filter(s=>s.id!=="it_jelly_candy");
+  R.rpgInvAdd("it_jelly_candy",99);
+  check("획득 캡 5(기보유 몰수 없음 규칙)", R.rpgInvCount("it_jelly_candy")===5);
+  sv.hp=10; R.RPG.p.candyCd=0;
+  R.rpgUseCandy();
+  check("사용: +25 회복 + 쿨 2s 시작", sv.hp===35&&R.RPG.p.candyCd===R.RPG_CONST.CANDY_CD);
+  R.rpgUseCandy();
+  check("쿨 중 재사용 차단(잔량 불변)", R.rpgInvCount("it_jelly_candy")===4);
+  sv.hp=R.rpgMaxHpFor(sv);
+});
+run("가방 정렬 뷰→원본 매핑", ()=>{
+  const sv=R.RPG.save;
+  sv.inventory=[{id:"wp_star_dagger",qty:1},{id:"it_jelly_bit",qty:2},{id:"it_jelly_candy",qty:1}];
+  const view=R.rpgInvenView();
+  check("정렬: 소모품<재료<무기", view[0].s.id==="it_jelly_candy"&&view[1].s.id==="it_jelly_bit"&&view[2].s.id==="wp_star_dagger");
+  sv.level=5;
+  R.rpgInvenUse(view[2].i);   // 뷰 3번째(무기)를 원본 인덱스로 장착
+  check("매핑 장착 정상(단검)", sv.equip.weapon==="wp_star_dagger");
+  sv.equip.weapon="wp_fist";
+});
+run("별샘 워프망", ()=>{
+  const sv=R.RPG.save;
+  R.rpgLoadMap("rpg_village",-1,-1);
+  R.rpgWellUse();
+  check("최초 접촉 해금 + 안내 대화", sv.flags.warp_rpg_village===1&&R.RPG.ui==="dialog");
+  drainDialog();
+  sv.flags.warp_rpg_field1=1;   // 들판 별샘도 해금된 상태
+  R.rpgWellUse();
+  check("2개 해금 → 워프 선택 UI", R.RPG.ui==="warp"&&R.RPG.warp.list.length===1);
+  R.rpgWellGo(R.RPG.warp.list[0]);
+  check("워프 실행 → 들판 야영지", R.RPG.map.id==="rpg_field1"&&R.RPG.ui==="field");
+  R.rpgWellGo(R.RPG_WELLS.find(w=>w.mapId==="rpg_den1"));
+  check("den1 별샘 mq07 게이트(우회 방지)", R.RPG.map.id==="rpg_field1");
+});
+run("배너·주스·어그로 상수", ()=>{
+  R.RPG.banner=null;   // 직전 테스트(별샘 해금 배너) 잔여 제거
+  R.rpgBanner("+40 EXP"); R.rpgBanner("+30G");
+  check("배너 합산(2줄)", R.RPG.banner&&R.RPG.banner.lines.length===2);
+  R.RPG.ui="field"; for(let i=0;i<200;i++) R.rpgUpdate(0.05);
+  check("배너 수명 만료", !R.RPG.banner);
+  R.rpgLoadMap("rpg_field1",-1,-1);
+  const m=R.RPG.mobs.find(x=>!x.dead);
+  R.RPG.p.x=m.x-40; R.RPG.p.y=m.y; R.RPG.p.facing=0; R.RPG.p.attackCd=0;
+  R.RPG.save.equip.weapon="wp_hoe"; R.rpgInvAdd("wp_hoe",1);
+  R.rpgAttack();
+  check("근접 스윙 궤적 생성", !!R.RPG.swing);
+  check("히트스톱 발동", (R.RPG.hitstop||0)>0);
+  check("넉백 부여", Math.abs(m.kbx||0)>0||m.dead);
+  check("워프 직후 어그로 120", R.RPG_CONST.WARP_AGGRO===120&&R.RPG_CONST.AGGRO===340);
+});
+run("mq06 레이드 가드·정체 폴백", ()=>{
+  const sv=R.RPG.save;
+  sv.quests.active={}; sv.quests.done=["mq01","mq02","mq03","mq04","mq05","mq06"];
+  sv.flags.raidOn=1; sv.quests.active.mq06=undefined; delete sv.quests.active.mq06;
+  check("정체 폴백: 모모 안내 문구", R.rpgTrackText().indexOf("모모")>=0);
+  sv.quests.active.mq06=4;   // 목표 달성 상태(4/4)
+  R.rpgLoadMap("rpg_village",-1,-1);
+  check("목표 달성 후 재입장 레이드 무스폰(B-10)", R.RPG.mobs.length===0);
+  delete sv.quests.active.mq06; sv.flags.raidOn=0;
 });
 
 console.log("\n결과: " + (fails===0 ? "RPG_P1_PASS ✅ (안내 보강 완료)" : (fails+"건 실패 ❌")));
