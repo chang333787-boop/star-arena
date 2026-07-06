@@ -50,6 +50,7 @@ script += `
   rpgSeedStacks, rpgFarmCount, rpgSoil, rpgOnDayAdvance,
   rpgQuestRec, rpgQuestDone, rpgQuestActive, rpgQuestAccept, rpgQuestComplete, rpgQuestFulfilled,
   rpgQuestAvailFor, rpgQuestOnKill, rpgQuestOnHarvest, rpgStartRaid, rpgSpawnRaid, rpgRaidLights, rpgTrackText,
+  rpgQuestTodo, rpgQuestWhere, rpgNpcMarker, rpgTrackTarget, rpgActiveSkills, rpgNpcMapName, rpgMobMapName,
   validateRpgContent, rpgBudgetCheck, rpgBannedHit, rpgSubmitContent, rpgApproveContent, rpgRejectContent,
   rpgContentMerge, rpgExportApproved, loadRpgContent, RPG_CONTENT_KEY,
   handleRpgKey, handleRpgReviewKey, handleKeyPress, keysDown,
@@ -387,10 +388,14 @@ run("퀘스트 해금 상점(mq05)", ()=>{
 });
 
 console.log("=== RPG-8) T2 구간별 + T3 연속: 챕터1 메인 체인 완주 시뮬 (RPG-3b · §10.4) ===");
-function talkPick(npcId, pick){   // 대화 → (선택지면) pick 선택, 아니면 끝까지
+function talkPick(npcId, pick){   // 대화 → (선택지면) pick 선택 → 후속 안내(할 일 요약)까지 닫기
   R.rpgTalkTo(npcId);
   const res=drainDialog(120);
-  if(res==="choice"){ for(let i=0;i<(pick||0);i++) R.handleRpgKey("ArrowDown"); R.handleRpgKey("Enter"); R.rpgUpdate(0.05); }
+  if(res==="choice"){
+    for(let i=0;i<(pick||0);i++) R.handleRpgKey("ArrowDown");
+    R.handleRpgKey("Enter"); R.rpgUpdate(0.05);
+    for(let i=0;i<3&&R.RPG.dialog;i++) drainDialog(120);   // 수락 직후 '📜 할 일' 안내 대화 닫기
+  }
   return res;
 }
 function talkFlush(npcId){ talkPick(npcId,0); for(let i=0;i<3&&R.RPG.dialog;i++) drainDialog(60); }
@@ -608,5 +613,47 @@ run("교사 승인 화면 진입/조작(RPG_REVIEW)", ()=>{
   check("Esc → admin 복귀", R.state==="admin");
 });
 
-console.log("\n결과: " + (fails===0 ? "RPG4_PASS ✅ (챕터1 전체 + 위키 파이프라인 완성)" : (fails+"건 실패 ❌")));
+console.log("=== RPG-10) 안내 보강: 할 일/장소·NPC 마커·추적·가방 3탭 (RPG-P1) ===");
+run("할 일·장소 문구·대사 정합", ()=>{
+  const q4=R.rpgQuestRec("mq04");
+  check("mq04 할 일 = 은하밀 3개 모모 배달", R.rpgQuestTodo(q4).indexOf("은하밀")>=0&&R.rpgQuestTodo(q4).indexOf("모모")>=0);
+  check("mq04 장소 = 잡화점", R.rpgQuestWhere(q4)==="잡화점");
+  check("mq05 장소 = 가랑비 숲길(부슬이 서식)", R.rpgQuestWhere(R.rpgQuestRec("mq05"))==="가랑비 숲길");
+  check("mq04 시작 대사가 실제 목표 안내(은하밀·배달 방법)", R.rpgDb().dialogs.quests.mq04.start.join("").indexOf("은하밀")>=0);
+  check("collect 장소 = 드랍 몬스터+맵", R.rpgQuestWhere(R.rpgQuestRec("mq03")).indexOf("부슬이")>=0);
+});
+run("NPC 마커·트래커", ()=>{
+  R.profile.rpg=null; R.rpgEnter(); clearIntro();
+  check("mq01 진행: 온별 ❓(가서 말 걸면 됨)", R.rpgNpcMarker("npc_onbyeol")==="❓");
+  talkFlush("npc_onbyeol");
+  check("mq01 완료 후: 온별 ❗(새 부탁 있음)", R.rpgNpcMarker("npc_onbyeol")==="❗");
+  talkPick("npc_onbyeol",0);   // mq02 수락(수락 후 할 일 안내 자동 표시)
+  check("트래커: 할 일+장소 문구", R.rpgTrackText().indexOf("수확")>=0&&R.rpgTrackText().indexOf("🧭")>=0);
+  check("온별 … (진행 중 마커)", R.rpgNpcMarker("npc_onbyeol")==="…");
+});
+run("가방 3탭·스킬 장착", ()=>{
+  R.RPG.ui="inven"; R.RPG.inven={tab:0,idx:0};
+  R.handleRpgKey("ArrowRight");
+  check("←→ 탭 전환(내 정보)", R.RPG.inven.tab===1);
+  R.rpgAddExp(160);
+  R.RPG.save.skills.indexOf("sk_starfall_smash")<0&&R.RPG.save.skills.push("sk_starfall_smash");
+  R.RPG.inven.idx=1;
+  R.handleRpgKey("Enter");
+  const acts=R.rpgActiveSkills();
+  check("내 정보 탭에서 X 기술 장착(Enter)", R.RPG.save.skillX===acts[1].id);
+  R.handleRpgKey("ArrowRight");
+  check("부탁 탭 도달", R.RPG.inven.tab===2);
+  R.handleRpgKey("Escape");
+  check("닫기 → field", R.RPG.ui==="field");
+});
+run("추적 화살표 대상(같은 맵 NPC)", ()=>{
+  // mq02(수확) 완료 상태로 만들면 대상=온별(촌장집이지만 현재 맵엔 없음 → null), 마을에서 talk 대상 테스트로 대체
+  R.profile.rpg=null; R.rpgEnter(); clearIntro();   // mq01: talk 온별 — 온별은 촌장집(다른 맵) → 마을에선 null
+  check("대상이 다른 맵이면 화살표 없음(맵 이름은 트래커에)", R.rpgTrackTarget()===null);
+  R.rpgLoadMap("rpg_chief",-1,-1);
+  const t=R.rpgTrackTarget();
+  check("같은 맵(촌장집)에선 온별 좌표 반환", !!t&&typeof t.x==="number");
+});
+
+console.log("\n결과: " + (fails===0 ? "RPG_P1_PASS ✅ (안내 보강 완료)" : (fails+"건 실패 ❌")));
 process.exit(fails===0?0:1);
