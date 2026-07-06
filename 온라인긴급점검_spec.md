@@ -58,3 +58,10 @@
 
 ## 6. 커밋 규칙
 - P0(버그 수정+하니스 강화) 1커밋 → 실기기 검증 → P1(렉 개선, 선택) 별도 커밋. 메시지에 "온라인긴급" 접두.
+
+---
+## 실행 결과 (2026-07-06, 실행 세션 — v1.45 / 커밋 1a8538c)
+- P0 수정 4곳 완료: tPackFighter·packFighter `am:-1` 가드 / writeHostState·writeMetaStatus·writeInput 딥 새니타이즈(undefined 제거·NaN→0·ServerValue 통과) + 실패 시 console.warn / myAmmoOk `am<0` + HUD am<0=∞ 처리. f.ammo 엔진 의미는 무변경(패킷 경계만).
+- 검증: ① harness_online_packets **12/12 패킷 정상**(수정 전 6조합 💥 재확인) ② mock 엄격화 이식 + 봇 충원 방(tdm/paint/tag)·PVE 1인 케이스 추가 — ALL PASS ③ 전 하니스 20종 PASS·바이트 동일 ④ **실기기(라이브 2클라이언트)**: 사람2+봇4 칠하기 방 — 게스트 동기화 **85ms**, 5초 실플레이(RLE 페인트 수신), "[online] 전송 실패" 경고 **0건** ⑤ 배포 확인(빌드 built·마커 검출).
+- 엄격 검증에서 추가 독성 필드 발견 없음(pve.upg 포함 통과).
+- P1(렉 개선 — inputs 노드 분리 등)은 미착수: 별도 커밋 권장대로 후속 배치로 남김.
