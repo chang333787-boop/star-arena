@@ -920,5 +920,53 @@ run("정예 별그늘·학생 스폰 슬롯", ()=>{
   st.approved=[]; R.saveRpgContent(st); R.rpgContentMerge();   // 정리
 });
 
+console.log("=== POLISH-3) 기부·보스 재도전·야영 취침·Esc 3버튼 ===");
+run("Esc 3버튼 메뉴(지도 진입 포함)", ()=>{
+  R.RPG.ui="field"; R.handleRpgKey("Escape");
+  check("Esc → 메뉴", R.RPG.ui==="confirm");
+  R.handleRpgKey("KeyM");
+  check("메뉴에서 M → 지도", R.RPG.ui==="map");
+  R.handleRpgKey("Escape");
+  R.handleRpgKey("Escape"); R.handleRpgKey("KeyN");
+  check("N → 계속", R.RPG.ui==="field");
+});
+run("야영지 취침 항목", ()=>{
+  const sv=R.RPG.save;
+  sv.flags.warp_rpg_field1=1; sv.quests.done.indexOf("mq07")>=0||sv.quests.done.push("mq07");
+  R.rpgLoadMap("rpg_field1",-1,-1);
+  R.rpgWellUse();
+  check("야영지 별샘: 야영 항목 포함", R.RPG.ui==="warp"&&R.RPG.warp.list.some(w=>w.camp));
+  R.rpgWellGo(R.RPG.warp.list.find(w=>w.camp));
+  check("야영 → 취침 확인 선택지", R.RPG.ui==="dialog"&&drainDialog()==="choice");
+  R.handleRpgKey("Escape");   // 취소(마지막 선택지)
+});
+run("보스 재도전(7일 주기)", ()=>{
+  const sv=R.RPG.save;
+  sv.day=7; delete sv.flags.bossRematchDay; sv.flags.bossIntro=1;
+  R.rpgLoadMap("rpg_den3",-1,-1);
+  const boss=R.RPG.mobs.find(m=>m.def.isBoss);
+  check("7일차 재등장", !!boss);
+  R.rpgHitMob(boss,99999,{noAmbush:true});
+  check("재격파: +150G 기록·오늘 재스폰 금지", sv.flags.bossRematchDay===7);
+  R.rpgLoadMap("rpg_field1",-1,-1); R.rpgLoadMap("rpg_den3",-1,-1);
+  check("같은 날 재입장 → 미등장", !R.RPG.mobs.some(m=>m.def.isBoss));
+  sv.day=8; R.rpgLoadMap("rpg_field1",-1,-1); R.rpgLoadMap("rpg_den3",-1,-1);
+  check("8일차(비주기) → 미등장", !R.RPG.mobs.some(m=>m.def.isBoss));
+});
+run("마을 꾸미기 기부 3단계", ()=>{
+  const sv=R.RPG.save;
+  sv.quests.active={}; sv.quests.done=["mq01","mq02","mq03","mq04","mq05","mq06","sq01","sq02","sq03","mq07"];   // 잔여 활성 퀘스트 제거(보고 분기 회피)
+  sv.flags.chapter1_clear=1; sv.flags.farmBig=1; sv.jobId="job_swordsman"; delete sv.flags.trialJob; sv.gold=5000;   // 전직 완료 상태(마일스톤 분기 회피)
+  R.rpgLoadMap("rpg_village",-1,-1);
+  for(let s=1;s<=3;s++){
+    R.rpgTalkTo("npc_onbyeol");
+    const res=drainDialog();
+    if(res!=="choice"){ check("기부 대화 "+s+"단계", false); break; }
+    R.handleRpgKey("Enter");
+    check("기부 "+s+"단계 완료", sv.flags.donate===s);
+  }
+  check("기부 총액 3500G 차감", sv.gold===5000-3500);
+});
+
 console.log("\n결과: " + (fails===0 ? "RPG_P1_PASS ✅ (안내 보강 완료)" : (fails+"건 실패 ❌")));
 process.exit(fails===0?0:1);
