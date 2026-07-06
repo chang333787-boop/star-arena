@@ -9,7 +9,10 @@
 - **RPG 별빛 마을 챕터 1 — 완료(v1.44, 커밋 3c8029d).** index.html 소유권 해제(작업 없음). RPG-0~4 전부 커밋·전종 하니스 PASS·미러 동일. 결과: `RPG_결과_20260706.md`.
 - **이미 반영(커밋됨)**: 로비 3층 개편(88ed94d) · GAMEPLAY-1 일부 · BIG-BATCH-2 전체(v1.38~v1.42) · RPG 챕터1(v1.44).
 
-### RPG 다음 할 일 (RPG-5 / 챕터 2+)
+### RPG 다음 할 일
+- **`RPG_상용감개편_spec.md`** — 사용자 1차 완주 피드백 기획 확정(밀도·리스폰 영속·이름표·해질녘·일일 의뢰판·juice·QA 22건). POLISH-1(P0 세트)부터. 구현 미착수.
+
+### RPG-5 / 챕터 2+
 - P2 학급 개방: `classes/{classCode}/flags/rpgOpen` 플래그 + **database.rules.json 확장·firebase deploy**(초안: `wiki/database.rules.초안.md`) + 로비 행 + **로비 터치화(하드 선행)**.
 - 학생 콘텐츠 클라우드 미러(T2 `starArce/rpgContent`) · 도감 8탭 · 게시판 학생 퀘스트 · 요리 · 2차 전직.
 - 챕터 2 지리 = 기존 캠페인 4구역 재활용. 열린 여백 7개가 학생 위키 확장 씨앗.
