@@ -3507,7 +3507,7 @@ function rpgQuestTodo(q){
   if(g.type==="harvest") return rpgNameOf(g.target)+" "+g.count+"개 수확하기";
   if(g.type==="collect") return rpgNameOf(g.target)+" "+g.count+"개 모으기";
   if(g.type==="deliver"){ const n=rpgFind("npcs",g.to); return rpgNameOf(g.item)+" "+g.count+"개를 "+(n?n.name:"?")+"에게 배달하기"; }
-  if(g.type==="talk"){ const n=rpgFind("npcs",g.target); return (n?n.name:"?")+"와 이야기하기"; }
+  if(g.type==="talk"){ const n=rpgFind("npcs",g.target); return (n?n.name:"?")+"님과 이야기하기"; }
   return "";
 }
 function rpgQuestWhere(q){
@@ -4079,27 +4079,69 @@ function rpgInvenUse(i){
 /* ── 렌더 ── */
 function rpgWorldBegin(){ ctx.save(); ctx.translate(RPG.cam.ox,RPG.cam.oy); ctx.scale(RPG.cam.s,RPG.cam.s); }
 function rpgWorldEnd(){ ctx.restore(); }
-function rpgBuildLayer(){   // 정적 타일 오프스크린 1회 합성(§11-4) — 하니스 스텁에선 건너뜀
+function rpgBuildLayer(){   // 정적 타일 오프스크린 1회 합성(§11-4) — 별빛 로컬 에셋 우선, 없으면 절차적 폴백
   RPG.layerMapId=RPG.map.id; RPG.layer=null;
   let cvs=null; try{ cvs=document.createElement("canvas"); }catch(e){ return; }
   if(!cvs||!cvs.getContext) return;
   cvs.width=RPG.cols*56; cvs.height=RPG.rows*56;
   const g=cvs.getContext("2d"); if(!g) return;
-  const floorColors={ grass:"#2c4a2e", wood:"#463523", snow:"#c9d6e6", void_:"#161228", basic:"#2a2d3f", cave:"#241f33", indoor:"#3b3024" };
-  g.fillStyle=floorColors[RPG.map.theme]||"#2c4a2e"; g.fillRect(0,0,cvs.width,cvs.height);
+  const theme=RPG.map.theme||"grass";
+  const floorKey={ village_meadow:"tile_grass", field_dew:"tile_grass", forest_rain:"tile_grass",
+    indoor_wood:"tile_wood", den_cloud:"tile_void", grass:"tile_grass", wood:"tile_wood", void_:"tile_void" }[theme]||"tile_grass";
+  const floorImg=(typeof worldImage==="function")?worldImage(floorKey):null;
+  const wallImg=(typeof worldImage==="function")?worldImage("st_wall"):null;       // 쿠션 벽(그림체 통일)
+  const bushImg=(typeof worldImage==="function")?worldImage("bush"):null;          // 수풀 벽(자연 지형)
+  const veinImg=(typeof worldImage==="function")?worldImage("star_vein"):null;     // 별광맥
+  const gateImg=(typeof worldImage==="function")?worldImage("ob_gate"):null;       // 요새 문
+  const rockImg=(typeof worldImage==="function")?worldImage("ob_rock"):null;
+  const boxImg=(typeof worldImage==="function")?worldImage("ob_box"):null;         // 상자
+  const crysImg=(typeof worldImage==="function")?worldImage("ob_crystal"):null;
+  const grassy=(floorKey==="tile_grass");
+  const floorColors={ village_meadow:"#2c4a2e", field_dew:"#2c4a2e", forest_rain:"#26403a",
+    indoor_wood:"#463523", den_cloud:"#161228" };
+  g.fillStyle=floorColors[theme]||"#2c4a2e"; g.fillRect(0,0,cvs.width,cvs.height);
   for(let r=0;r<RPG.rows;r++) for(let c=0;c<RPG.cols;c++){
     const ch=RPG.grid[r][c], x=c*56, y=r*56;
-    if(((r+c)&1)===0){ g.fillStyle="rgba(255,255,255,0.025)"; g.fillRect(x,y,56,56); }
+    if(floorImg) g.drawImage(floorImg,x,y,56,56);
+    else if(((r+c)&1)===0){ g.fillStyle="rgba(255,255,255,0.025)"; g.fillRect(x,y,56,56); }
     if(ch==="~"){ g.fillStyle="#1d3a5f"; g.fillRect(x,y,56,56); g.fillStyle="rgba(255,255,255,0.16)"; g.fillRect(x+8,y+18,24,3); g.fillRect(x+26,y+40,20,3); }
     else if(ch==="f"){ g.fillStyle="#5a4023"; g.fillRect(x+3,y+3,50,50); g.strokeStyle="rgba(0,0,0,0.3)"; g.strokeRect(x+3.5,y+3.5,49,49); }
-    else if(ch==="T"){ g.fillStyle="#3d2c1e"; g.fillRect(x+24,y+34,8,16); g.fillStyle="#1f6b34"; g.beginPath(); g.arc(x+28,y+22,20,0,Math.PI*2); g.fill(); g.fillStyle="rgba(255,255,255,0.12)"; g.beginPath(); g.arc(x+22,y+16,7,0,Math.PI*2); g.fill(); }
-    else if(ch==="#"||ch==="B"||ch==="W"){ g.fillStyle="#57506e"; g.fillRect(x+2,y+2,52,52); g.fillStyle="rgba(255,255,255,0.08)"; g.fillRect(x+2,y+2,52,10); g.strokeStyle="rgba(0,0,0,0.35)"; g.strokeRect(x+2.5,y+2.5,51,51); }
+    else if(ch==="T"){
+      if(grassy&&bushImg) g.drawImage(bushImg,x-2,y-6,60,62);
+      else if(!grassy&&wallImg) g.drawImage(wallImg,x,y,56,56);
+      else { g.fillStyle="#3d2c1e"; g.fillRect(x+24,y+34,8,16); g.fillStyle="#1f6b34"; g.beginPath(); g.arc(x+28,y+22,20,0,Math.PI*2); g.fill(); }
+    }
+    else if(ch==="B"||ch==="#"){
+      if(wallImg) g.drawImage(wallImg,x,y,56,56);
+      else { g.fillStyle="#57506e"; g.fillRect(x+2,y+2,52,52); g.strokeStyle="rgba(0,0,0,0.35)"; g.strokeRect(x+2.5,y+2.5,51,51); }
+      if(ch==="B"){ g.fillStyle="rgba(164,86,52,0.45)"; g.fillRect(x,y,56,56); }   // 건물 = 지붕 톤(울타리와 구분)
+    }
+    else if(ch==="C"){   // 상점 카운터(투명 벽 방지)
+      g.fillStyle="#6b4a2c"; g.fillRect(x+2,y+10,52,40);
+      g.fillStyle="#8a6238"; g.fillRect(x+2,y+10,52,10);
+      g.strokeStyle="rgba(0,0,0,0.4)"; g.strokeRect(x+2.5,y+10.5,51,39);
+    }
+    else if(ch==="V"){ if(veinImg) g.drawImage(veinImg,x,y,56,56); else if(crysImg) g.drawImage(crysImg,x+4,y-8,48,62); }
+    if((theme==="den_cloud")&&(ch==="T"||ch==="B"||ch==="#")){ g.fillStyle="rgba(24,12,46,0.62)"; g.fillRect(x,y,56,56); }   // 요새 벽 = 먹구름 톤
   }
+  if(theme==="forest_rain"){ g.fillStyle="rgba(40,60,100,0.12)"; g.fillRect(0,0,cvs.width,cvs.height); }   // 가랑비 톤
+  if(theme==="den_cloud"){ g.fillStyle="rgba(10,6,26,0.25)"; g.fillRect(0,0,cvs.width,cvs.height); }
   for(const w of (RPG.map.portals||[])){ const x=w.at[0]*56, y=w.at[1]*56;
+    if(w.to&&w.to.indexOf("rpg_den")===0&&gateImg) g.drawImage(gateImg,x-6,y-24,68,80);   // 요새 입구=몬스터 게이트
     g.fillStyle="rgba(255,224,102,0.22)"; g.fillRect(x+6,y+6,44,44);
     g.strokeStyle="#ffe066"; g.strokeRect(x+6.5,y+6.5,43,43); }
   for(const o of (RPG.map.objects||[])){ const x=o.tx*56, y=o.ty*56;
-    const icon={bed:"🛏️",chest:"📦",board:"📌",cellar:"🚪",vein:"💎",well:"⛲",stove:"🔥"}[o.type]||"✨";
+    if(o.type==="vein"){ if(veinImg){ g.drawImage(veinImg,x,y,56,56); continue; } if(crysImg){ g.drawImage(crysImg,x+4,y-8,48,62); continue; } }
+    if(o.type==="chest"&&boxImg){ g.drawImage(boxImg,x+6,y+4,44,48); continue; }
+    if(o.type==="camp"&&rockImg){ g.drawImage(rockImg,x+6,y+8,44,44);
+      g.font="20px sans-serif"; g.textAlign="center"; g.fillText("🔥", x+28, y+22); g.textAlign="left"; continue; }
+    if(o.type==="egg"){   // 챕터 최대 여백 — 크게, 은은한 빛
+      g.fillStyle="rgba(255,224,150,0.18)"; g.beginPath(); g.arc(x+28,y+24,34,0,Math.PI*2); g.fill();
+      g.fillStyle="#e8e0f5"; g.beginPath(); g.ellipse(x+28,y+26,17,23,0,0,Math.PI*2); g.fill();
+      g.fillStyle="rgba(179,157,219,0.5)"; g.beginPath(); g.ellipse(x+28,y+30,13,15,0,0,Math.PI*2); g.fill();
+      g.fillStyle="rgba(255,255,255,0.75)"; g.beginPath(); g.ellipse(x+22,y+16,5,8,-0.5,0,Math.PI*2); g.fill();
+      continue; }
+    const icon={bed:"🛏️",chest:"📦",board:"📌",cellar:"🚪",vein:"💎",well:"⛲",stove:"🔥",anvil:"🔨",egg:"🥚"}[o.type]||"✨";
     g.font="34px sans-serif"; g.textAlign="center"; g.fillText(icon, x+28, y+40); g.textAlign="left"; }
   RPG.layer=cvs;
 }
@@ -4121,11 +4163,23 @@ function rpgDrawMob(mob){
   const face=RPG_MOB_FACE[mob.id]||["👾","#6a5f8a"];
   ctx.save(); ctx.translate(mob.x,mob.y);
   ctx.fillStyle="rgba(0,0,0,0.25)"; ctx.beginPath(); ctx.ellipse(0,mob.r*0.8,mob.r,mob.r*0.35,0,0,Math.PI*2); ctx.fill();
-  ctx.fillStyle=(mob.hitT>0)?"#ffffff":face[1];
-  ctx.beginPath(); ctx.arc(0,-4,mob.r,0,Math.PI*2); ctx.fill();
-  ctx.strokeStyle="rgba(255,255,255,0.35)"; ctx.stroke();
-  ctx.font=(mob.def.isBoss?"40px":"18px")+" sans-serif"; ctx.textAlign="center";
-  ctx.fillText(face[0], 0, mob.def.isBoss?10:4);
+  const img=(typeof getMonsterImage==="function")?getMonsterImage(mob.def.asset||""):null;   // 별빛 몬스터 에셋(팔레트 스왑 대상) 우선
+  if(img){
+    const iw=img.naturalWidth||img.width||1, ih=img.naturalHeight||img.height||1;
+    const dh=mob.r*2.8, dw=dh*(iw/ih);
+    if(mob.hitT>0) ctx.globalAlpha=0.55;   // 피격 플래시
+    if(Math.cos(mob.facing)<0){ ctx.scale(-1,1); }
+    ctx.drawImage(img, -dw/2, -dh+mob.r*0.85, dw, dh);
+    if(Math.cos(mob.facing)<0){ ctx.scale(-1,1); }
+    ctx.globalAlpha=1;
+  } else {
+    ctx.fillStyle=(mob.hitT>0)?"#ffffff":face[1];
+    ctx.beginPath(); ctx.arc(0,-4,mob.r,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle="rgba(255,255,255,0.35)"; ctx.stroke();
+    ctx.font=(mob.def.isBoss?"40px":"18px")+" sans-serif"; ctx.textAlign="center";
+    ctx.fillText(face[0], 0, mob.def.isBoss?10:4);
+  }
+  ctx.textAlign="center";
   if(mob.state==="warn"){ ctx.fillStyle="#ff5d5d"; ctx.font="bold 22px sans-serif"; ctx.fillText("❗", 0, -mob.r-14); }
   if(mob.hp<mob.maxHp){   // 피해 입은 몬스터만 HP바
     const w=Math.max(34,mob.r*2);
@@ -4419,9 +4473,11 @@ function rpgRender(){
       if(pr>=1&&(uiTime%1)<0.6){ ctx.font="14px sans-serif"; ctx.fillText("✨", x+40, y+18); }
     }
   }
-  for(const d of RPG.drops){   // 드랍(엔티티 아래층)
-    ctx.fillStyle="rgba(255,224,102,0.9)"; ctx.beginPath(); ctx.arc(d.x,d.y,8,0,Math.PI*2); ctx.fill();
-    ctx.strokeStyle="rgba(255,255,255,0.6)"; ctx.stroke();
+  const _starImg=(typeof worldImage==="function")?worldImage("star_pickup"):null;
+  for(const d of RPG.drops){   // 드랍(엔티티 아래층) — 별 픽업 에셋
+    if(_starImg) ctx.drawImage(_starImg, d.x-13, d.y-13-Math.sin(uiTime*4+d.x)*3, 26, 26);
+    else { ctx.fillStyle="rgba(255,224,102,0.9)"; ctx.beginPath(); ctx.arc(d.x,d.y,8,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle="rgba(255,255,255,0.6)"; ctx.stroke(); }
   }
   const ents=[];
   for(const n of RPG.npcsOnMap) ents.push({ y:n.y, k:"n", a:n });
@@ -11906,6 +11962,21 @@ function startLoopOnce(){
     splashTimer=0; gameState=STATE.SPLASH;
   }
   requestAnimationFrame(gameLoop);
+  // 검증용 개발 훅(RPG 아트/화면 스크린샷 자동화): #dev_rpg[_맵id] 로 열면 RPG 해당 맵으로 바로 진입.
+  // 학생 노출 영향 없음 — 해시를 직접 쳐야만 동작, 저장은 게스트 프로필로만.
+  try{
+    const h=(window.location&&window.location.hash)||"";
+    if(h.indexOf("#dev_rpg")===0){
+      setTimeout(function(){
+        try{
+          profile.rpg=null; rpgEnter();
+          const mid=h.slice("#dev_rpg_".length);
+          if(mid&&rpgFind("maps",mid)){ RPG.save.level=9; RPG.save.hp=rpgMaxHpFor(RPG.save); rpgLoadMap(mid,-1,-1,{noSave:true}); }
+          if(RPG){ RPG.dialog=null; RPG.ui="field"; }
+        }catch(e){}
+      }, 900);   // 에셋 로딩 후 진입(스크린샷 대기와 맞춤)
+    }
+  }catch(e){}
 }
 startLoopOnce();
 </script>
