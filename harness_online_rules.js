@@ -8,6 +8,13 @@ globalThis.document={getElementById:()=>canvasStub,addEventListener:noop,hidden:
 globalThis.localStorage=ls; globalThis.requestAnimationFrame=cb=>{globalThis.__r=cb;return 1;}; globalThis.cancelAnimationFrame=noop;
 globalThis.setTimeout=(fn)=>0;
 const TS={".sv":"timestamp"};
+// 온라인긴급 P0: 실서버식 엄격 검증 — undefined/NaN/함수가 패킷에 있으면 set/update 전체 거부(mock 관대함 제거)
+function fbValidate(v, path, errs){
+  if(v===undefined){ errs.push(path+" = undefined"); return; }
+  if(typeof v==="number"&&!isFinite(v)){ errs.push(path+" = "+v); return; }
+  if(typeof v==="function"){ errs.push(path+" = function"); return; }
+  if(v&&typeof v==="object"){ for(const k in v) fbValidate(v[k], path+"."+k, errs); }
+}
 function makeMockDB(){
   const data={}; const listeners=[];
   const clone=v=>v==null?null:JSON.parse(JSON.stringify(v));
@@ -18,8 +25,8 @@ function makeMockDB(){
   function thenable(v){ return { then(cb){ try{cb&&cb(v);}catch(e){} return thenable(v);}, catch(){return this;} }; }
   function ref(p){ p=p||""; return {
     _path:p, child(c){ return ref(p?p+"/"+c:c); },
-    set(v){ setAt(p,resolveTS(clone(v))); fire(); return thenable(); },
-    update(o){ for(const k in o) setAt(p+"/"+k,resolveTS(clone(o[k]))); fire(); return thenable(); },
+    set(v){ const errs=[]; fbValidate(v,"set("+p+")",errs); if(errs.length) throw new Error("FB_REJECT "+errs[0]); setAt(p,resolveTS(clone(v))); fire(); return thenable(); },
+    update(o){ const errs=[]; fbValidate(o,"update("+p+")",errs); if(errs.length) throw new Error("FB_REJECT "+errs[0]); for(const k in o) setAt(p+"/"+k,resolveTS(clone(o[k]))); fire(); return thenable(); },
     get(){ return thenable({val:()=>clone(getAt(p))}); },
     on(ev,cb){ listeners.push({path:p,cb}); cb({val:()=>clone(getAt(p))}); return cb; },
     off(ev,cb){ for(let i=listeners.length-1;i>=0;i--) if(listeners[i].cb===cb) listeners.splice(i,1); },
@@ -38,7 +45,7 @@ const path=require("path");
 let s=fs.readFileSync(path.join(__dirname,"index.html"),"utf8").match(/<script>([\s\S]*?)<\/script>/)[1];
 s+=`;globalThis.__t={ OM:OnlineManager, emptyInput, STATE, get state(){return gameState;}, setState:v=>{gameState=v;},
   tStartMatch, get RULE(){return RULE;}, tTickRule, tRuleTimeUpTeam, tGuestApplyRule, tSetupRule,
-  tPaintRLE, tPaintApplyRLE, tPaintCellBy, tPaintSplash, tDamageRuleStruct, tHostWriteState, tUpdateBullets, tApplyDamage,
+  tPaintRLE, tPaintApplyRLE, tPaintCellBy, tPaintSplash, tDamageRuleStruct, tHostWriteState, tUpdateBullets, tApplyDamage, tUpdate,
   get tFighters(){return tFighters;}, get tBullets(){return tBullets;}, pushBullet:b=>{tBullets.push(b);},
   setT:v=>{tTimeLeft=v;}, get tTimeLeft(){return tTimeLeft;}, get tWinner(){return tWinner;},
   tTeamStars, tFightersList, setRule:(r)=>{onlineSelectedRule=r;}, tRuleId, effSpeed, castTagSpecial, TAG_X_ALLOW,
@@ -50,19 +57,19 @@ let fails=0; const check=(n,c)=>{console.log((c?"  ok  ":"FAIL  ")+n); if(!c)fai
 const run=(n,fn)=>{ try{fn(); }catch(e){console.log("THROW ["+n+"]: "+(e.stack||e.message)); fails++;} };
 const OM=api.OM;
 
-// 규칙별 6인 방 셋업 도우미(호스트 관점)
-function setupRoom(rule){
+// 규칙별 방 셋업 도우미(호스트 관점) — humans명만 사람, 나머지 슬롯은 봇 충원(온라인긴급: 교실 기본 케이스)
+function setupRoom(rule, humans, modeId){
+  humans=humans||6;
   OM.leaveRoom(true);
   OM.available=true; OM.uid="hostUID"; OM.db=makeMockDB();
   api.setSel("student_01","tool_01");
   api.setRule(rule);
   let code=null;
-  OM.createTeamRoom("online3v3",(ok,info)=>{ if(ok) code=info; });
+  OM.createTeamRoom(modeId||"online3v3",(ok,info)=>{ if(ok) code=info; });
   const rr=OM.db.ref("starArenaOnline/rooms/"+code);
   const chars=["student_01","student_02","student_03","student_04","student_05","student_06"];
   const mk=(i,team)=>({uid:"p"+i,nickname:"p"+i,slot:"p"+i,team:team,characterId:chars[i-1],weaponId:null,connected:true,ready:false,isBot:false,input:api.emptyInput()});
-  rr.child("players/p2").set(mk(2,"blue")); rr.child("players/p3").set(mk(3,"blue"));
-  rr.child("players/p4").set(mk(4,"red")); rr.child("players/p5").set(mk(5,"red")); rr.child("players/p6").set(mk(6,"red"));
+  for(let i=2;i<=humans;i++) rr.child("players/p"+i).set(mk(i, (i<=3)?"blue":"red"));
   api.tStartMatch();
   return { code, rr, room:OM.db._data.starArenaOnline.rooms[code] };
 }
@@ -228,6 +235,30 @@ run("럭키 대시 — 팀 목록으로 castTagSpecial", ()=>{
   const ok=api.castTagSpecial(lucky, list);
   check("대시 발동(쿨 시작)", ok===true && lucky.tagDashT>0 && lucky.specialCd>0);
   check("대시 이속 반영", api.effSpeed(lucky)>lucky.moveSpeed);
+});
+
+console.log("=== 8) 온라인긴급 P0: 봇 충원 방(사람 2+봇 4) — 실서버식 검증 통과 + 게스트 동기화 ===");
+for(const rule of ["tdm","paint","tag"]){
+  run(rule+" · 사람 2명+봇 4 — state 전송 성공(동기화 대기 재발 방지)", ()=>{
+    const {code}=setupRoom(rule, 2);
+    for(let i=0;i<30;i++) api.tUpdate(1/60);   // 봇 AI 실구동 + 15Hz 주기 전송(엄격 mock — 독성 필드면 여기서 THROW)
+    api.tHostWriteState();
+    const st=hostState(code);
+    check("state.fighters 6슬롯", !!st && st.fighters && Object.keys(st.fighters).length===6);
+    let amOk=true;
+    for(const s2 in st.fighters){ const am=st.fighters[s2].am; if(typeof am!=="number"){ amOk=false; } }
+    check("전 슬롯 am=숫자(봇=-1 무한탄)", amOk);
+    check("봇 am=-1 존재", Object.keys(st.fighters).some(s2=>st.fighters[s2].am===-1));
+    if(rule!=="tdm"){ asGuestApply(code); check("게스트 규칙 뷰 재구성", api.RULE && api.RULE.id===rule); }
+  });
+}
+run("PVE(onlinePve6) 1인 방 — 같은 tPackFighter 경로 + pve 필드 엄격 통과", ()=>{
+  const {code}=setupRoom("tdm", 1, "onlinePve6");
+  for(let i=0;i<30;i++) api.tUpdate(1/60);
+  api.tHostWriteState();
+  const st=hostState(code);
+  check("state 기록(fighters+pve)", !!st && !!st.fighters && !!st.pve);
+  check("p1 am=숫자", typeof st.fighters.p1.am==="number");
 });
 
 console.log("\n결과: "+(fails===0?"ALL PASS ✅":(fails+"건 실패 ❌")));

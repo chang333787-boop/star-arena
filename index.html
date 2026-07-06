@@ -1432,14 +1432,39 @@ const OnlineManager = {
     }catch(e){}
   },
 
-  writeInput:function(inputObj){ try{ const key=this.mySlot||this.role; if(this.roomRef && key) this.roomRef.child("players/"+key+"/input").set(inputObj); }catch(e){} },
+  /* 온라인긴급 P0: 패킷 딥 새니타이즈 — undefined 필드 1개만 있어도 RTDB가 set() 전체를 거부해
+     "동기화 대기 중…" 무한 대기가 됐다(봇 ammo=undefined). 경계에서 undefined 제거·비유한수 0 치환. */
+  _sanWarned:{},
+  _sanWarn:function(path){ const key=path.replace(/[0-9]+/g,"N"); if(this._sanWarned[key]) return; this._sanWarned[key]=1;
+    try{ console.warn("[online] state 필드 정화:", key); }catch(e){} },
+  _sanitizePacket:function(v, path){
+    if(v===null) return null;
+    const t=typeof v;
+    if(t==="number"){ if(!isFinite(v)){ this._sanWarn(path); return 0; } return v; }
+    if(t==="function"){ this._sanWarn(path); return null; }
+    if(t==="object"){
+      if(v[".sv"]!==undefined) return v;                       // ServerValue.TIMESTAMP 통과
+      if(Array.isArray(v)){ const out=new Array(v.length);
+        for(let i=0;i<v.length;i++){ const x=v[i]; out[i]=(x===undefined)?(this._sanWarn(path+"["+i+"]"),null):this._sanitizePacket(x, path+"["+i+"]"); }
+        return out; }
+      const out={};
+      for(const k in v){ const x=v[k];
+        if(x===undefined){ this._sanWarn(path+"."+k); continue; }  // 키 제거(= RTDB에서 null 쓰기와 동일 효과)
+        out[k]=this._sanitizePacket(x, path+"."+k); }
+      return out;
+    }
+    return v;
+  },
+  writeInput:function(inputObj){ try{ const key=this.mySlot||this.role; if(this.roomRef && key) this.roomRef.child("players/"+key+"/input").set(this._sanitizePacket(inputObj,"input")); }catch(e){ try{ console.warn("[online] input 전송 실패", e); }catch(e2){} } },
   writeMetaStatus:function(status, extra){
     try{ if(this.role!=="host") return; if(!this.roomRef) return; const u={ status:status, updatedAt:firebase.database.ServerValue.TIMESTAMP };
-      if(extra){ for(const k in extra) u[k]=extra[k]; } this.roomRef.child("meta").update(u); }catch(e){}
+      if(extra){ for(const k in extra) u[k]=extra[k]; } this.roomRef.child("meta").update(this._sanitizePacket(u,"meta")); }catch(e){ try{ console.warn("[online] meta 전송 실패", e); }catch(e2){} }
   },
   writeHostState:function(stateObj){
     try{ if(this.role!=="host") return; if(!this.roomRef) return; stateObj.updatedAt=firebase.database.ServerValue.TIMESTAMP;
-      this.roomRef.child("state").set(stateObj); }catch(e){}
+      const p=this.roomRef.child("state").set(this._sanitizePacket(stateObj,"state"));
+      if(p && p.catch) p.catch(function(e){ try{ console.warn("[online] state 전송 실패", e); }catch(e2){} });
+    }catch(e){ try{ console.warn("[online] state 전송 실패", e); }catch(e2){} }   // 무음 금지 — 이번 사고의 은폐 지점
   },
 
   leaveRoom:function(localOnly){
@@ -9341,7 +9366,7 @@ function updateOnlineGuest(dt){
 
   // 발사 예측: 내 총알을 로컬에서 즉시 보여준다(시각용; 실제 피해 판정은 호스트가 함)
   onlinePredictCd -= dt;
-  const myAmmoOk = !mine || mine.am===undefined || (!mine.rl && mine.am>0);  // 탄창 0/장전중이면 예측 발사 안 함
+  const myAmmoOk = !mine || mine.am===undefined || mine.am<0 || (!mine.rl && mine.am>0);  // 탄창 0/장전중이면 예측 발사 안 함 (P0: am<0=무한탄)
   if(onlinePredict && mine && !mine.dead && getLocalIntent().fire && onlinePredictCd<=0 && myAmmoOk){   // UPDATE-1 P3: 모드 공용 발사 의도
     const w=getWeapon(selectedWeaponId), c=getCharacter(selectedCharacterId);
     const count=w.spreadCount, spread=deg2rad(w.spreadAngleDeg||0);
@@ -9512,7 +9537,8 @@ function respawnOnline(f){
 function packFighter(f){
   return { x:Math.round(f.x), y:Math.round(f.y), hp:Math.round(f.hp), maxHp:Math.round(f.maxHp),
     facing:Math.round(f.facing*100)/100, score:f.score, dead:!!f.dead, inv:f.invincibleTimer>0, charId:f.char.id,
-    am:f.ammo, rl:f.reloading?1:0, sg:Math.round(f.superGauge||0), fr:f.fireRevealTimer>0?1:0,
+    am:(f.ammo===undefined?-1:f.ammo),   // 온라인긴급 P0: -1=무한탄(봇·럭키) — undefined는 RTDB set() 전체 거부
+    rl:f.reloading?1:0, sg:Math.round(f.superGauge||0), fr:f.fireRevealTimer>0?1:0,
     xc:Math.round(Math.max(0,f.specialCd||0)*10)/10 };   // X 쿨타임(HUD용, 숫자만)
 }
 function hostWriteOnlineState(){
@@ -9650,14 +9676,14 @@ function myCombatStatus(){
       return pack(f.char, f.ammo, !!f.reloading, f.superGauge, f.specialCd, f.lives); }
     const st=OnlineManager.onlineState, p=st&&st.fighters&&st.fighters[slot]; if(!p)return null;
     const ch=getCharacter(tRosterCharId(slot));
-    return pack(ch, p.am, !!p.rl, p.sg, p.xc, p.lv);
+    return pack(ch, (p.am==null||p.am<0)?undefined:p.am, !!p.rl, p.sg, p.xc, p.lv);   // P0: am<0=무한탄 → HUD ∞ 처리
   } else {
     const role=OnlineManager.role, meta=OnlineManager.meta||{};
     if(role==="host"){ const f=onlineFighters.host; if(!f)return null;
       return pack(f.char, f.ammo, !!f.reloading, f.superGauge, f.specialCd); }
     const st=OnlineManager.onlineState, p=st&&st[role]; if(!p)return null;
     const cid=sanitizeCharacterId(p.charId||meta.characterGuest||"student_01"); const ch=getCharacter(cid);
-    return pack(ch, p.am, !!p.rl, p.sg, p.xc);
+    return pack(ch, (p.am==null||p.am<0)?undefined:p.am, !!p.rl, p.sg, p.xc);   // P0: am<0=무한탄 → HUD ∞ 처리
   }
 }
 // 하단 스킬 독(온라인 공용) — QUALITY-SWEEP-1: 텍스트 → 아이콘 인디케이터. 좌측에 내 캐릭터·PVE 목숨만 텍스트 유지.
@@ -10638,7 +10664,8 @@ function tPackFighter(f){
   // am/rl/sg는 내 HUD(탄창/장전/궁극기)용 작은 숫자만 추가.
   const o={ x:Math.round(f.x), y:Math.round(f.y), hp:Math.round(f.hp),
     facing:Math.round(f.facing*100)/100, dead:!!f.dead, inv:f.invincibleTimer>0,
-    am:f.ammo, rl:f.reloading?1:0, sg:Math.round(f.superGauge||0), fr:f.fireRevealTimer>0?1:0,
+    am:(f.ammo===undefined?-1:f.ammo),   // 온라인긴급 P0: -1=무한탄(봇·럭키) — undefined는 RTDB set() 전체 거부("동기화 대기" 원인)
+    rl:f.reloading?1:0, sg:Math.round(f.superGauge||0), fr:f.fireRevealTimer>0?1:0,
     xc:Math.round(Math.max(0,f.specialCd||0)*10)/10,     // X 쿨타임(HUD용)
     lv:(f.lives===undefined?-1:f.lives) };               // PVE 개인 목숨(-1=해당 없음/3v3)
   if(RULE){                                              // P2: 규칙별 개인 상태(술래 여부·별 보유)

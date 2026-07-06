@@ -95,4 +95,6 @@ for(const rule of rules){
     }
   }
 }
-console.log(poisoned?("\n결론: 봇 포함 방에서 state 전송이 거부됨 — 재현 성공 ("+poisoned+"조합)"):"\n재현 실패 — 다른 원인 추적 필요");
+// 온라인긴급 P0 수정 후: 이 하니스는 회귀 방지용 — 12조합 전부 정상이어야 PASS(예전 '재현 성공'이 이제는 실패)
+console.log("\n결과: "+(poisoned===0?"ALL PASS ✅ (12조합 패킷 정상 — 실서버식 엄격 검증)":(poisoned+"조합 state 거부 ❌ (독성 필드 재유입)")));
+process.exit(poisoned===0?0:1);
