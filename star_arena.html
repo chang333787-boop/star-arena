@@ -6105,18 +6105,20 @@ function validateEditorMap(){
       if(nch==="S"||nch==="L"||nch==="I") return {ok:false, msg:"시작점 바로 옆에는 함정을 둘 수 없어요"};
     }
   }
-  const total=ED.rows*ED.cols, wallPct=walls*2/total, bushPct=bushes*2/total;
-  if(wallPct>0.25) return {ok:false, msg:"벽이 너무 많아요("+Math.round(wallPct*100)+"% > 25%)"};
-  if(bushPct>0.15) return {ok:false, msg:"풀숲이 너무 많아요("+Math.round(bushPct*100)+"% > 15%)"};
-  // BIG-BATCH-2 P1-B: 모드 특성 검증 — 칠하기=칠 가능 면적, 술래=수풀 최소치
+  // FREE-MAP: 풀숲·벽 밀도는 '밸런스' 제한이라 컨셉맵을 막지 않도록 경고로만(막는 건 진짜 못 노는 맵뿐).
+  // 수풀=은신처(너무 많으면 다 숨어 경기 늘어짐)·벽=미로/시야막힘. 그래도 만들고 싶으면 만들 수 있게.
+  const total=ED.rows*ED.cols, wallPct=walls*2/total, bushPct=bushes*2/total, warns=[];
+  if(wallPct>0.25) warns.push("벽이 많은 편이에요("+Math.round(wallPct*100)+"%) — 시야가 좁고 좁은 통로가 생겨요");
+  if(bushPct>0.15) warns.push("풀숲이 많은 편이에요("+Math.round(bushPct*100)+"%) — 숨을 곳이 많아 찾기 어려운 맵이에요");
+  // 모드 특성: 칠하기=칠 가능 면적, 술래=수풀 최소치 (전부 경고 — 제작 자유)
   if(ED.mode==="paint"){
     let occ=0;
     for(let r=0;r<ED.rows;r++) for(let c=0;c<ED.half;c++){ const ch=ED.cells[r][c]; if(ch!=="."&&ch!=="*"&&ch!=="O"&&ch!=="G"&&ch!=="X") occ++; }
     const paintPct=1-(occ*2/total);
-    if(paintPct<0.5) return {ok:false, msg:"칠할 수 있는 바닥이 너무 적어요("+Math.round(paintPct*100)+"% < 50%)"};
-    if(paintPct<0.65) return {ok:true, warn:"칠 면적이 좁은 편이에요("+Math.round(paintPct*100)+"%) — 빠른 승부가 나요"};
+    if(paintPct<0.5) warns.push("칠할 바닥이 좁아요("+Math.round(paintPct*100)+"%) — 순식간에 끝나는 맵이에요");
+    else if(paintPct<0.65) warns.push("칠 면적이 좁은 편이에요("+Math.round(paintPct*100)+"%) — 빠른 승부가 나요");
   }
-  if(ED.mode==="tag" && bushes*2<3) return {ok:true, warn:"술래 맵엔 숨을 수풀을 3칸 이상 추천해요"};
+  if(ED.mode==="tag" && bushes*2<3) warns.push("술래 맵엔 숨을 수풀을 3칸 이상 추천해요");
   // 연결성: 전체 미러 그리드에서 시작점 기준 플러드필 — 모든 빈 칸 도달 가능해야
   const grid=edFullGrid();
   let sc=-1, sr=-1;
@@ -6131,8 +6133,8 @@ function validateEditorMap(){
       if(nc<0||nr<0||nc>=ED.cols||nr>=ED.rows||seen[nr][nc]||!open(grid[nr][nc])) continue;
       seen[nr][nc]=true; q.push([nc,nr]);
     } }
-  if(reach<openN) return {ok:false, msg:"벽으로 막혀 못 가는 곳이 있어요(연결성)"};
-  return {ok:true};
+  if(reach<openN) return {ok:false, msg:"벽으로 막혀 못 가는 곳이 있어요 — 벽을 조금 터서 이어 주세요(연결성)"};
+  return warns.length ? {ok:true, warn:warns.join(" · ")} : {ok:true};
 }
 function edFullGrid(){
   if(ED.pf) return ED.cells;   // 플랫포머: 미러 없음

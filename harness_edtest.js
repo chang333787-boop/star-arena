@@ -163,5 +163,28 @@ run("수정부수기 검증: 보조탑 최대 3개", ()=>{
   check("Y 4개 → 거부(최대 3)", v.ok===false);
 });
 
+console.log("=== FREE-MAP) 풀숲·벽 밀도는 경고(막지 않음) · 못 노는 맵만 차단 ===");
+run("풀숲 가득한 컨셉맵 → 통과+경고(막지 않음)", ()=>{
+  E.openEditor(); const ed=E.ED; ed.step="mode"; ed.mode="tdm"; ed.modeIdx=0; ed.sizeIdx=0; E.edStartGrid();
+  // 좌측 절반을 풀숲으로 덮음(스폰 1칸·시작점 인접 제외)
+  for(let r=0;r<ed.rows;r++) for(let c=2;c<ed.half;c++) ed.cells[r][c]="B";
+  const v=E.validateEditorMap();
+  check("풀숲 15% 초과여도 제출 가능(ok:true)", v.ok===true);
+  check("대신 경고 표시", typeof v.warn==="string" && v.warn.indexOf("풀숲")>=0);
+});
+run("스폰 없음·못 가는 곳은 여전히 차단(안전 유지)", ()=>{
+  E.openEditor(); const ed=E.ED; ed.step="mode"; ed.mode="tdm"; ed.modeIdx=0; ed.sizeIdx=0; E.edStartGrid();
+  // 시작점(*) 제거 → 시작점 0개
+  for(let r=0;r<ed.rows;r++) for(let c=0;c<ed.half;c++) if(ed.cells[r][c]==="*") ed.cells[r][c]=".";
+  check("시작점 없으면 여전히 차단", E.validateEditorMap().ok===false);
+});
+run("벽 미로(25% 초과) 연결되면 통과", ()=>{
+  E.openEditor(); const ed=E.ED; ed.step="mode"; ed.mode="tdm"; ed.modeIdx=0; ed.sizeIdx=0; E.edStartGrid();
+  // 성긴 벽 다수(연결성 유지되게 띄엄띄엄) — 벽 비율만 올림
+  for(let r=1;r<ed.rows-1;r+=2) for(let c=2;c<ed.half;c+=2) ed.cells[r][c]="W";
+  const v=E.validateEditorMap();
+  check("연결된 벽 많은 맵 → 통과(막지 않음)", v.ok===true);
+});
+
 console.log("\n결과: "+(fails===0?"ALL PASS ✅":(fails+"건 실패 ❌")));
 process.exit(fails===0?0:1);
