@@ -22,7 +22,8 @@ script+=`;globalThis.__u={ STATE, get state(){return gameState;}, setState:v=>{g
   get selectedMapId(){return selectedMapId;}, get selectedCharacterId(){return selectedCharacterId;},
   get settingsOpen(){return settingsOpen;}, setSettingsOpen:v=>{settingsOpen=v;},
   get onlineMenuIndex(){return onlineMenuIndex;},
-  loadProfile, MAPS, STUDENT_CHARACTERS, get gold(){return profile.gold;} };`;
+  loadProfile, MAPS, STUDENT_CHARACTERS, get gold(){return profile.gold;},
+  openEditor, get ED(){return ED;}, uiMenuActive };`;
 let U; try{ (0,eval)(script); U=globalThis.__u; }catch(e){ console.log("LOAD_FAIL:",e.stack||e.message); process.exit(1); }
 
 let fails=0; const check=(n,c)=>{console.log((c?"  ok  ":"FAIL  ")+n); if(!c)fails++;};
@@ -156,6 +157,16 @@ run("PAUSED: 계속/나가기 탭 존재", ()=>{
 run("좌표 밖 클릭 → 아무 동작 없음(false)", ()=>{
   renderState(U.STATE.START);
   check("빈 곳(9999,9999) 클릭 = false", clickAt(9999,9999)===false);
+});
+
+run("에디터 모드 선택 단계 클릭 가능(태블릿 맵공방 입구)", ()=>{
+  U.openEditor(); U.ED.step="mode"; U.setState(U.STATE.EDITOR);
+  check("uiMenuActive: 에디터 mode단계=true", U.uiMenuActive()===true);
+  try{ U.render(); }catch(e){}
+  const hits=hitCenters(); let advanced=false;
+  for(const h of hits){ U.ED.step="mode"; try{ h.fn(); }catch(e){} if(U.ED.step==="size"){ advanced=true; break; } }
+  check("모드 버튼 클릭 → size 단계로", advanced);
+  check("uiMenuActive: 에디터 edit단계=false(자체 처리)", (U.ED.step="edit", U.uiMenuActive()===false));
 });
 
 console.log("\n결과: "+(fails===0?"ALL PASS ✅":(fails+"건 실패 ❌")));
