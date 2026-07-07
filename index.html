@@ -1367,7 +1367,7 @@ const OnlineManager = {
           };
           ref.set(room).then(function(){
             self.roomCode=code; self.role="host"; self.roomRef=ref; self.mode="online1v1"; self.mySlot=null; self.maxPlayers=2;
-            self.setPresence("host"); self.listenRoom();
+            self.setPresence("host"); self.listenRoom(); RTCNet.begin();
             if(onDone) onDone(true, code);
           }).catch(function(e){ if(onDone) onDone(false,"방 생성 실패"); });
         }).catch(function(e){ if(onDone) onDone(false,"방 생성 오류"); });
@@ -1399,7 +1399,7 @@ const OnlineManager = {
           weaponId:selectedWeaponId, connected:true, lastSeen:ts, input:emptyInput() };
         ref.update(updates).then(function(){
           self.roomCode=code; self.role="guest"; self.roomRef=ref; self.mode="online1v1"; self.mySlot=null; self.maxPlayers=2;
-          self.setPresence("guest"); self.listenRoom();
+          self.setPresence("guest"); self.listenRoom(); RTCNet.begin();
           if(onDone) onDone(true, code);
         }).catch(function(e){ if(onDone) onDone(false,"입장 실패"); });
       }).catch(function(e){ if(onDone) onDone(false,"입장 오류"); });
@@ -1437,7 +1437,10 @@ const OnlineManager = {
         // 방 전원에게 players 전체(~2.5KB)로 팬아웃되던 트래픽 증폭 제거.
         const inputsRef=this.roomRef.child("inputs");
         const icb=function(snap){
-          self.inputs=snap.val()||{};
+          const all=snap.val()||{};   // WebRTC/RTDB 공존: 슬롯별 병합+seq(_sq) dedup. DC가 먼저 적용하면 RTDB 사본은 드롭.
+          for(const k in all){ const inp=all[k];
+            if(inp && inp._sq!==undefined){ const last=(RTCNet.lastInputSeq[k]===undefined)?-1:RTCNet.lastInputSeq[k]; if(inp._sq<=last) continue; RTCNet.lastInputSeq[k]=inp._sq; }
+            self.inputs[k]=inp; }   // _sq 없으면(플래그OFF/emptyInput 클리어) 그냥 적용
           self.onlineInput.host = self.inputs.host||null;   // 1v1 하위호환 뷰
           self.onlineInput.guest = self.inputs.guest||null;
         };
@@ -1445,7 +1448,9 @@ const OnlineManager = {
         this.unsubs.push(function(){ try{ inputsRef.off("value",icb); }catch(e){} });
       }
       if(this.role==="guest"){
-        const scb=function(snap){ self.onlineState=snap.val(); self.onlineStateAt=Date.now(); };   // 수신 시각(신선도 진단용)
+        const scb=function(snap){ const v=snap.val();   // WebRTC/RTDB 공존: seq(_sq)로 dedup(더 빠른 DC가 먼저 적용, RTDB 사본은 드롭). _sq 없으면(플래그OFF/클리어) 그냥 적용.
+          if(v && v._sq!==undefined){ if(v._sq<=RTCNet.lastStateSeq) return; RTCNet.lastStateSeq=v._sq; }
+          self.onlineState=v; self.onlineStateAt=Date.now(); };   // 수신 시각(신선도 진단용)
         stateRef.on("value", scb);
         this.unsubs.push(function(){ try{ stateRef.off("value",scb); }catch(e){} });
       }
@@ -1475,19 +1480,24 @@ const OnlineManager = {
     }
     return v;
   },
-  writeInput:function(inputObj){ try{ const key=this.mySlot||this.role; if(this.roomRef && key) this.roomRef.child("inputs/"+key).set(this._sanitizePacket(inputObj,"input")); }catch(e){ try{ console.warn("[online] input 전송 실패", e); }catch(e2){} } },   // 온라인긴급 P1: inputs/$slot 분리
+  writeInput:function(inputObj){ try{ const key=this.mySlot||this.role; if(!key) return;
+      RTCNet.sendInput(inputObj, key);   // WebRTC DC로(켜졌고 열렸으면, inputObj._sq 부여). RTDB는 아래에서 floor로 항상 전송, seq로 dedup.
+      if(this.roomRef) this.roomRef.child("inputs/"+key).set(this._sanitizePacket(inputObj,"input")); }catch(e){ try{ console.warn("[online] input 전송 실패", e); }catch(e2){} } },   // 온라인긴급 P1: inputs/$slot 분리
   writeMetaStatus:function(status, extra){
     try{ if(this.role!=="host") return; if(!this.roomRef) return; const u={ status:status, updatedAt:firebase.database.ServerValue.TIMESTAMP };
       if(extra){ for(const k in extra) u[k]=extra[k]; } this.roomRef.child("meta").update(this._sanitizePacket(u,"meta")); }catch(e){ try{ console.warn("[online] meta 전송 실패", e); }catch(e2){} }
   },
   writeHostState:function(stateObj){
-    try{ if(this.role!=="host") return; if(!this.roomRef) return; stateObj.updatedAt=firebase.database.ServerValue.TIMESTAMP;
+    try{ if(this.role!=="host") return; if(!this.roomRef) return;
+      RTCNet.sendState(stateObj);   // WebRTC DC 브로드캐스트(+stateObj._sq 부여, 켜졌을 때만). RTDB는 아래에서 floor로 항상 전송, seq로 dedup.
+      stateObj.updatedAt=firebase.database.ServerValue.TIMESTAMP;
       const p=this.roomRef.child("state").set(this._sanitizePacket(stateObj,"state"));
       if(p && p.catch) p.catch(function(e){ try{ console.warn("[online] state 전송 실패", e); }catch(e2){} });
     }catch(e){ try{ console.warn("[online] state 전송 실패", e); }catch(e2){} }   // 무음 금지 — 이번 사고의 은폐 지점
   },
 
   leaveRoom:function(localOnly){
+    try{ RTCNet.reset(); }catch(e){}   // WebRTC 피어/구독 정리
     try{
       for(const u of this.unsubs){ try{ u(); }catch(e){} }
       this.unsubs=[];
@@ -1548,7 +1558,7 @@ const OnlineManager = {
               weaponId:selectedWeaponId, connected:true, ready:false, isBot:false, lastSeen:ts, input:emptyInput() } } };
           ref.set(room).then(function(){
             self.roomCode=code; self.role="host"; self.roomRef=ref; self.mode=modeId; self.mySlot="p1"; self.maxPlayers=mode.maxPlayers;
-            self.setPresence("p1"); self.listenRoom();
+            self.setPresence("p1"); self.listenRoom(); RTCNet.begin();
             if(onDone) onDone(true, code);
           }).catch(function(e){ if(onDone) onDone(false,"방 생성 실패"); });
         }).catch(function(e){ if(onDone) onDone(false,"방 생성 오류"); });
@@ -1602,7 +1612,7 @@ const OnlineManager = {
       }).then(function(res){
         if(res && res.committed && claimedSlot){
           self.roomCode=code; self.role="guest"; self.roomRef=ref; self.mode=claimedMode; self.mySlot=claimedSlot; self.maxPlayers=getOnlineMode(claimedMode).maxPlayers;
-          self.setPresence(claimedSlot); self.listenRoom();
+          self.setPresence(claimedSlot); self.listenRoom(); RTCNet.begin();
           if(onDone) onDone(true, code);
         } else { if(onDone) onDone(false, failReason); }
       }).catch(function(e){ if(onDone) onDone(false,"입장 오류"); });
@@ -1612,6 +1622,141 @@ const OnlineManager = {
   // 프로필 클라우드 저장은 이번 베타에서 사용하지 않음(로컬 localStorage만)
   saveCloudProfile:function(p){ try{ /* 베타: 미사용 */ }catch(e){} },
   loadCloudProfile:function(){ try{ return null; }catch(e){ return null; } }
+};
+
+/* =======================================================================
+   RTCNet — WebRTC DataChannel 하이브리드 전송 (설계: 온라인_WebRTC_설계.md)
+   같은 와이파이에서 기기끼리 직접 연결(왕복 5~20ms). 시그널링만 기존 Firebase 재활용.
+   RTDB는 그대로 폴백(floor). seq(_sq) 중복제거로 DC(빠름)+RTDB(느림) 히칭 없이 공존.
+   RTC_ENABLED=false면 seq를 안 찍고 DC를 안 열어 지금과 100% 동일 동작(회귀 0).
+   ======================================================================= */
+const RTC_ENABLED = true;   // WebRTC 경로 시도 여부(현장 게이트 통과 완료). false면 순수 RTDB.
+const RTCNet = {
+  ICE:[{ urls:["stun:stun.l.google.com:19302","stun:stun1.l.google.com:19302"] }],
+  on:false, role:null, sigRef:null,
+  peers:{},          // host: slotKey -> {pc,dc,open,remoteSet,iceBuf,node}
+  self:null,         // guest: {pc,dc,open,remoteSet,iceBuf,node,slot}
+  stateSeq:0, lastStateSeq:-1, inputSeq:0, lastInputSeq:{},
+  _unsubs:[], _openCount:0,
+
+  reset:function(){
+    try{ for(const u of this._unsubs){ try{ u(); }catch(e){} } }catch(e){} this._unsubs=[];
+    try{ for(const s in this.peers){ const b=this.peers[s]; try{ if(b.dc) b.dc.close(); }catch(e){} try{ if(b.pc) b.pc.close(); }catch(e){} } }catch(e){}
+    if(this.self){ try{ if(this.self.dc) this.self.dc.close(); }catch(e){} try{ if(this.self.pc) this.self.pc.close(); }catch(e){} }
+    this.peers={}; this.self=null; this.role=null; this.sigRef=null;
+    this.stateSeq=0; this.lastStateSeq=-1; this.inputSeq=0; this.lastInputSeq={}; this._openCount=0;
+  },
+
+  // 방 입장(listenRoom) 직후 호출. WebRTC 핸드셰이크 시작.
+  begin:function(){
+    try{
+      this.reset();
+      this.on = !!(RTC_ENABLED && typeof RTCPeerConnection!=="undefined");
+      if(!this.on) return;
+      const om=OnlineManager; if(!om.roomRef) return;
+      this.role=om.role; this.sigRef=om.roomRef.child("signal");
+      if(om.role==="host") this._hostListen();
+      else this._guestStart(om.mySlot||om.role);
+    }catch(e){ this.on=false; }
+  },
+
+  _newPc:function(box){
+    const pc=new RTCPeerConnection({ iceServers:this.ICE });
+    const self=this;
+    pc.oniceconnectionstatechange=function(){ if(pc.iceConnectionState==="failed"||pc.iceConnectionState==="closed"){ if(box.open){ box.open=false; self._openCount=Math.max(0,self._openCount-1); } } };
+    return pc;
+  },
+  _addIce:function(box, c){
+    try{
+      if(box.remoteSet && box.pc.remoteDescription) box.pc.addIceCandidate(new RTCIceCandidate(c)).catch(function(){});
+      else box.iceBuf.push(c);
+    }catch(e){}
+  },
+  _flush:function(box){ try{ for(const c of box.iceBuf){ box.pc.addIceCandidate(new RTCIceCandidate(c)).catch(function(){}); } box.iceBuf=[]; }catch(e){} },
+
+  // ---- 게스트: offerer(DataChannel 생성) ----
+  _guestStart:function(slot){
+    const self=this;
+    const box={ pc:null, dc:null, open:false, remoteSet:false, iceBuf:[], slot:slot };
+    this.self=box;
+    const pc=this._newPc(box); box.pc=pc;
+    const node=this.sigRef.child(slot);
+    box.node=node;
+    const dc=pc.createDataChannel("g", { ordered:false, maxRetransmits:0 });
+    box.dc=dc;
+    dc.onopen=function(){ box.open=true; self._openCount++; };
+    dc.onclose=function(){ if(box.open){ box.open=false; self._openCount=Math.max(0,self._openCount-1); } };
+    dc.onmessage=function(ev){ self._onStateMsg(ev.data); };
+    pc.onicecandidate=function(e){ if(e.candidate) node.child("guestIce").push(e.candidate.toJSON()).catch(function(){}); };
+    pc.createOffer().then(function(o){ return pc.setLocalDescription(o).then(function(){ return node.child("offer").set({ type:o.type, sdp:o.sdp }); }); }).catch(function(){});
+    const acb=function(s){ const a=s.val(); if(a && !box.remoteSet){ box.remoteSet=true; pc.setRemoteDescription(new RTCSessionDescription(a)).then(function(){ self._flush(box); }).catch(function(){}); } };
+    node.child("answer").on("value", acb);
+    const icb=function(s){ const c=s.val(); if(c) self._addIce(box, c); };
+    node.child("hostIce").on("child_added", icb);
+    this._unsubs.push(function(){ try{ node.child("answer").off("value",acb); }catch(e){} try{ node.child("hostIce").off("child_added",icb); }catch(e){} });
+  },
+
+  // ---- 호스트: 게스트 슬롯 offer 감지 → 슬롯별 answerer ----
+  _hostListen:function(){
+    const self=this;
+    const scb=function(snap){ const all=snap.val()||{}; for(const slot in all){ if(!self.peers[slot] && all[slot] && all[slot].offer){ self._hostAcceptGuest(slot); } } };
+    this.sigRef.on("value", scb);
+    this._unsubs.push(function(){ try{ self.sigRef.off("value",scb); }catch(e){} });
+  },
+  _hostAcceptGuest:function(slot){
+    const self=this;
+    const box={ pc:null, dc:null, open:false, remoteSet:false, iceBuf:[], slot:slot };
+    this.peers[slot]=box;
+    this.lastInputSeq[slot]=-1;   // 재접속 시 게스트 inputSeq가 0부터 재시작하므로 슬롯 seq 리셋(안 하면 새 입력이 드롭됨)
+    const pc=this._newPc(box); box.pc=pc;
+    const node=this.sigRef.child(slot); box.node=node;
+    pc.ondatachannel=function(e){ box.dc=e.channel;
+      box.dc.onopen=function(){ box.open=true; self._openCount++; };
+      box.dc.onclose=function(){ if(box.open){ box.open=false; self._openCount=Math.max(0,self._openCount-1); } };
+      box.dc.onmessage=function(ev){ self._onInputMsg(slot, ev.data); };
+    };
+    pc.onicecandidate=function(e){ if(e.candidate) node.child("hostIce").push(e.candidate.toJSON()).catch(function(){}); };
+    node.child("offer").get().then(function(s){
+      const o=s.val(); if(!o) return; box.remoteSet=true;
+      return pc.setRemoteDescription(new RTCSessionDescription(o))
+        .then(function(){ return pc.createAnswer(); })
+        .then(function(a){ return pc.setLocalDescription(a).then(function(){ return node.child("answer").set({ type:a.type, sdp:a.sdp }); }); })
+        .then(function(){ self._flush(box); });
+    }).catch(function(){});
+    const icb=function(s){ const c=s.val(); if(c) self._addIce(box, c); };
+    node.child("guestIce").on("child_added", icb);
+    this._unsubs.push(function(){ try{ node.child("guestIce").off("child_added",icb); }catch(e){} });
+  },
+
+  // ---- 수신 라우팅(seq 가드) — 기존 onlineState/inputs를 더 빠르게 채운다 ----
+  _onStateMsg:function(data){
+    try{ const m=JSON.parse(data); if(m.s!==undefined){ if(m.s<=this.lastStateSeq) return; this.lastStateSeq=m.s; }
+      OnlineManager.onlineState=m.d; OnlineManager.onlineStateAt=Date.now(); }catch(e){}
+  },
+  _onInputMsg:function(slot, data){
+    try{ const m=JSON.parse(data); const last=(this.lastInputSeq[slot]===undefined)?-1:this.lastInputSeq[slot];
+      if(m.s!==undefined){ if(m.s<=last) return; this.lastInputSeq[slot]=m.s; }
+      OnlineManager.inputs[slot]=m.d;
+      if(slot==="host"||slot==="guest") OnlineManager.onlineInput[slot]=m.d; }catch(e){}
+  },
+
+  // ---- 송신 ----
+  // 게스트 입력: 내 DC가 열려 있으면 DC로 보내고 true. 아니면 false(호출부가 RTDB).
+  sendInput:function(inp, key){
+    if(!this.on || !this.self || !this.self.open || !this.self.dc || this.self.dc.readyState!=="open") return false;
+    try{ inp._sq=++this.inputSeq; this.self.dc.send(JSON.stringify({ s:inp._sq, d:inp })); return true; }catch(e){ return false; }
+  },
+  // 호스트 상태: 열린 모든 게스트 DC로 브로드캐스트. seq를 st에 찍어 RTDB 사본과 dedup.
+  sendState:function(st){
+    if(!this.on) return 0;
+    st._sq=++this.stateSeq;
+    let n=0;
+    try{ const msg=JSON.stringify({ s:st._sq, d:st });
+      for(const slot in this.peers){ const b=this.peers[slot]; if(b.open && b.dc && b.dc.readyState==="open"){ try{ b.dc.send(msg); n++; }catch(e){} } }
+    }catch(e){}
+    return n;
+  },
+  anyOpen:function(){ return this._openCount>0; }
 };
 
 /* =======================================================================
