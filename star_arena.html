@@ -818,7 +818,10 @@ resizeCanvas();
     }catch(e){}
   }
   btn.addEventListener("click", toggleFs);
-  function onFsChange(){ const fs=!!fsElement(); icoIn.style.display=fs?"none":"block"; icoOut.style.display=fs?"block":"none"; const lbl=document.getElementById("fsLabel"); if(lbl) lbl.textContent=fs?"종료":"전체화면"; btn.title=fs?"전체화면 종료":"전체화면"; btn.style.animation="none"; try{ resizeCanvas(); }catch(e){} }
+  function onFsChange(){ const fs=!!fsElement(); icoIn.style.display=fs?"none":"block"; icoOut.style.display=fs?"block":"none"; const lbl=document.getElementById("fsLabel"); if(lbl) lbl.textContent=fs?"종료":"전체화면"; btn.title=fs?"전체화면 종료":"전체화면"; btn.style.animation="none";
+    // Esc는 게임에서 뒤로/메뉴로 쓰는데 전체화면에선 브라우저가 '나가기'로 가로챔 → Keyboard Lock으로 Esc를 게임에 전달(크롬/크롬북 지원). 나가려면 종료 버튼 또는 Esc 길게. 미지원 브라우저는 자동으로 기존 동작(Esc=나가기).
+    try{ if(fs){ if(navigator.keyboard && navigator.keyboard.lock) navigator.keyboard.lock(["Escape"]).catch(function(){}); } else { if(navigator.keyboard && navigator.keyboard.unlock) navigator.keyboard.unlock(); } }catch(e){}
+    try{ resizeCanvas(); }catch(e){} }
   document.addEventListener("fullscreenchange", onFsChange);
   document.addEventListener("webkitfullscreenchange", onFsChange);
 })();
