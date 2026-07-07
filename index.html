@@ -10846,6 +10846,8 @@ function drawOnlineNetBadge(){
   ctx.save(); ctx.beginPath(); ctx.arc(LOGW-16,78,5,0,Math.PI*2); ctx.fillStyle=col; ctx.fill();
   if(age>=400){ ctx.textAlign="right"; ctx.fillStyle=col; ctx.font="bold 12px 'Malgun Gothic',sans-serif";
     ctx.fillText("네트워크 지연 "+(age>=1000?(age/1000).toFixed(1)+"s":Math.round(age)+"ms"), LOGW-28, 82); }
+  else if(RTCNet.on && RTCNet.self && RTCNet.self.open){ ctx.textAlign="right"; ctx.fillStyle="#63e06b"; ctx.font="bold 11px 'Malgun Gothic',sans-serif";
+    ctx.fillText("P2P", LOGW-24, 82); }   // WebRTC 직접연결 활성 — 교사 육안 확인용
   ctx.restore();
   if(age>2000&&!_netWarned){ _netWarned=true;
     try{ console.warn("[online] state 수신이 "+Math.round(age)+"ms 정체 — 학교 방화벽의 WebSocket 차단(long-poll 폴백) 또는 회선 혼잡 의심"); }catch(e){} }
