@@ -19,18 +19,26 @@
     box-shadow: 0 0 40px rgba(120,160,255,0.25);
   }
   #fsBtn {
-    position: fixed; top: 10px; right: 12px; z-index: 9999;
-    width: 42px; height: 42px; border-radius: 50%;
-    background: rgba(20,26,46,0.55); border: 1px solid rgba(140,170,255,0.35);
-    color: #cdd8ff; cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-    -webkit-tap-highlight-color: transparent;
-    transition: background .15s ease, transform .08s ease;
-    -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+    position: fixed; top: 14px; right: 16px; z-index: 9999;
+    height: 46px; padding: 0 18px 0 13px; border-radius: 26px;
+    display: flex; align-items: center; gap: 8px;
+    background: linear-gradient(135deg, #4a68c8, #6a8ae0);
+    border: 2px solid rgba(190,212,255,0.95);
+    color: #f4f8ff; font-size: 16px; font-weight: 800;
+    font-family: "Malgun Gothic","맑은 고딕",sans-serif; letter-spacing: -0.3px;
+    cursor: pointer; -webkit-tap-highlight-color: transparent;
+    box-shadow: 0 3px 14px rgba(0,0,0,0.5), 0 0 20px rgba(100,150,255,0.5);
+    transition: transform .08s ease, box-shadow .15s ease, filter .15s ease;
+    animation: fsPulse 1.6s ease-in-out 4;
   }
-  #fsBtn:hover { background: rgba(44,56,92,0.85); }
-  #fsBtn:active { transform: scale(.9); }
-  #fsBtn svg { display: block; pointer-events: none; }
+  #fsBtn:hover { filter: brightness(1.12); box-shadow: 0 3px 18px rgba(0,0,0,0.5), 0 0 28px rgba(130,175,255,0.85); }
+  #fsBtn:active { transform: scale(.93); }
+  #fsBtn svg { width: 22px; height: 22px; display: block; pointer-events: none; }
+  #fsLabel { white-space: nowrap; pointer-events: none; }
+  @keyframes fsPulse {
+    0%,100% { box-shadow: 0 3px 14px rgba(0,0,0,0.5), 0 0 20px rgba(100,150,255,0.5); }
+    50%     { box-shadow: 0 3px 14px rgba(0,0,0,0.5), 0 0 34px rgba(150,190,255,0.95); }
+  }
 </style>
 </head>
 <body>
@@ -38,6 +46,7 @@
 <button id="fsBtn" title="전체화면" aria-label="전체화면">
   <svg id="fsIcoIn" viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
   <svg id="fsIcoOut" viewBox="0 0 24 24" width="22" height="22" style="display:none"><path fill="currentColor" d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/></svg>
+  <span id="fsLabel">전체화면</span>
 </button>
 
 <script>
@@ -809,7 +818,7 @@ resizeCanvas();
     }catch(e){}
   }
   btn.addEventListener("click", toggleFs);
-  function onFsChange(){ const fs=!!fsElement(); icoIn.style.display=fs?"none":"block"; icoOut.style.display=fs?"block":"none"; btn.title=fs?"전체화면 종료":"전체화면"; try{ resizeCanvas(); }catch(e){} }
+  function onFsChange(){ const fs=!!fsElement(); icoIn.style.display=fs?"none":"block"; icoOut.style.display=fs?"block":"none"; const lbl=document.getElementById("fsLabel"); if(lbl) lbl.textContent=fs?"종료":"전체화면"; btn.title=fs?"전체화면 종료":"전체화면"; btn.style.animation="none"; try{ resizeCanvas(); }catch(e){} }
   document.addEventListener("fullscreenchange", onFsChange);
   document.addEventListener("webkitfullscreenchange", onFsChange);
 })();
