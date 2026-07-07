@@ -161,6 +161,8 @@ const ICE_SERVERS = [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.goog
 const $ = id => document.getElementById(id);
 function log(m){ const el=$("log"); el.textContent += m + "\n"; el.scrollTop = el.scrollHeight; }
 function now(){ return performance.now(); }
+// 삼켜진 비동기 오류도 로그에 남긴다(원인 규명용)
+window.addEventListener("unhandledrejection", e=> log("⚠️ unhandled: "+((e.reason&&(e.reason.code||e.reason.message))||e.reason)));
 
 let db = null, roomRef = null, role = null, roomCode = null;
 let pc = null, dc = null;
@@ -168,6 +170,13 @@ let pendingIce = [];        // 원격 설명 설정 전 도착한 ICE 버퍼
 let remoteSet = false;
 let connectTimeout = null;
 let statsPoll = null;
+// 진단용 상태 (실패 원인을 4가지로 구분하기 위한 계측)
+let authReady = false, authPromise = null;   // 익명 로그인 완료 여부/프라미스
+let fbConnected = false;                      // .info/connected 헬스체크
+let guestHello = false;                       // 게스트가 '이 방'에 실제로 들어왔는지
+let myIceCount = 0, remoteIceCount = 0;       // 후보 교환 진척
+const myIceTypes = new Set();                 // 내 후보 종류(host/srflx…)
+let progressTimer = null;
 
 // ---- 부팅: Firebase 로드 + 익명 로그인 ----
 function loadSdk(i, done){
@@ -181,7 +190,10 @@ loadSdk(0, ()=>{
   try{
     firebase.initializeApp(FIREBASE_CONFIG);
     db = firebase.database();
-    firebase.auth().signInAnonymously().then(()=>{
+    db.ref(".info/connected").on("value", s=>{ fbConnected = !!s.val(); });
+    authPromise = firebase.auth().signInAnonymously();
+    authPromise.then(()=>{
+      authReady = true;
       $("bootStatus").textContent = "✅ 준비 완료 — 위 버튼을 누르세요";
       log("anon auth OK");
     }).catch(e=>{
@@ -199,10 +211,8 @@ function makePc(){
   const p = new RTCPeerConnection({ iceServers: ICE_SERVERS });
   p.oniceconnectionstatechange = ()=>{
     log("ICE: "+p.iceConnectionState);
-    if(p.iceConnectionState==="failed" || p.iceConnectionState==="disconnected"){
-      // disconnected 는 잠깐일 수 있으나 failed 는 확정 실패
-      if(p.iceConnectionState==="failed") setVerdict("red");
-    }
+    // failed = 확정 실패 → 15초 안 기다리고 즉시 원인별 진단
+    if(p.iceConnectionState==="failed") diagnoseFailure();
   };
   p.onconnectionstatechange = ()=> log("PC: "+p.connectionState);
   return p;
@@ -221,6 +231,7 @@ function wireChannel(ch){
 // ---- 호스트 ----
 $("btnHost").onclick = async ()=>{
   if(!db){ alert("아직 준비 중입니다. 잠시 후 다시."); return; }
+  try{ await authPromise; }catch(e){ setVerdict("red","⚠️","로그인 실패","서버 로그인이 안 됐어요 ("+(e.code||e.message)+"). 인터넷 확인 후 새로고침하세요."); return; }
   role="host";
   roomCode = String(Math.floor(1000 + Math.random()*9000));
   roomRef = db.ref("starArenaOnline/rooms/"+roomCode+"/webrtcTest");
@@ -234,25 +245,32 @@ $("btnHost").onclick = async ()=>{
 
   pc = makePc();
   wireChannel(pc.createDataChannel("test", { ordered:true }));
-  pc.onicecandidate = e=>{ if(e.candidate) roomRef.child("hostIce").push(e.candidate.toJSON()); };
+  pc.onicecandidate = e=>{ if(e.candidate){ myIceCount++; if(e.candidate.type) myIceTypes.add(e.candidate.type); roomRef.child("hostIce").push(e.candidate.toJSON()).catch(err=>log("hostIce push fail: "+err.message)); renderProgress(); } };
 
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-  await roomRef.child("offer").set({ type:offer.type, sdp:offer.sdp });
-  log("offer sent");
+  try{
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    await roomRef.child("offer").set({ type:offer.type, sdp:offer.sdp });
+    log("offer sent");
+  }catch(e){
+    setVerdict("red","⚠️","방 만들기 실패","서버에 방 정보를 못 올렸어요 ("+(e.code||e.message)+"). 인터넷 확인 후 새로고침하세요."); log("offer.set fail: "+e.message); return;
+  }
 
+  // 게스트가 '이 방'에 실제로 들어왔는지(코드 일치) 감지
+  roomRef.child("guestHello").on("value", s=>{ if(s.val()){ guestHello=true; renderProgress(); } });
   // 게스트 answer 대기
   roomRef.child("answer").on("value", async snap=>{
     const a = snap.val();
     if(a && !remoteSet){
       remoteSet = true;
-      await pc.setRemoteDescription(new RTCSessionDescription(a));
+      try{ await pc.setRemoteDescription(new RTCSessionDescription(a)); }catch(e){ log("setRemote(host) fail: "+e.message); }
       flushIce();
-      $("hostWait").textContent = "상대 접속됨 — 연결 확정 중…";
       log("answer received");
+      renderProgress();
     }
   });
   roomRef.child("guestIce").on("child_added", s=> queueIce(s.val()));
+  startProgress();
   armTimeout();
   startFbEchoResponder();  // 호스트는 Firebase 핑 응답기 역할
 };
@@ -270,30 +288,51 @@ $("codeInput").addEventListener("input", e=>{ e.target.value=e.target.value.repl
 $("btnJoin").onclick = async ()=>{
   const code = $("codeInput").value.trim();
   if(code.length!==4){ alert("네 자리 숫자를 입력하세요."); return; }
+  if(!db){ alert("아직 준비 중입니다. 잠시 후 다시."); return; }
+  try{ await authPromise; }catch(e){ setVerdict("red","⚠️","로그인 실패","서버 로그인이 안 됐어요 ("+(e.code||e.message)+"). 인터넷 확인 후 새로고침하세요."); return; }
   role="guest"; roomCode=code;
   roomRef = db.ref("starArenaOnline/rooms/"+code+"/webrtcTest");
   $("guestPanel").classList.add("hidden");
-  showVerdict();
+  setVerdict("wait","🔗","연결 중…","호스트 방을 찾는 중입니다…");
   log("guest joining "+code);
 
-  const offSnap = await roomRef.child("offer").get();
-  if(!offSnap.exists()){
-    setVerdict("red", "❓", "방을 찾을 수 없어요", "숫자가 맞는지, 호스트가 먼저 '방 만들기'를 눌렀는지 확인하세요.");
-    return;
+  // offer 대기 — 호스트 방 생성 레이스 대비 최대 10초 폴링
+  let offVal=null;
+  try{
+    for(let i=0;i<20;i++){
+      const snap = await roomRef.child("offer").get();
+      if(snap.exists()){ offVal = snap.val(); break; }
+      $("vDesc").textContent = "호스트 방을 찾는 중… ("+(i+1)+"/20)";
+      await new Promise(r=>setTimeout(r,500));
+    }
+  }catch(e){
+    setVerdict("red","⚠️","서버 접속 실패","방 정보를 못 읽었어요 ("+(e.code||e.message)+"). 인터넷/로그인 문제일 수 있어요. 새로고침하세요."); log("offer.get fail: "+e.message); return;
   }
+  if(!offVal){
+    setVerdict("red","❓","방을 찾을 수 없어요","숫자("+code+")가 맞는지, 호스트가 먼저 '방 만들기'를 눌렀는지 확인하세요. 호스트 화면 숫자와 다르면 절대 연결 안 됩니다."); return;
+  }
+
+  // 옳은 방에 들어옴 — 호스트에게 '나 참가했음' 마커
+  roomRef.child("guestHello").set({ t: Date.now() }).catch(()=>{});
+
   pc = makePc();
   pc.ondatachannel = e=> wireChannel(e.channel);
-  pc.onicecandidate = e=>{ if(e.candidate) roomRef.child("guestIce").push(e.candidate.toJSON()); };
+  pc.onicecandidate = e=>{ if(e.candidate){ myIceCount++; if(e.candidate.type) myIceTypes.add(e.candidate.type); roomRef.child("guestIce").push(e.candidate.toJSON()).catch(err=>log("guestIce push fail: "+err.message)); renderProgress(); } };
 
   remoteSet = true;
-  await pc.setRemoteDescription(new RTCSessionDescription(offSnap.val()));
-  const answer = await pc.createAnswer();
-  await pc.setLocalDescription(answer);
-  await roomRef.child("answer").set({ type:answer.type, sdp:answer.sdp });
+  try{
+    await pc.setRemoteDescription(new RTCSessionDescription(offVal));
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    await roomRef.child("answer").set({ type:answer.type, sdp:answer.sdp });
+    log("answer sent");
+  }catch(e){
+    setVerdict("red","⚠️","응답 전송 실패","호스트에게 응답을 못 보냈어요 ("+(e.code||e.message)+"). 새로고침 후 다시 시도하세요."); log("answer path fail: "+e.message); return;
+  }
   flushIce();
-  log("answer sent");
 
   roomRef.child("hostIce").on("child_added", s=> queueIce(s.val()));
+  startProgress();
   armTimeout();
   startFbEchoInitiator(); // 게스트가 Firebase 왕복 측정 주도
 };
@@ -301,8 +340,10 @@ $("btnJoin").onclick = async ()=>{
 // ---- ICE 버퍼 처리 ----
 function queueIce(c){
   if(!c) return;
+  remoteIceCount++;
   if(remoteSet && pc.remoteDescription){ pc.addIceCandidate(new RTCIceCandidate(c)).catch(e=>log("addIce err "+e.message)); }
   else pendingIce.push(c);
+  renderProgress();
 }
 function flushIce(){
   pendingIce.forEach(c=> pc.addIceCandidate(new RTCIceCandidate(c)).catch(e=>log("addIce(flush) err "+e.message)));
@@ -313,6 +354,7 @@ function flushIce(){
 let rtts = [];
 function onConnected(){
   clearTimeout(connectTimeout);
+  if(progressTimer){ clearInterval(progressTimer); progressTimer=null; }
   $("hostPanel").classList.add("hidden");
   $("metricsCard").classList.remove("hidden");
   // ping 루프 시작
@@ -377,13 +419,57 @@ function setVerdict(kind, emoji, head, desc){
   if(emoji){ $("vEmoji").textContent=emoji; $("vHead").textContent=head; $("vDesc").textContent=desc; }
 }
 function armTimeout(){
-  connectTimeout = setTimeout(()=>{
-    if(!dc || dc.readyState!=="open"){
-      setVerdict("red","🔴","직접 연결 실패",
-        "15초 안에 기기끼리 통로를 못 찾았습니다. 이 교실 와이파이가 기기 간 직접통신을 막고 있을 가능성이 큽니다(클라이언트 격리). 이 경우 WebRTC를 넣어도 이 교실에선 현행 방식으로 자동 폴백됩니다.");
-      log("TIMEOUT: no connection in 15s");
+  connectTimeout = setTimeout(diagnoseFailure, 15000);
+}
+
+// ---- 실시간 진행표시 (호스트/게스트가 어디까지 갔는지) ----
+function startProgress(){
+  if(progressTimer) clearInterval(progressTimer);
+  progressTimer = setInterval(renderProgress, 700);
+  renderProgress();
+}
+function renderProgress(){
+  if(dc && dc.readyState==="open") return;      // 연결되면 진행표시 멈춤
+  const joined = role==="host"
+    ? (remoteSet ? "게스트 응답 받음 ✓" : guestHello ? "게스트 참가함 ✓ (응답 대기)" : "게스트 대기 중… ⏳")
+    : (remoteSet ? "호스트 방 접속 ✓" : "호스트 응답 대기…");
+  const stun = myIceTypes.has("srflx") ? "STUN OK" : "STUN 대기";
+  const txt = `${joined} · 연결후보 내 ${myIceCount}·상대 ${remoteIceCount} · ${stun}`;
+  if(role==="host") $("hostWait").textContent = txt;
+  else $("vDesc").textContent = txt;
+}
+
+// ---- 실패 원인별 진단 (타임아웃·ICE failed 공용) ----
+function diagnoseFailure(){
+  if(verdictLocked || (dc && dc.readyState==="open")) return;
+  verdictLocked = true;
+  if(progressTimer){ clearInterval(progressTimer); progressTimer=null; }
+  log(`DIAG role=${role} fb=${fbConnected} guestHello=${guestHello} remoteSet=${remoteSet} myIce=${myIceCount} rIce=${remoteIceCount} types=${[...myIceTypes].join(",")||"-"}`);
+  // (0) 인터넷/서버 끊김
+  if(!fbConnected){
+    setVerdict("red","🌐","인터넷/서버 연결이 끊겼어요","이 기기가 인터넷(서버)에 연결돼 있지 않습니다. 와이파이·인터넷을 먼저 확인하고 새로고침하세요."); return;
+  }
+  // (1) 호스트인데 게스트 응답 없음 = 시그널링 미완(격리 아님)
+  if(role==="host" && !remoteSet){
+    if(!guestHello){
+      setVerdict("red","🙅","상대가 아직 참가하지 않았어요",`이 방(${roomCode})에 들어온 기기가 없습니다. 상대 기기에서 '참가하기'로 정확히 ${roomCode} 을(를) 입력했는지 확인하세요. 호스트 화면 숫자와 다르면 연결되지 않습니다.`); return;
     }
-  }, 15000);
+    setVerdict("red","🔄","상대가 들어왔지만 응답 실패","상대 기기가 방엔 들어왔는데 응답을 못 보냈어요. 상대 기기를 새로고침하고 다시 참가해 보세요."); return;
+  }
+  // (2) 상대 후보가 하나도 안 옴 = 상대측 네트워크/브라우저 문제
+  if(remoteIceCount===0){
+    setVerdict("red","📡","상대 연결후보가 안 와요","상대 기기의 와이파이/브라우저 문제로 연결 후보가 도착하지 않았습니다. 상대 기기를 새로고침하거나 크롬 최신판으로 시도하세요."); return;
+  }
+  // (3) 내 후보가 하나도 없음 = 내 기기 문제
+  if(myIceCount===0){
+    setVerdict("red","💻","내 기기가 후보를 못 만들어요","이 기기 브라우저가 연결 후보를 생성하지 못했습니다. 크롬 최신판으로 다시 시도하세요."); return;
+  }
+  // (4) 양쪽 후보 교환됐는데 미연결 = 진짜 격리(+STUN 차단 여부)
+  const stunBlocked = !myIceTypes.has("srflx");
+  setVerdict("red","🔴", stunBlocked ? "직접 연결 실패 ('격리'+STUN 차단 의심)" : "직접 연결 실패 (클라이언트 격리 의심)",
+    "양쪽 기기가 후보를 주고받았는데도 직접 통로가 안 열렸습니다. 이 교실 와이파이가 기기 간 직접통신을 막고 있을 가능성이 큽니다(클라이언트 격리)."
+    + (stunBlocked ? " STUN 서버 접근도 막힌 것으로 보입니다." : "")
+    + " 이 경우 WebRTC를 넣어도 이 교실에선 현행 방식으로 자동 폴백됩니다.");
 }
 
 // ---- Firebase 왕복 측정 (A/B 비교) : 게스트가 주도, 호스트가 응답 ----
