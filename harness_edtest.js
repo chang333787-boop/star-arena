@@ -21,7 +21,10 @@ script+=`;globalThis.__e={ STATE, get state(){return gameState;}, setState:v=>{g
   get selectedMapId(){return selectedMapId;}, get selectedModeId(){return selectedModeId;}, get selectedRuleId(){return selectedRuleId;},
   get player(){return player;}, get enemies(){return enemies;}, get profile(){return profile;},
   loadProfile, get matchGoldEarned(){return matchGoldEarned;}, get matchRewardGiven(){return matchRewardGiven;},
-  edTestBtnHit, setEDTestBtn:(r)=>{ED._testBtn=r;} };`;
+  edTestBtnHit, setEDTestBtn:(r)=>{ED._testBtn=r;},
+  compileEditorMap, validateEditorMap, starSpawnPoint, setupRuleState, get RULE(){return RULE;},
+  get allies(){return allies;}, get ARENA(){return ARENA;}, get OBSTACLES(){return OBSTACLES;}, RULE_CONFIG,
+  edPaletteFor:(m)=>{ ED.mode=m; return edPalette(); } };`;
 let E; try{ (0,eval)(script); E=globalThis.__e; }catch(e){ console.log("LOAD_FAIL:",e.stack||e.message); process.exit(1); }
 
 let fails=0; const check=(n,c)=>{console.log((c?"  ok  ":"FAIL  ")+n); if(!c)fails++;};
@@ -104,6 +107,60 @@ run("EDIT-TEST-2: 편집 모드로 미리하기(섬멸전 강제 아님)", ()=>{
   check("비-tdm은 3v3(trio)", E.selectedModeId==="trio");
   E.edEndTest();
   check("복귀 후 원래 선택 복원", E.selectedMapId!=="__edtest");
+});
+
+console.log("=== EDITOR-MODES) 술래 개인스폰·별모으기 랜덤·수정부수기 보조탑 ===");
+function compileMode(mode, place){
+  E.openEditor(); const ed=E.ED; ed.step="mode"; ed.mode=mode; ed.sizeIdx=0; E.edStartGrid();
+  place(ed);
+  return E.compileEditorMap({ id:"__t", name:"t", author:"t", mode:mode, size:[ed.cols,ed.rows],
+    floor:"basic", cellsLeft:ed.cells.map(r=>r.join("")), createdAt:0 });
+}
+run("술래(@): 개인 시작점 3개 → playerSpawns/enemySpawns 배열", ()=>{
+  const map=compileMode("tag", (ed)=>{ // edStartGrid가 이미 @ 3개 배치
+  });
+  check("playerSpawns 3개", !!map.playerSpawns && map.playerSpawns.length===3);
+  check("enemySpawns 3개(미러)", !!map.enemySpawns && map.enemySpawns.length===3);
+  check("미러 대칭(x 반전)", Math.abs((map.playerSpawns[0].x + map.enemySpawns[0].x) - (24+ed_cols(map))) < 2 || map.enemySpawns[0].x!==map.playerSpawns[0].x);
+});
+function ed_cols(map){ return map.gridCols*56; }
+run("술래 검증: @ 정확히 3개 요구", ()=>{
+  E.openEditor(); const ed=E.ED; ed.step="mode"; ed.mode="tag"; ed.sizeIdx=0; E.edStartGrid();
+  let v=E.validateEditorMap(); check("기본(@3개) 통과", v.ok===true);
+  ed.cells[0][2]="@"; v=E.validateEditorMap(); check("@4개 → 거부", v.ok===false);
+});
+run("별모으기: starSpawnPoint는 벽 위를 피함", ()=>{
+  // ARENA 채우는 큰 장애물 하나 두고 스폰이 그 밖으로 나오는지
+  E.setState(E.STATE.START);
+  const A=E.ARENA;
+  const save=E.OBSTACLES.slice();
+  E.OBSTACLES.length=0;
+  E.OBSTACLES.push({x:A.x, y:A.y, w:A.w*0.5, h:A.h});   // 좌측 절반을 벽으로
+  let allRight=true;
+  for(let i=0;i<20;i++){ const p=E.starSpawnPoint(); if(p && p.x < A.x+A.w*0.5) allRight=false; }
+  check("스폰이 벽(좌측 절반) 위에 안 생김", allRight);
+  E.OBSTACLES.length=0; for(const o of save) E.OBSTACLES.push(o);
+});
+run("수정부수기 보조탑(Y): subTowers 컴파일 + RULE.turrets 확장 + raux_ 접두사", ()=>{
+  const map=compileMode("siege", (ed)=>{ ed.cells[3][5]="X"; ed.cells[5][3]="Y"; ed.cells[6][4]="Y"; });
+  check("rulePoints.subTowers 2개", !!map.rulePoints.subTowers && map.rulePoints.subTowers.length===2);
+  // 이 맵으로 로컬 siege 매치 붙여 RULE 구성
+  E.openEditor(); const ed2=E.ED; ed2.step="mode"; ed2.mode="siege"; ed2.sizeIdx=0; E.edStartGrid();
+  ed2.cells[3][5]="X"; ed2.cells[5][3]="Y"; ed2.cells[6][4]="Y";
+  E.edStartTest();
+  const R=E.RULE;
+  check("siege 규칙 활성", !!R && R.id==="siege");
+  check("turrets = 팀당 (메인1+보조2) = 6", R.turrets.length===6);
+  const aux=R.turrets.filter(t=>t.o.sid.indexOf("raux_")===0);
+  check("보조탑 4개(2팀×2) · raux_ 접두사(승리 무관)", aux.length===4 && aux.every(t=>t.o.sid.indexOf("rtower_")!==0));
+  check("메인탑은 rtower_ 2개", R.turrets.filter(t=>t.o.sid.indexOf("rtower_")===0).length===2);
+  E.edEndTest();
+});
+run("수정부수기 검증: 보조탑 최대 3개", ()=>{
+  E.openEditor(); const ed=E.ED; ed.step="mode"; ed.mode="siege"; ed.sizeIdx=0; E.edStartGrid();
+  ed.cells[3][5]="X"; ed.cells[1][2]="Y"; ed.cells[2][2]="Y"; ed.cells[3][2]="Y"; ed.cells[4][2]="Y";
+  const v=E.validateEditorMap();
+  check("Y 4개 → 거부(최대 3)", v.ok===false);
 });
 
 console.log("\n결과: "+(fails===0?"ALL PASS ✅":(fails+"건 실패 ❌")));

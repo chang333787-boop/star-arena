@@ -105,7 +105,7 @@ run("전원 감염 → 술래팀 승 / 타이머 종료 → 생존자 승", ()=>
 run("술래 맵 팔레트: 함정류 제외", ()=>{
   const pal=api.edPaletteFor("tag").map(p=>p.ch);
   check("가시/끈끈이/쿠션벽 없음", pal.indexOf("S")<0 && pal.indexOf("L")<0 && pal.indexOf("C")<0);
-  check("벽·수풀·얼음·시작점 있음", pal.indexOf("W")>=0 && pal.indexOf("B")>=0 && pal.indexOf("I")>=0 && pal.indexOf("*")>=0);
+  check("벽·수풀·얼음·개인시작점(@) 있음", pal.indexOf("W")>=0 && pal.indexOf("B")>=0 && pal.indexOf("I")>=0 && pal.indexOf("@")>=0 && pal.indexOf("*")<0);   // 술래=개인 시작점 @(팀 * 제외)
 });
 
 console.log("=== 2) 별빛 칠하기 (PRD §2.8) ===");

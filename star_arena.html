@@ -565,6 +565,7 @@ const RULES = [
 const RULE_CONFIG = {
   matchTime: 180,                    // 오브젝트 모드 공통 매치 시간(초) — 규칙별 matchTime이 있으면 그것을 우선
   siege:    { towerHp:650, towerW:64, towerH:64, turretDmg:15, turretCd:1.2, turretRange:260,   /* BIG-BATCH-1 F18: 450→650 — 3인 집중 시 ~10초 붕괴 완화 */
+              auxHp:280, auxW:44, auxH:44,                                 /* SIEGE-AUX: 보조탑(메인보다 약함·파괴해도 승패 무관·같은 자동 포탑) */
               wallHp:60, wallCount:3, wallW:28, wallH:56, respawn:5,
               rebuildSec:25, rebuildHpMul:0.5 },                          /* BIG-BATCH-2 P1: 부서진 건설 벽은 25초 후 절반 HP로 재건(역전·수비 재정비) */
   hotzone:  { radius:110, capPerSec:8, goal:100, respawn:5,
@@ -5741,19 +5742,19 @@ const ED_PAL_PF=[
   { ch:"G", name:"골",            color:"#ffd166" },
   { ch:"*", name:"시작점",        color:"#9fe0ff" }
 ];
-const ED_PAL_MODE={ tdm:[], siege:[{ch:"X",name:"팀 수정탑",color:"#5aa0ff"}],
-  hotzone:[{ch:"O",name:"거점(점령 공간)",color:"#ffd23f"}], stargrab:[{ch:"G",name:"별광맥",color:"#ffe14d"}],
-  tag:[], paint:[] };   /* GENRE-EXPAND-1: 술래·칠하기 — 모드 전용 요소 없음 */
-/* GENRE-EXPAND-1 §1.7: 술래잡기 맵은 함정·쿠션벽 제외(벽·수풀·얼음·시작점만) */
-const ED_PAL_EXCLUDE={ tag:{S:1,L:1,C:1} };
-const ED_CELL_COLOR={ ".":null, W:"#878da8", B:"#5ad36b", S:"#ff6a6a", L:"#7fd88a", I:"#8fd9ff", C:"#ff9ec2", "*":"#ffe14d", O:"#ffd23f", X:"#5aa0ff", G:"#ffcf4d",
+const ED_PAL_MODE={ tdm:[], siege:[{ch:"X",name:"팀 수정탑(메인)",color:"#5aa0ff"},{ch:"Y",name:"보조 수정탑",color:"#7fbfff"}],
+  hotzone:[{ch:"O",name:"거점(점령 공간)",color:"#ffd23f"}], stargrab:[{ch:"G",name:"별광맥(장식·별은 맵 랜덤)",color:"#ffe14d"}],
+  tag:[{ch:"@",name:"개인 시작점(3개)",color:"#ffe14d"}], paint:[] };   /* GENRE-EXPAND-1: 술래=개인 스폰 · 수정부수기=보조탑 */
+/* GENRE-EXPAND-1 §1.7: 술래잡기 맵은 함정·쿠션벽·팀시작점 제외(벽·수풀·얼음·개인시작점@만) */
+const ED_PAL_EXCLUDE={ tag:{S:1,L:1,C:1,"*":1} };
+const ED_CELL_COLOR={ ".":null, W:"#878da8", B:"#5ad36b", S:"#ff6a6a", L:"#7fd88a", I:"#8fd9ff", C:"#ff9ec2", "*":"#ffe14d", "@":"#ffe14d", Y:"#7fbfff", O:"#ffd23f", X:"#5aa0ff", G:"#ffcf4d",
   "#":"#5a6aa8", "-":"#8fd0a0", J:"#ffd23f", M:"#c58bff", o:"#ffe875", F:"#7dffb0",
   i:"#8fd9ff", b:"#a97a4a", P:"#ffb347", "!":"#fff06a", w:"#cfe0ff", m:"#ff9ec2" };   /* GENRE-EXPAND-1 + P1.5 플랫포머 legend */
 /* EDIT-WYSIWYG-1: 에디터 칸을 색+글자 대신 게임 그래픽으로 — 바닥=테마 스프라이트, 벽/수풀=실제 스프라이트, 나머지=이모지 아이콘 */
 const ED_FLOOR_TINT={ basic:"#2b3358", grass:"#22402c", snow:"#39414f", sand:"#4a4230", wood:"#3a2c1e", void_:"#161228" };
 function edCellEmoji(ch, pf){
   if(pf){ const p={ "#":"", "-":"➖", S:"🔺", J:"⏫", M:"👾", o:"⭐", F:"🚩", i:"🧊", b:"📦", P:"🔫", "!":"🌟", w:"🪶", m:"🧲", G:"🏁", "*":"🟢" }; return p[ch]!==undefined?p[ch]:""; }
-  const a={ W:"", B:"", S:"🔺", L:"🫧", I:"🧊", C:"🧩", "*":"🟢", O:"🎯", X:"🗼", G:"💎" }; return a[ch]!==undefined?a[ch]:"";
+  const a={ W:"", B:"", S:"🔺", L:"🫧", I:"🧊", C:"🧩", "*":"🟢", "@":"🏃", Y:"🔫", O:"🎯", X:"🗼", G:"💎" }; return a[ch]!==undefined?a[ch]:"";
 }
 // 한 칸을 게임 그래픽으로: 벽/수풀은 스프라이트, 그 외는 아이콘(+옅은 틴트)
 function edCellArt(g, ch, x, y, s, pf){
@@ -5908,6 +5909,10 @@ function edStartGrid(){
     ED.cells[ED.rows-2][1]="*"; ED.cells[ED.rows-2][ED.cols-2]="G";
     ED.viewC=0; ED.fitAll=false; ED.testCleared=false;
     ED.cur={c:2, r:ED.rows-2};
+  } else if(ED.mode==="tag"){   // 술래=개인 시작점 3개(대칭 → 좌3+미러3=6)
+    const mid=Math.floor(ED.rows/2);
+    ED.cells[Math.max(0,mid-3)][1]="@"; ED.cells[mid][1]="@"; ED.cells[Math.min(ED.rows-1,mid+3)][1]="@";
+    ED.cur={c:2, r:mid};
   } else {
     ED.cells[Math.floor(ED.rows/2)][1]="*";                 // 기본 시작점(왼쪽 중단) — 이동 가능
     ED.cur={c:2, r:Math.floor(ED.rows/2)};
@@ -6036,25 +6041,30 @@ function validateEditorMap(){
     if(ED.cols>=66 && fl===0) return {ok:true, warn:"긴 맵엔 깃발(F) 체크포인트를 추천해요"};
     return {ok:true};
   }
-  let stars=0, walls=0, bushes=0, modeCh=0;
+  let stars=0, walls=0, bushes=0, modeCh=0, tagStarts=0, auxT=0;
+  const isTag=(ED.mode==="tag");
   const need={siege:"X", hotzone:"O", stargrab:"G"}[ED.mode]||null;
   for(let r=0;r<ED.rows;r++) for(let c=0;c<ED.half;c++){
     const ch=ED.cells[r][c];
     if(ch==="*") stars++;
+    if(ch==="@") tagStarts++;
+    if(ch==="Y") auxT++;
     if(ch==="W"||ch==="C") walls++;
     if(ch==="B") bushes++;
     if(need && ch===need) modeCh++;
   }
-  if(stars!==1) return {ok:false, msg:"팀 시작점(★)이 정확히 1개 필요해요"};
+  if(isTag){ if(tagStarts!==3) return {ok:false, msg:"개인 시작점(@)을 정확히 3개 놓으세요 (반대편은 자동 대칭)"}; }
+  else if(stars!==1) return {ok:false, msg:"팀 시작점(★)이 정확히 1개 필요해요"};
   if(need && modeCh!==1) return {ok:false, msg:"이 모드의 목표 요소("+need+")를 1개 배치하세요"};
+  if(ED.mode==="siege" && auxT>3) return {ok:false, msg:"보조 수정탑(Y)은 최대 3개까지예요"};
   // QUALITY-SWEEP-1 축20: 악성 배치 방지 — 시작점 주변 8칸에는 함정(가시/끈끈이/얼음) 금지(태어나자마자 피해 방지)
   for(let r=0;r<ED.rows;r++) for(let c=0;c<ED.half;c++){
-    if(ED.cells[r][c]!=="*") continue;
+    const sch=ED.cells[r][c]; if(sch!=="*"&&sch!=="@") continue;   // 시작점(* 또는 술래 @)
     for(let dr=-1;dr<=1;dr++) for(let dc=-1;dc<=1;dc++){
       const nr=r+dr, nc=c+dc;
       if(nr<0||nc<0||nr>=ED.rows||nc>=ED.half) continue;
       const nch=ED.cells[nr][nc];
-      if(nch==="S"||nch==="L"||nch==="I") return {ok:false, msg:"시작점(★) 바로 옆에는 함정을 둘 수 없어요"};
+      if(nch==="S"||nch==="L"||nch==="I") return {ok:false, msg:"시작점 바로 옆에는 함정을 둘 수 없어요"};
     }
   }
   const total=ED.rows*ED.cols, wallPct=walls*2/total, bushPct=bushes*2/total;
@@ -6072,7 +6082,7 @@ function validateEditorMap(){
   // 연결성: 전체 미러 그리드에서 시작점 기준 플러드필 — 모든 빈 칸 도달 가능해야
   const grid=edFullGrid();
   let sc=-1, sr=-1;
-  for(let r=0;r<ED.rows;r++) for(let c=0;c<ED.cols;c++) if(grid[r][c]==="*"&&c<ED.half){ sc=c; sr=r; }
+  for(let r=0;r<ED.rows;r++) for(let c=0;c<ED.cols;c++) if((grid[r][c]==="*"||grid[r][c]==="@")&&c<ED.half){ sc=c; sr=r; }   // 시작점(*·@) 시드
   const open=(ch)=>ch!=="W"&&ch!=="C";
   const seen=grid.map(row=>row.map(()=>false));
   const q=[[sc,sr]]; seen[sr][sc]=true; let reach=0, openN=0;
@@ -6152,15 +6162,18 @@ function compileEditorMap(rec){
     grid.push(row);
   }
   const obstacles=[], bushes=[], traps=[]; let spawn=null; const rulePoints={}; let wallN=0;
+  const spawnsLeft=[];   // 술래(tag) 개인 시작점 좌측 목록
   for(let r=0;r<rows;r++){
     let c=0;
     while(c<cols){
       const ch=grid[r][c];
       const cellCx=OX+c*CS+CS/2, cellCy=OY+r*CS+CS/2;
       if(ch==="*"){ if(c<half) spawn={x:cellCx, y:cellCy}; c++; continue; }
+      if(ch==="@"){ if(c<half) spawnsLeft.push({x:cellCx, y:cellCy}); c++; continue; }   // 술래 개인 시작점
       if(ch==="O"){ if(c<half) rulePoints.zone={x:OX+cols*CS/2, y:cellCy}; c++; continue; }        // 거점: 대칭 중심선 위
       if(ch==="G"){ if(c<half) rulePoints.vein={x:OX+cols*CS/2, y:cellCy}; c++; continue; }        // 별광맥: 중심선 위
       if(ch==="X"){ if(c<half){ rulePoints.towers={ player:{x:cellCx,y:cellCy}, enemy:{x:OX+cols*CS-(cellCx-OX),y:cellCy} }; } c++; continue; }
+      if(ch==="Y"){ if(c<half){ (rulePoints.subTowers=rulePoints.subTowers||[]).push({ player:{x:cellCx,y:cellCy}, enemy:{x:OX+cols*CS-(cellCx-OX),y:cellCy} }); } c++; continue; }   // 보조탑(수정부수기)
       if(ch==="."){ c++; continue; }
       let c2=c; while(c2+1<cols && grid[r][c2+1]===ch) c2++;   // 가로 연속 병합
       const rect={ x:OX+c*CS, y:OY+r*CS, w:(c2-c+1)*CS, h:CS };
@@ -6176,12 +6189,17 @@ function compileEditorMap(rec){
       c=c2+1;
     }
   }
-  if(!spawn) spawn={x:OX+CS*1.5, y:OY+rows*CS/2};
-  return { id:rec.id, name:"🛠"+rec.name, desc:"맵공방 · "+(rec.author||"학생")+" · "+(getRule(rec.mode).name),
+  if(!spawn) spawn=spawnsLeft[0]||{x:OX+CS*1.5, y:OY+rows*CS/2};
+  const out={ id:rec.id, name:"🛠"+rec.name, desc:"맵공방 · "+(rec.author||"학생")+" · "+(getRule(rec.mode).name),
     floorColor:"#222a52", strokeColor:"#5b74b8", floor:rec.floor||"basic",
     playerSpawn:spawn, enemySpawn:{ x:OX+cols*CS-(spawn.x-OX), y:spawn.y },
     gridCols:cols, gridRows:rows,   // P4: 줌아웃 카메라가 맵 크기를 읽는 필드
     obstacles:obstacles, bushes:bushes, traps:traps, rulePoints:rulePoints, editorMode:rec.mode };
+  if(rec.mode==="tag" && spawnsLeft.length){   // 술래: 개인 시작점 배열(좌=player팀, 우=미러 enemy팀)
+    out.playerSpawns=spawnsLeft;
+    out.enemySpawns=spawnsLeft.map(s=>({ x:OX+cols*CS-(s.x-OX), y:s.y }));
+  }
+  return out;
 }
 function applyApprovedMaps(){
   const st=loadEditorStore();
@@ -6570,8 +6588,11 @@ function teamSlotPos(base, slot){
 function createFighters(){
   const mode=MATCH.mode, map=MATCH.map;
   fighterIdCounter=0;
+  const pS=map.playerSpawns, eS=map.enemySpawns;   // 술래: 개인 시작점 배열(있으면 분산 배치)
+  const pSlot=(slot)=>pS?pS[slot%pS.length]:teamSlotPos(map.playerSpawn,slot);
+  const eSlot=(slot)=>eS?eS[slot%eS.length]:teamSlotPos(map.enemySpawn,slot);
 
-  const pPos=teamSlotPos(map.playerSpawn,0);
+  const pPos=pSlot(0);
   player=makeFighter({ team:"player", isPlayer:true, characterId:selectedCharacterId, x:pPos.x, y:pPos.y });
   initAmmo(player);   // 장전: 사람이 조종하는 플레이어만 탄창 사용
 
@@ -6579,7 +6600,7 @@ function createFighters(){
   const allyPool=profile.unlockedCharacters.filter(id=>id!==selectedCharacterId);
   for(let i=0;i<mode.allyCount;i++){
     const charId = allyPool.length>0 ? allyPool[i%allyPool.length] : selectedCharacterId;
-    const pos=teamSlotPos(map.playerSpawn,i+1);
+    const pos=pSlot(i+1);
     allies.push(makeFighter({ team:"player", isPlayer:false, characterId:charId, x:pos.x, y:pos.y }));
   }
 
@@ -6588,7 +6609,7 @@ function createFighters(){
   const botPool=STUDENT_CHARACTERS.map(c=>c.id).filter(id=>id!==selectedCharacterId);
   const botOff=Math.floor(Math.random()*Math.max(1,botPool.length));
   for(let i=0;i<mode.enemyCount;i++){
-    const pos=teamSlotPos(map.enemySpawn,i);
+    const pos=eSlot(i);
     const charId=botPool.length?botPool[(botOff+i)%botPool.length]:selectedCharacterId;
     enemies.push(makeFighter({ team:"enemy", isPlayer:false, characterId:charId, x:pos.x, y:pos.y,
       name:"봇 "+getCharacter(charId).name }));
@@ -6641,13 +6662,22 @@ function matchTimeLimit(){ return (MATCH && MATCH.timeLimit) || GAME_CONFIG.game
    시간 종료 시엔 규칙별 우열 비교(ruleTimeUp). 온라인/캠페인 경로는 건드리지 않는다.
    ======================================================================= */
 let RULE=null;   // 진행 중 규칙 상태(섬멸전이면 null)
+/* STARGRAB-RANDOM: 별을 맵 전역 통행 가능 칸에 랜덤 스폰(벽·바위·구조물 위 제외) — 고정 별광맥 반경 대신.
+   오프라인·온라인 호스트 공용(게스트는 스폰 안 함, 호스트 권위). 통행성=circleRectOverlap+OBSTACLES 재사용. */
+function starSpawnPoint(){
+  for(let t=0;t<24;t++){
+    const x=rand(ARENA.x+34, ARENA.x+ARENA.w-34), y=rand(ARENA.y+34, ARENA.y+ARENA.h-34);
+    if(!OBSTACLES.some(o=>circleRectOverlap(x,y,16,o))) return { x:x, y:y };
+  }
+  return null;
+}
 function setupRuleState(){
   RULE=null;
   const id=matchRuleId(); if(id==="tdm") return;
   const rp=(MATCH.map&&MATCH.map.rulePoints)||{};   // OVERNIGHT-1: 에디터 맵의 모드 요소 배치점(있으면 우선)
   if(id==="siege"){
     const C=RULE_CONFIG.siege, map=MATCH.map;
-    RULE={ id:id, winner:null, towers:{}, turretAcc:{player:0.8, enemy:0.8} };
+    RULE={ id:id, winner:null, towers:{}, turrets:[] };   // SIEGE-AUX: turrets = 메인+보조 전부(개별 쿨)
     for(const team of ["player","enemy"]){
       const sp=(team==="player")?map.playerSpawn:map.enemySpawn;
       const dirX=(sp.x<LOGW/2)?-1:1;   // 자기 진영 가장자리 방향
@@ -6656,7 +6686,15 @@ function setupRuleState(){
       const tx=clamp((tp?tp.x:sp.x+dirX*110)-C.towerW/2, ARENA.x+8, ARENA.x+ARENA.w-C.towerW-8);
       const ty=clamp((tp?tp.y:sp.y)-C.towerH/2, ARENA.y+8, ARENA.y+ARENA.h-C.towerH-8);
       const tower={ x:tx, y:ty, w:C.towerW, h:C.towerH, sid:"rtower_"+team, team:team, hp:C.towerHp, maxHp:C.towerHp, structure:true };
-      OBSTACLES.push(tower); RULE.towers[team]=tower;
+      OBSTACLES.push(tower); RULE.towers[team]=tower; RULE.turrets.push({ o:tower, team:team, cd:0.8 });
+      // 보조탑(SIEGE-AUX): 에디터 Y 배치점 → 팀별 대칭. 파괴해도 승패 무관(raux_ 접두사)
+      const subs=rp.subTowers||[];
+      for(let s=0;s<subs.length;s++){ const stp=subs[s][team];
+        const ax=clamp(stp.x-C.auxW/2, ARENA.x+8, ARENA.x+ARENA.w-C.auxW-8);
+        const ay=clamp(stp.y-C.auxH/2, ARENA.y+8, ARENA.y+ARENA.h-C.auxH-8);
+        const aux={ x:ax, y:ay, w:C.auxW, h:C.auxH, sid:"raux_"+team+"_"+s, team:team, hp:C.auxHp, maxHp:C.auxHp, structure:true };
+        OBSTACLES.push(aux); RULE.turrets.push({ o:aux, team:team, cd:0.8 });
+      }
       // 건설 벽(쿠션): 스폰 앞(중앙 방향) 세로 3장
       for(let i=0;i<C.wallCount;i++){
         const wx=clamp(sp.x-dirX*130-C.wallW/2, ARENA.x+8, ARENA.x+ARENA.w-C.wallW-8);
@@ -6896,12 +6934,11 @@ function tickRule(dt){
         RULE.rebuild.splice(i,1);
       }
     }
-    for(const team of ["player","enemy"]){
-      const tw=RULE.towers[team]; if(!tw || tw.hp<=0) continue;
-      RULE.turretAcc[team]-=dt;
-      if(RULE.turretAcc[team]>0) continue;
+    for(const T of RULE.turrets){   // SIEGE-AUX: 메인+보조탑 전부 자동 발사(개별 쿨)
+      const tw=T.o; if(!tw || tw.hp<=0) continue;
+      T.cd-=dt; if(T.cd>0) continue;
       const cx=tw.x+tw.w/2, cy=tw.y+tw.h/2, mzOff=Math.max(tw.w,tw.h)/2+12;
-      const foes=(team==="player")?enemies:playerTeam();
+      const foes=(T.team==="player")?enemies:playerTeam();
       let best=null, bd=C.turretRange;
       for(const f of foes){ if(!canBeHit(f)) continue;
         const d=dist(cx,cy,f.x,f.y); if(d>=bd) continue;
@@ -6910,10 +6947,10 @@ function tickRule(dt){
       if(best){
         const a=Math.atan2(best.y-cy,best.x-cx), mz=Math.max(tw.w,tw.h)/2+12;
         bullets.push({ x:cx+Math.cos(a)*mz, y:cy+Math.sin(a)*mz, vx:Math.cos(a)*420, vy:Math.sin(a)*420,
-          r:8, damage:C.turretDmg, team:team, ownerId:-1, color:"#ffd0a0", alive:true, traveled:0,
+          r:8, damage:C.turretDmg, team:T.team, ownerId:-1, color:"#ffd0a0", alive:true, traveled:0,
           maxRange:C.turretRange+90, age:0, isSuper:true });
-        RULE.turretAcc[team]=C.turretCd;
-      } else RULE.turretAcc[team]=0.15;   // 대상 없음 → 짧게 재탐색
+        T.cd=C.turretCd;
+      } else T.cd=0.15;   // 대상 없음 → 짧게 재탐색
     }
   } else if(RULE.id==="hotzone"){
     const C=RULE_CONFIG.hotzone;
@@ -6942,11 +6979,7 @@ function tickRule(dt){
     if(RULE.spawnAcc>=C.spawnEvery){
       RULE.spawnAcc=0;
       if(RULE.stars.filter(s=>s.ttl===undefined).length<C.maxOnGround){
-        for(let t=0;t<12;t++){
-          const x=clamp(RULE.cx+rand(-130,130), ARENA.x+30, ARENA.x+ARENA.w-30);
-          const y=clamp(RULE.cy+rand(-100,100), ARENA.y+30, ARENA.y+ARENA.h-30);
-          if(!OBSTACLES.some(o=>circleRectOverlap(x,y,14,o))){ RULE.stars.push({x:x,y:y}); break; }
-        }
+        const p=starSpawnPoint(); if(p) RULE.stars.push(p);   // STARGRAB-RANDOM: 맵 전역 랜덤(통행 칸)
       }
     }
     // 드랍 별 소멸(6초) + 픽업
@@ -6973,7 +7006,7 @@ function drawRuleObjects(){
   {
     for(const o of OBSTACLES){
       if(!o.sid || !o.structure) continue;
-      const isTower=o.sid.indexOf("rtower_")===0;
+      const isTower=o.sid.indexOf("rtower_")===0 || o.sid.indexOf("raux_")===0;   // SIEGE-AUX: 보조탑도 탑 그래픽
       const tc=(o.team==="player")?"#5aa0ff":(o.team==="enemy"?"#ff6a6a":"#c9a3ff");   // null=중립(에디터 쿠션벽)
       ctx.save();
       if(isTower){
@@ -10776,7 +10809,9 @@ function tMakeFighter(slot, team, characterId, weaponId, isBot, idx, map){
   const lo=sanitizeLoadout(characterId, weaponId);   // 네트워크/저장 값이 잘못돼도 학생 캐릭터 + 고정 무기로 교정
   const ch=getCharacter(lo.characterId);
   const base = (team==="red") ? map.enemySpawn : map.playerSpawn;
-  const p=tSpawnPos(base, idx), sp=findClearSpawn(p.x,p.y,22);
+  const arr = (team==="red") ? map.enemySpawns : map.playerSpawns;   // 술래: 개인 시작점 분산(온라인)
+  const p = arr ? arr[idx%arr.length] : tSpawnPos(base, idx);
+  const sp=findClearSpawn(p.x,p.y,22);
   const maxHp=GAME_CONFIG.playerMaxHp*ch.hpMul;
   const f={ slot:slot, team:team, isBot:!!isBot, char:ch, weaponId:lo.weaponId,
     name:ch.name, color:ch.color, subColor:ch.subColor,
@@ -11080,7 +11115,7 @@ function tSetupRule(){
   const rp=map.rulePoints||{};
   if(rid==="siege"){
     const C=RULE_CONFIG.siege;
-    RULE={ id:"siege", winner:null, towers:{}, turretAcc:{player:0.8, enemy:0.8}, structs:[], rebuild:[] };
+    RULE={ id:"siege", winner:null, towers:{}, turrets:[], structs:[], rebuild:[] };   // SIEGE-AUX
     for(const tk of ["player","enemy"]){
       const sp=(tk==="player")?map.playerSpawn:map.enemySpawn;
       const dirX=(sp.x<LOGW/2)?-1:1;
@@ -11088,7 +11123,14 @@ function tSetupRule(){
       const tx=clamp((tp?tp.x:sp.x+dirX*110)-C.towerW/2, ARENA.x+8, ARENA.x+ARENA.w-C.towerW-8);
       const ty=clamp((tp?tp.y:sp.y)-C.towerH/2, ARENA.y+8, ARENA.y+ARENA.h-C.towerH-8);
       const tower={ x:tx, y:ty, w:C.towerW, h:C.towerH, sid:"rtower_"+tk, team:tk, hp:C.towerHp, maxHp:C.towerHp, structure:true };
-      RULE.towers[tk]=tower; RULE.structs.push(tower); OBSTACLES.push(tower);
+      RULE.towers[tk]=tower; RULE.structs.push(tower); OBSTACLES.push(tower); RULE.turrets.push({ o:tower, team:tk, cd:0.8 });
+      const subs=rp.subTowers||[];   // SIEGE-AUX: 보조탑(structs 순서 = 호스트·게스트 결정적 동일 → HP 동기 안전)
+      for(let s=0;s<subs.length;s++){ const stp=subs[s][tk];
+        const ax=clamp(stp.x-C.auxW/2, ARENA.x+8, ARENA.x+ARENA.w-C.auxW-8);
+        const ay=clamp(stp.y-C.auxH/2, ARENA.y+8, ARENA.y+ARENA.h-C.auxH-8);
+        const aux={ x:ax, y:ay, w:C.auxW, h:C.auxH, sid:"raux_"+tk+"_"+s, team:tk, hp:C.auxHp, maxHp:C.auxHp, structure:true };
+        RULE.structs.push(aux); OBSTACLES.push(aux); RULE.turrets.push({ o:aux, team:tk, cd:0.8 });
+      }
       for(let i=0;i<C.wallCount;i++){
         const wx=clamp(sp.x-dirX*130-C.wallW/2, ARENA.x+8, ARENA.x+ARENA.w-C.wallW-8);
         const wy=clamp(sp.y+(i-1)*120-C.wallH/2, ARENA.y+8, ARENA.y+ARENA.h-C.wallH-8);
@@ -11245,10 +11287,9 @@ function tTickRule(dt){
       effects.push({kind:"respawn", x:s.x+s.w/2, y:s.y+s.h/2, t:0, life:0.5, color:"#c9d6ff"});
       RULE.rebuild.splice(i,1);
     }
-    for(const tk of ["player","enemy"]){
-      const tw=RULE.towers[tk]; if(!tw || tw.hp<=0) continue;
-      RULE.turretAcc[tk]-=dt;
-      if(RULE.turretAcc[tk]>0) continue;
+    for(const T of RULE.turrets){   // SIEGE-AUX: 메인+보조탑 전부 자동 발사(개별 쿨)
+      const tw=T.o, tk=T.team; if(!tw || tw.hp<=0) continue;
+      T.cd-=dt; if(T.cd>0) continue;
       const cx=tw.x+tw.w/2, cy=tw.y+tw.h/2, mzOff=Math.max(tw.w,tw.h)/2+12;
       let best=null, bd=C.turretRange;
       for(const f of list){ if(f.dead || f.invincibleTimer>0 || tTeamKey(f.team)===tk) continue;
@@ -11260,8 +11301,8 @@ function tTickRule(dt){
         tBullets.push({ x:cx+Math.cos(a)*mz, y:cy+Math.sin(a)*mz, vx:Math.cos(a)*420, vy:Math.sin(a)*420,
           r:8, damage:C.turretDmg, team:(tk==="player"?"blue":"red"), owner:"turret", color:"#ffd0a0", alive:true, traveled:0,
           maxRange:C.turretRange+90, age:0, isSuper:true });
-        RULE.turretAcc[tk]=C.turretCd;
-      } else RULE.turretAcc[tk]=0.15;
+        T.cd=C.turretCd;
+      } else T.cd=0.15;
     }
     return;
   }
@@ -11290,11 +11331,7 @@ function tTickRule(dt){
     if(RULE.spawnAcc>=C.spawnEvery){
       RULE.spawnAcc=0;
       if(RULE.stars.filter(s=>s.ttl===undefined).length<C.maxOnGround){
-        for(let t=0;t<12;t++){
-          const x=clamp(RULE.cx+rand(-130,130), ARENA.x+30, ARENA.x+ARENA.w-30);
-          const y=clamp(RULE.cy+rand(-100,100), ARENA.y+30, ARENA.y+ARENA.h-30);
-          if(!OBSTACLES.some(o=>circleRectOverlap(x,y,14,o))){ RULE.stars.push({x:x,y:y}); break; }
-        }
+        const p=starSpawnPoint(); if(p) RULE.stars.push(p);   // STARGRAB-RANDOM: 맵 전역 랜덤(통행 칸)
       }
     }
     for(let i=RULE.stars.length-1;i>=0;i--){
