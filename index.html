@@ -1765,6 +1765,23 @@ function canvasToLogical(clientX, clientY){
     return { x:(clientX-r.left)*(LOGW/r.width), y:(clientY-r.top)*(LOGH/r.height) };
   }catch(e){ return {x:LOGW/2, y:LOGH/2}; }
 }
+/* =======================================================================
+   UI 히트영역 — 모든 메뉴 화면 마우스·터치 클릭 대응(TOUCH-UI-1)
+   각 메뉴 draw가 프레임마다 버튼 rect+동작을 등록하고, 클릭/탭이 그 동작을 실행한다.
+   controlMode(키보드/마우스/터치)와 무관하게 동작 — 태블릿만 있는 학생도 메뉴 진입 가능.
+   키보드 네비게이션(화살표+Enter)은 그대로 병행 유지. ======================================================================= */
+let UI_HITS = [];
+function uiClearHits(){ UI_HITS.length = 0; }
+function uiHit(x, y, w, h, fn){ if(fn) UI_HITS.push({ x:x, y:y, w:w, h:h, fn:fn }); }
+function uiMenuActive(){   // 자체 포인터 처리를 가진 화면(플레이/에디터/RPG/별빛점프)은 제외
+  return !inPlayState() && gameState!==STATE.EDITOR && gameState!==STATE.RPG && gameState!==STATE.PLATFORMER;
+}
+function uiPointerDown(p){   // 나중에 그려진 것(위层) 우선 — 역순 탐색
+  if(!uiMenuActive()) return false;
+  for(let i=UI_HITS.length-1;i>=0;i--){ const b=UI_HITS[i];
+    if(p.x>=b.x && p.x<=b.x+b.w && p.y>=b.y && p.y<=b.y+b.h){ try{ b.fn(); }catch(e){} return true; } }
+  return false;
+}
 // 가상 스틱: 앵커→현재점 벡터를 반경으로 정규화(-1..1, 밖은 클램프)
 function stickVec(anchor, p, rad){
   let dx=(p.x-anchor.x)/rad, dy=(p.y-anchor.y)/rad;
@@ -1784,6 +1801,10 @@ function _touchDockTap(p){   // 하단 스킬독 탭(X/C=스킬, Z=장전) + PVE
   return false;
 }
 function handleTouchStart(e){
+  if(uiMenuActive()){   // TOUCH-UI-1: 메뉴 탭은 controlMode 무관(태블릿 메뉴 진입)
+    if(e.changedTouches&&e.changedTouches.length){ const t=e.changedTouches[0]; if(uiPointerDown(canvasToLogical(t.clientX,t.clientY))) e.preventDefault(); }
+    return;
+  }
   if(controlMode()!=="touch") return;
   if(gameState===STATE.PLATFORMER){ e.preventDefault();
     for(const t of e.changedTouches){ const p=canvasToLogical(t.clientX,t.clientY); pfTouchAt(p,true); } return; }
@@ -1826,6 +1847,7 @@ try{
     if(gameState===STATE.EDITOR && ED && ED.step==="edit" && ED.mbtn) edPaintAt(p); });   // C9: 드래그 페인팅
   canvas.addEventListener("mousedown", (e)=>{
     if(gameState===STATE.EDITOR && ED && ED.step==="edit"){ edMouseDown(e); e.preventDefault(); return; }   // C9: 에디터 마우스 배치
+    if(e.button===0 && uiMenuActive()){ const p=canvasToLogical(e.clientX,e.clientY); if(uiPointerDown(p)){ e.preventDefault(); return; } }   // TOUCH-UI-1: 메뉴 클릭
     if(controlMode()!=="mouse" || !inPlayState()) return;
     if(e.button===0) MOUSE.down=true; else if(e.button===2) MOUSE.rdown=true;
     e.preventDefault();
@@ -2742,7 +2764,9 @@ function drawPfSelect(){
       ? "🔒 "+(lv.camp+1)+". ??? — 이전 스테이지를 클리어하면 열려요"
       : (camp?((lv.camp+1)+". "):"🛠 ")+lv.name+"  ·  ✍"+(lv.author||"별빛")
         +(b?("   ⏱ "+b.time.toFixed(2)+"초 · ⭐"+(b.stars||0)+"/"+(b.total||"?")+" · ✅"+(b.clears||1)+"회"):"   (미클리어)");
-    drawButton(label, LOGW/2, y+21, 700, 42, sel);
+    drawButton(label, LOGW/2, y+21, 700, 42, sel, (function(idx){ return function(){   // TOUCH-UI-1: 스테이지 선택
+      pfSelIdx=idx; const L=_pfSel.list[idx]; if(pfLevelLocked(L)){ showToast("🔒 이전 스테이지를 먼저 클리어해요!"); return; } pfStartLevel(L);
+    }; })(i));
     y+=50;
   }
   if(start+SHOW<list.length){ ctx.fillStyle="#8893bb"; ctx.fillText("▼ 아래로 "+(list.length-start-SHOW)+"개", LOGW/2, y+8); }
@@ -8306,6 +8330,7 @@ function render(){
   const sx=canvas.width/LOGW, sy=canvas.height/LOGH;
   ctx.setTransform(sx,0,0,sy,0,0);
   ctx.clearRect(0,0,LOGW,LOGH);
+  uiClearHits();   // TOUCH-UI-1: 이번 프레임 히트영역 초기화 — 각 메뉴 draw가 다시 등록
   if(gameState===STATE.PLATFORMER){ pfRender(); drawToast(); return; }
   if(gameState===STATE.RPG){ rpgRender(); drawToast(); return; }   // RPG모드 §1.1: 조기 리턴
   drawBackground();
@@ -8382,6 +8407,8 @@ function drawLeaveConfirm(){
   ctx.fillStyle="#ffe066"; ctx.font="bold 22px 'Malgun Gothic',sans-serif";
   ctx.fillText("Y: 나가기      N 또는 Esc: 취소", LOGW/2, by+128);
   ctx.restore();
+  uiHit(bx, by+104, bw/2, 48, function(){ confirmLeave=false; doLeaveToStart(); });   // TOUCH-UI-1: 좌=나가기
+  uiHit(bx+bw/2, by+104, bw/2, 48, function(){ confirmLeave=false; });                // 우=취소
 }
 
 // F2 에셋 확인 화면 — 6슬롯의 이미지 연결 상태를 한눈에. 게임 로직에 영향 없음.
@@ -8466,7 +8493,8 @@ function drawProfileScreen(){
     ctx.fillStyle="#ffffff"; ctx.font="16px 'Malgun Gothic',sans-serif"; ctx.fillText(rows[i][1], x+220, ry);
   }
   ctx.textAlign="center"; ctx.fillStyle="#ffe066"; ctx.font="bold 16px 'Malgun Gothic',sans-serif";
-  ctx.fillText("I: 수집창 보기 · N: 별명 변경 · Esc: 시작 화면", LOGW/2, 590);
+  ctx.fillText("I: 수집창 보기 · N: 별명 변경 · 탭 하면 시작 화면", LOGW/2, 590);
+  uiHit(0, 0, LOGW, LOGH, function(){ gameState=STATE.START; });   // TOUCH-UI-1: 정보창 탭=닫기
   ctx.restore();
 }
 // 수집창: 캐릭터/도구 카드 목록 + 잠김/해금
@@ -8503,7 +8531,10 @@ function drawCollectionScreen(){
     ctx.restore();
   }
   ctx.textAlign="center"; ctx.fillStyle="#aab4e0"; ctx.font="14px 'Malgun Gothic',sans-serif";
-  ctx.fillText("학생 기본 6캐릭터/6도구는 기본 해금 · 나머지는 상점에서 골드로 해금 · Esc: 돌아가기", LOGW/2, LOGH-22);
+  ctx.fillText("학생 기본 6캐릭터/6도구는 기본 해금 · 나머지는 상점에서 골드로 해금 · 아래 탭: 돌아가기", LOGW/2, LOGH-22);
+  uiHit(0, 130, LOGW*0.28, LOGH-200, function(){ collectionIndex=Math.max(0,collectionIndex-1); });   // TOUCH-UI-1: 좌=이전
+  uiHit(LOGW*0.72, 130, LOGW*0.28, LOGH-200, function(){ collectionIndex=collectionIndex+1; });         // 우=다음
+  uiHit(0, LOGH-40, LOGW, 40, function(){ gameState=STATE.START; });                                     // 하단=돌아가기
   ctx.restore();
 }
 // 처음 접속: 타이틀(스플래시)
@@ -8514,8 +8545,9 @@ function drawSplashScreen(){
   ctx.fillStyle="rgba(207,224,255,"+(0.5+p*0.5)+")"; ctx.font="bold 20px 'Malgun Gothic',sans-serif";
   ctx.fillText("학급 전투 로비에 오신 것을 환영합니다", LOGW/2, LOGH/2+40);
   ctx.fillStyle="#8893bb"; ctx.font="15px 'Malgun Gothic',sans-serif";
-  ctx.fillText("Enter 를 누르거나 잠시 기다리면 로그인 화면으로", LOGW/2, LOGH/2+90);
+  ctx.fillText("탭 하거나 잠시 기다리면 로그인 화면으로", LOGW/2, LOGH/2+90);
   ctx.restore();
+  uiHit(0, 0, LOGW, LOGH, function(){ goToLogin(); });   // TOUCH-UI-1: 스플래시 탭
 }
 // 학생 로그인 화면
 function drawLoginScreen(){
@@ -8533,8 +8565,12 @@ function drawLoginScreen(){
   labels.push("교사용 / 관리자 로그인");
   for(let i=0;i<labels.length;i++){ const teacher=(i===labels.length-1);
     const y=cardY+50+i*60;
-    drawButton(labels[i], LOGW/2, y, 360, 44, i===loginIndex);
-    if(teacher && i!==loginIndex){ /* 교사용은 약하게 보이도록은 drawButton 기본으로 둠 */ }
+    drawButton(labels[i], LOGW/2, y, 360, 44, i===loginIndex, (function(idx,tch){ return function(){   // TOUCH-UI-1: 로그인 버튼
+      loginIndex=idx;
+      if(idx===0) promptStudentLogin();
+      else if(hasSession && idx===1){ if(bindStudent(session.studentId)){ loginMsg=""; goToStartScreen(); showToast((profile.nickname||"")+"님 환영합니다!"); } else { session=null; saveSession(); loginMsg="저장된 계정을 찾을 수 없어요"; } }
+      else gameState=STATE.ADMIN_LOGIN;
+    }; })(i, teacher));
   }
   ctx.textAlign="center"; ctx.fillStyle=loginMsg?"#ff9a9a":"#aab4e0"; ctx.font="15px 'Malgun Gothic',sans-serif";
   ctx.fillText(loginMsg||"↑↓ 선택 · Enter 실행 · Esc 뒤로", LOGW/2, cardY+250+34);
@@ -9402,7 +9438,7 @@ function drawTitle(y){
   drawStar(LOGW/2-230,y,5,20,8,"#ffe14d"); drawStar(LOGW/2+230,y,5,20,8,"#ffe14d");
   ctx.restore();
 }
-function drawButton(text,cx,cy,w,h,selected){
+function drawButton(text,cx,cy,w,h,selected,fn){
   ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
   const x=cx-w/2,y=cy-h/2;
   if(selected){ const p=0.5+0.5*Math.sin(uiTime*6); ctx.fillStyle="rgba(95,160,255,0.9)"; ctx.shadowColor="rgba(120,200,255,"+(0.5+p*0.5)+")"; ctx.shadowBlur=22; } else ctx.fillStyle="rgba(40,52,100,0.9)";
@@ -9410,6 +9446,7 @@ function drawButton(text,cx,cy,w,h,selected){
   ctx.strokeStyle=selected?"#ffffff":"#6678b0"; ctx.lineWidth=selected?4:2; roundRect(x,y,w,h,12); ctx.stroke();
   ctx.fillStyle="#ffffff"; ctx.font="bold 22px 'Malgun Gothic',sans-serif"; ctx.fillText(text,cx,cy+1);
   ctx.restore();
+  uiHit(x, y, w, h, fn);   // TOUCH-UI-1: 버튼 클릭
 }
 function drawToast(){
   if(toastTimer<=0 || !toastText) return;
@@ -9479,16 +9516,17 @@ function drawStartScreen(){
   // 오른쪽: 내 캐릭터 카드(캐릭터 선택은 여기 + C 키가 담당)
   ctx.save(); ctx.textAlign="left"; ctx.textBaseline="alphabetic";
   ctx.fillStyle="#bfffad"; ctx.font="bold 15px 'Malgun Gothic',sans-serif"; ctx.fillText("⭐ 내 캐릭터", 800, 160); ctx.restore();
+  uiHit(800, 166, 286, 408, function(){ cycleCharacter(+1); });   // TOUCH-UI-1: 캐릭터 카드 탭=다음 캐릭터(그리기 전 등록 — 예외에 견고)
   drawCharacterCard(800, 166, 286, 388, ch, w);
   ctx.save(); ctx.textAlign="center"; ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
-  ctx.fillText("C 캐릭터 변경 (도구·기술 자동 변경)", 800+143, 574); ctx.restore();
+  ctx.fillText("C · 카드 탭 → 캐릭터 변경 (도구·기술 자동)", 800+143, 574); ctx.restore();
   // 하단 안내(짧게)
   ctx.save(); ctx.textAlign="center"; ctx.fillStyle="#aab4e0"; ctx.font="14px 'Malgun Gothic',sans-serif";
   ctx.fillText("↑↓ 이동 · ←→ 값 변경 · Enter 실행 · Esc 설정", LOGW/2, LOGH-20); ctx.restore();
   if(settingsOpen) drawSettingsOverlay();
 }
 // ① 상단바 칩(둥근 배지). selected면 하이라이트. 그린 뒤 오른쪽 끝 x를 돌려준다.
-function drawTopChip(text, x, y, h, selected){
+function drawTopChip(text, x, y, h, selected, fn){
   ctx.save(); ctx.font="bold 14px 'Malgun Gothic',sans-serif";
   const w=ctx.measureText(text).width+26;
   ctx.fillStyle=selected?"rgba(95,160,255,0.35)":"rgba(16,22,52,0.85)";
@@ -9497,6 +9535,7 @@ function drawTopChip(text, x, y, h, selected){
   ctx.fillStyle=selected?"#ffe066":"#dfe6ff"; ctx.textAlign="left"; ctx.textBaseline="middle";
   ctx.fillText(text, x+13, y+h/2+1);
   ctx.restore();
+  uiHit(x, y, w, h, fn);   // TOUCH-UI-1: 칩 클릭
   return x+w;
 }
 function drawLobbyTopBar(){
@@ -9505,7 +9544,7 @@ function drawLobbyTopBar(){
   let x=64;
   const lv="Lv."+(profile.level||1);
   const idTxt=(profile.id && profile.id!==profile.nickname)?(" · "+profile.id):"";   // 닉네임=ID면 중복 표시 생략
-  x=drawTopChip("👤 "+profile.nickname+" · "+lv+idTxt, x, y, h, false)+10;
+  x=drawTopChip("👤 "+profile.nickname+" · "+lv+idTxt, x, y, h, false, function(){ gameState=STATE.PROFILE; })+10;
   x=drawTopChip("💰 "+profile.gold+" G", x, y, h, false)+10;
   ctx.save(); ctx.textAlign="left"; ctx.textBaseline="middle";
   ctx.fillStyle="#7f8bb5"; ctx.font="12px 'Malgun Gothic',sans-serif"; ctx.fillText("U 프로필", x+4, y+h/2+1);
@@ -9514,7 +9553,7 @@ function drawLobbyTopBar(){
   ctx.save(); ctx.font="bold 14px 'Malgun Gothic',sans-serif";
   const setTxt="⚙ 설정", setW=ctx.measureText(setTxt).width+26, setX=LOGW-64-setW;
   ctx.restore();
-  drawTopChip(setTxt, setX, y, h, menuIndex===12||settingsOpen);
+  drawTopChip(setTxt, setX, y, h, menuIndex===12||settingsOpen, function(){ openSettings(); });
   const on=OnlineManager.available;
   const status=on?"● 온라인 준비됨":(FIREBASE_CONFIG?"○ 온라인 연결 중…":"○ 오프라인(로컬)");
   ctx.save(); ctx.textAlign="right"; ctx.textBaseline="middle";
@@ -9530,9 +9569,9 @@ function drawLobbySections(){
   ctx.save(); ctx.strokeStyle="#9fe0ff"; ctx.lineWidth=3;
   ctx.beginPath(); ctx.moveTo(276, y+h+5); ctx.lineTo(x-14, y+h+5); ctx.stroke(); ctx.restore();
   // 상점 비활성(SHOP_ENABLED=false) 동안엔 "준비 중"을 미리 표기 — 눌러도 토스트 안내(빈 화면 없음)
-  x=drawTopChip(SHOP_ENABLED?"🛒 상점":"🛒 상점 (준비 중)", x, y, h, menuIndex===9)+8;
-  x=drawTopChip("📖 수집", x, y, h, menuIndex===10)+8;
-  x=drawTopChip("🛠 맵공방", x, y, h, menuIndex===11)+8;   /* OVERNIGHT-1 Phase 4 */
+  x=drawTopChip(SHOP_ENABLED?"🛒 상점":"🛒 상점 (준비 중)", x, y, h, menuIndex===9, function(){ menuIndex=9; openShop(); })+8;
+  x=drawTopChip("📖 수집", x, y, h, menuIndex===10, function(){ menuIndex=10; collectionIndex=0; gameState=STATE.COLLECTION; })+8;
+  x=drawTopChip("🛠 맵공방", x, y, h, menuIndex===11, function(){ menuIndex=11; openEditor(); })+8;   /* OVERNIGHT-1 Phase 4 */
 }
 // ③ 플레이 메뉴: 혼자(캠페인 └난이도 · 빠른대전 └규칙·팀·맵·난이도) / 친구와(온라인 센터)
 function drawLobbyMenu(ch, w){
@@ -9572,6 +9611,9 @@ function drawLobbyMenu(ch, w){
       ctx.textAlign="right"; ctx.fillStyle="#ffffff"; ctx.font="14px 'Malgun Gothic',sans-serif";
       ctx.fillText((sel?"◀ ":"")+e.val+(sel?" ▶":""), x+W-16, cy);
       ctx.restore();
+      (function(row){ const hw=(W-10)/2;   // TOUCH-UI-1: 값 행 좌=◀ 우=▶(단일 클릭으로 값 변경+선택)
+        uiHit(x+10, y, hw, hh, function(){ menuIndex=row; changeMenuValue(row,-1); });
+        uiHit(x+10+hw, y, hw, hh, function(){ menuIndex=row; changeMenuValue(row,+1); }); })(e.i);
       y+=30; continue;
     }
     // 모드 행(캠페인·빠른대전·온라인)
@@ -9586,12 +9628,14 @@ function drawLobbyMenu(ch, w){
     ctx.fillText(e.label, x, cy);
     if(e.note){ ctx.textAlign="right"; ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif"; ctx.fillText(e.note, x+W-16, cy); }
     ctx.restore();
+    (function(row){ uiHit(x-12, y, W+24, hh, function(){ menuIndex=row; activateMenuRow(row); }); })(e.i);   // TOUCH-UI-1: 모드 행 클릭=실행
     y+=44;
   }
 }
 // ⚙ 설정 오버레이(START 위 · 새 STATE 아님): 별명 변경 · 로그아웃 · 교사용 모드
 function drawSettingsOverlay(){
   dimScreen(0.6);
+  uiHit(0, 0, LOGW, LOGH, function(){ settingsOpen=false; });   // TOUCH-UI-1: 배경 탭=닫기(버튼이 위층에서 우선)
   ctx.save();
   const bw=480, bh=412, bx=LOGW/2-bw/2, by=LOGH/2-bh/2-10;
   ctx.fillStyle="rgba(16,22,52,0.96)"; roundRect(bx,by,bw,bh,16); ctx.fill();
@@ -9601,9 +9645,15 @@ function drawSettingsOverlay(){
   ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
   ctx.fillText(profile.nickname+(profile.id?(" · ID "+profile.id):""), LOGW/2, by+80);
   const items=["🎮 조작: "+controlModeName(),"🔊 효과음: "+Math.round((profile.sfxVolume||0.7)*100)+"% (준비 중)","✏️ 별명 변경","🚪 로그아웃","🧑‍🏫 교사용 모드"];
-  for(let i=0;i<items.length;i++) drawButton(items[i], LOGW/2, by+118+i*50, 420, 40, settingsIndex===i);
+  for(let i=0;i<items.length;i++) drawButton(items[i], LOGW/2, by+118+i*50, 420, 40, settingsIndex===i,
+    (function(idx){ return function(){ settingsIndex=idx;   // TOUCH-UI-1: 설정 버튼 클릭
+      if(idx===0){ const ids=CONTROL_MODES.map(c=>c.id); let k=ids.indexOf(controlMode()); if(k<0)k=0; profile.controlMode=ids[(k+1)%ids.length]; saveProfile(); showToast("조작 방식: "+controlModeName()); }
+      else if(idx===2) changeNickname();
+      else if(idx===3){ settingsOpen=false; doLogout(); }
+      else if(idx===4){ settingsOpen=false; gameState=STATE.ADMIN_LOGIN; }
+    }; })(i));
   ctx.fillStyle="#aab4e0"; ctx.font="14px 'Malgun Gothic',sans-serif";
-  ctx.fillText("↑↓ 선택 · Enter 실행 · 조작 행에서 ←→ 변경 · Esc 닫기", LOGW/2, by+bh-24);
+  ctx.fillText("↑↓ 선택 · Enter 실행 · 조작 행에서 ←→ 변경 · 바깥 탭 닫기", LOGW/2, by+bh-24);
   ctx.restore();
 }
 
@@ -10495,9 +10545,15 @@ function drawOnlineMenu(){
     ctx.fillStyle="#aab4e0"; ctx.font="16px 'Malgun Gothic',sans-serif";
     ctx.fillText("index.html 의 FIREBASE_CONFIG 에 설정을 넣으면 켜집니다.",LOGW/2,336);
     ctx.fillText("지금도 로컬(컴퓨터) 모드는 모두 정상 작동합니다.",LOGW/2,366);
-    ctx.fillStyle="#ffe066"; ctx.font="16px 'Malgun Gothic',sans-serif"; ctx.fillText("Esc 로 돌아가기",LOGW/2,430);
-    ctx.restore(); return;
+    ctx.fillStyle="#ffe066"; ctx.font="16px 'Malgun Gothic',sans-serif"; ctx.fillText("탭 하면 돌아가기",LOGW/2,430);
+    ctx.restore();
+    uiHit(0,0,LOGW,LOGH, function(){ goToStartScreen(); });   // TOUCH-UI-1: 아무데나 탭=뒤로
+    return;
   }
+  const doRow=function(i){ onlineMenuIndex=i; const cur=onlineMenuOptions()[i]; if(!cur) return;   // TOUCH-UI-1: 온라인 메뉴 행 동작
+    if(cur.kind==="create"){ if(cur.modeId==="online1v1") doCreateRoom(); else doCreateTeamRoom(cur.modeId); }
+    else if(cur.kind==="map") cycleMap(1); else if(cur.kind==="rule") cycleOnlineRule(1);
+    else if(cur.kind==="join") doJoinAny(); else goToStartScreen(); };
   const opts=onlineMenuOptions();
   if(onlineMenuIndex>=opts.length) onlineMenuIndex=0;
   let y=176;
@@ -10507,13 +10563,15 @@ function drawOnlineMenu(){
     if(o.kind==="map"){
       // PvP 그룹에 스코프된 맵 값 행(1대1·3대3 방에만 적용 — 협동 PVE는 스테이지 고정)
       drawButton((sel?"◀  ":"")+"맵: "+getMap(selectedMapId).name+(sel?"  ▶":""), LOGW/2, y+18, 320, 36, sel);
+      (function(idx,yy){ uiHit(LOGW/2-160, yy, 160, 36, function(){ onlineMenuIndex=idx; cycleMap(-1); }); uiHit(LOGW/2, yy, 160, 36, function(){ onlineMenuIndex=idx; cycleMap(1); }); })(i, y);
       y+=48; continue;
     }
     if(o.kind==="rule"){   // BIG-BATCH-2 P2: 3대3 규칙 값 행
       drawButton((sel?"◀  ":"")+"3대3 규칙: "+getRule(onlineSelectedRule).name+(sel?"  ▶":""), LOGW/2, y+18, 360, 36, sel);
+      (function(idx,yy){ uiHit(LOGW/2-180, yy, 180, 36, function(){ onlineMenuIndex=idx; cycleOnlineRule(-1); }); uiHit(LOGW/2, yy, 180, 36, function(){ onlineMenuIndex=idx; cycleOnlineRule(1); }); })(i, y);
       y+=48; continue;
     }
-    drawButton(o.label, LOGW/2, y+21, 380, 42, sel);
+    drawButton(o.label, LOGW/2, y+21, 380, 42, sel, (function(idx){ return function(){ doRow(idx); }; })(i));
     y+=52;
   }
   ctx.fillStyle="#aab4e0"; ctx.font="15px 'Malgun Gothic',sans-serif";
@@ -10536,13 +10594,14 @@ function drawOnlineLobby(){
   ctx.fillStyle="#c98bff"; ctx.font="bold 20px 'Malgun Gothic',sans-serif"; ctx.fillText("참가자: "+guestName,LOGW/2,344);
   ctx.fillStyle="#dfe6ff"; ctx.font="18px 'Malgun Gothic',sans-serif";
   if(OnlineManager.role==="host"){
-    if(p.guest) ctx.fillText("Enter 를 눌러 시작!",LOGW/2,410);
+    if(p.guest){ drawButton("▶ 시작!", LOGW/2, 414, 220, 48, true, function(){ if(OnlineManager.players&&OnlineManager.players.guest) hostStartOnlineMatch(); }); }
     else ctx.fillText("친구에게 방 코드를 알려주세요. 입장하면 시작할 수 있어요.",LOGW/2,410);
   } else {
     ctx.fillText("방장이 시작하기를 기다리는 중…",LOGW/2,410);
   }
-  ctx.fillStyle="#8893bb"; ctx.font="15px 'Malgun Gothic',sans-serif"; ctx.fillText("Esc 로 방 나가기",LOGW/2,460);
+  ctx.fillStyle="#8893bb"; ctx.font="15px 'Malgun Gothic',sans-serif"; ctx.fillText("🚪 탭 하면 방 나가기",LOGW/2,466);
   ctx.restore();
+  uiHit(LOGW/2-120, 452, 240, 28, function(){ confirmLeave=true; });   // TOUCH-UI-1: 나가기
 }
 function drawOnlineOver(){
   if(isTeamOnline()){ tDrawOver(); return; }
@@ -10560,6 +10619,8 @@ function drawOnlineOver(){
   ctx.fillStyle="#aab4e0"; ctx.font="17px 'Malgun Gothic',sans-serif"; ctx.fillText("온라인 베타는 골드 보상이 없어요.",LOGW/2,300);
   drawRematchHint(360);
   ctx.restore();
+  if(OnlineManager.role==="host") uiHit(LOGW/2-200, 340, 400, 34, function(){ onlineRematch(); });   // TOUCH-UI-1
+  uiHit(LOGW/2-140, 376, 280, 30, function(){ confirmLeave=true; });
 }
 
 /* =======================================================================
@@ -11683,10 +11744,11 @@ function tDrawLobby(){
   }
   ctx.fillStyle="#dfe6ff"; ctx.font="16px 'Malgun Gothic',sans-serif";
   ctx.fillText("6명이 모이면 가장 좋아요. 1명도 테스트 시작 가능, 빈자리는 AI가 채웁니다.",LOGW/2,420);
-  if(OnlineManager.role==="host") ctx.fillText("Enter 를 눌러 시작!",LOGW/2,452);
+  if(OnlineManager.role==="host"){ drawButton("▶ 시작!", LOGW/2, 454, 200, 44, true, function(){ tStartMatch(); }); }
   else ctx.fillText("방장이 시작하기를 기다리는 중…",LOGW/2,452);
-  ctx.fillStyle="#8893bb"; ctx.font="14px 'Malgun Gothic',sans-serif"; ctx.fillText("Esc 로 방 나가기",LOGW/2,492);
+  ctx.fillStyle="#8893bb"; ctx.font="14px 'Malgun Gothic',sans-serif"; ctx.fillText("🚪 탭 하면 방 나가기",LOGW/2,496);
   ctx.restore();
+  uiHit(LOGW/2-120, 484, 240, 26, function(){ confirmLeave=true; });   // TOUCH-UI-1: 나가기
 }
 
 function tDrawOver(){
@@ -11702,6 +11764,8 @@ function tDrawOver(){
   ctx.fillStyle="#aab4e0"; ctx.font="17px 'Malgun Gothic',sans-serif"; ctx.fillText("온라인 베타는 골드 보상이 없어요.",LOGW/2,300);
   drawRematchHint(360);
   ctx.restore();
+  if(OnlineManager.role==="host") uiHit(LOGW/2-200, 340, 400, 34, function(){ onlineRematch(); });   // TOUCH-UI-1
+  uiHit(LOGW/2-140, 376, 280, 30, function(){ confirmLeave=true; });
 }
 
 /* =======================================================================
@@ -12718,6 +12782,8 @@ function tPveDrawOver(){
   ctx.fillStyle="#aab4e0"; ctx.font="17px 'Malgun Gothic',sans-serif"; ctx.fillText("온라인 베타는 골드 보상이 없어요.",LOGW/2,300);
   drawRematchHint(360);
   ctx.restore();
+  if(OnlineManager.role==="host") uiHit(LOGW/2-200, 340, 400, 34, function(){ onlineRematch(); });   // TOUCH-UI-1
+  uiHit(LOGW/2-140, 376, 280, 30, function(){ confirmLeave=true; });
 }
 
 /* ---- 일시정지 화면 ---- */
@@ -12726,9 +12792,11 @@ function drawPauseScreen(){
   ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
   ctx.fillStyle="#ffffff"; ctx.shadowColor="rgba(120,200,255,0.8)"; ctx.shadowBlur=25;
   ctx.font="bold 56px 'Malgun Gothic',sans-serif"; ctx.fillText("일시 정지",LOGW/2,LOGH/2-30); ctx.shadowBlur=0;
-  ctx.fillStyle="#dfe6ff"; ctx.font="bold 22px 'Malgun Gothic',sans-serif"; ctx.fillText("P 키를 눌러 계속하기",LOGW/2,LOGH/2+36);
-  ctx.fillStyle="#8893bb"; ctx.font="16px 'Malgun Gothic',sans-serif"; ctx.fillText("Esc 키 : 시작 화면으로",LOGW/2,LOGH/2+72);
+  ctx.fillStyle="#dfe6ff"; ctx.font="bold 22px 'Malgun Gothic',sans-serif"; ctx.fillText("탭/P 키로 계속하기",LOGW/2,LOGH/2+36);
+  ctx.fillStyle="#8893bb"; ctx.font="16px 'Malgun Gothic',sans-serif"; ctx.fillText("아래 탭 : 시작 화면으로",LOGW/2,LOGH/2+72);
   ctx.restore();
+  uiHit(LOGW/2-160, LOGH/2+18, 320, 36, function(){ setPaused(false); });        // TOUCH-UI-1: 계속
+  uiHit(LOGW/2-160, LOGH/2+56, 320, 34, function(){ goToStartScreen(); });         // 시작 화면으로
 }
 
 /* ---- 결과 화면 ---- */
@@ -12766,8 +12834,8 @@ function drawResultScreen(){
     ctx.textAlign="right"; ctx.fillStyle="#ffffff"; ctx.font="bold 18px 'Malgun Gothic',sans-serif"; ctx.fillText(String(lines[i][1]),boxX+boxW-28,ly);
   }
   ctx.restore();
-  drawButton("다시 시작",LOGW/2-150,648,240,54,resultButtonIndex===0);
-  drawButton("시작 화면으로",LOGW/2+150,648,240,54,resultButtonIndex===1);
+  drawButton("다시 시작",LOGW/2-150,648,240,54,resultButtonIndex===0, function(){ startGame(); });
+  drawButton("시작 화면으로",LOGW/2+150,648,240,54,resultButtonIndex===1, function(){ goToStartScreen(); });
   ctx.save(); ctx.textAlign="center"; ctx.fillStyle="#8893bb"; ctx.font="15px 'Malgun Gothic',sans-serif"; ctx.fillText("← → 선택 · Enter 실행 · R 즉시 다시 시작",LOGW/2,692); ctx.restore();
 }
 
