@@ -95,5 +95,16 @@ run("T 키(에디터) → 미리하기 · 플랫포머는 무관", ()=>{
   E.edEndTest();
 });
 
+run("EDIT-TEST-2: 편집 모드로 미리하기(섬멸전 강제 아님)", ()=>{
+  E.openEditor(); const ed=E.ED; ed.step="mode"; ed.mode="siege"; ed.modeIdx=1; ed.sizeIdx=0; E.edStartGrid();
+  // siege 필수요소 X(수정탑) 하나 배치
+  ed.cells[4][5]="X";
+  E.edStartTest();
+  check("siege 미리하기 → 규칙이 siege(tdm 아님)", E.selectedRuleId==="siege" && E.state===E.STATE.PLAYING);
+  check("비-tdm은 3v3(trio)", E.selectedModeId==="trio");
+  E.edEndTest();
+  check("복귀 후 원래 선택 복원", E.selectedMapId!=="__edtest");
+});
+
 console.log("\n결과: "+(fails===0?"ALL PASS ✅":(fails+"건 실패 ❌")));
 process.exit(fails===0?0:1);

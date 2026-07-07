@@ -1718,7 +1718,7 @@ window.addEventListener("beforeunload", ()=>{ try{ if(OnlineManager.role) Online
    assets/sfx/<이름>.mp3 파일을 넣으면 자동으로 로드·재생된다(없으면 완전 무음 no-op).
    브라우저 자동재생 정책: 첫 사용자 입력(keydown/mousedown)에서 AudioContext 초기화.
    ======================================================================= */
-const SFX_NAMES=["fire","hit","kill","special","ult","win","lose","buff","reload","infect","paint","jump","stomp","spring","checkpoint","clear","powerup","shoot","break"];   /* GENRE-EXPAND-1 §4.1 + BIG-BATCH-2 P1.5(파워업·발사·블록 파괴) */
+const SFX_NAMES=["fire","hit","kill","special","ult","win","lose","buff","reload","infect","paint","jump","stomp","spring","checkpoint","clear","powerup","shoot","break","click"];   /* GENRE-EXPAND-1 §4.1 + BIG-BATCH-2 P1.5(파워업·발사·블록 파괴) + TOUCH-UI-2 클릭음(assets/sfx/click.mp3 넣으면 자동) */
 const SFX={ _ctx:null, _buf:{}, _tried:false };
 function sfxVolume(){ const v=(profile && typeof profile.sfxVolume==="number")?profile.sfxVolume:0.7; return clamp(v,0,1); }
 function sfxInit(){
@@ -1771,6 +1771,7 @@ function canvasToLogical(clientX, clientY){
    controlMode(키보드/마우스/터치)와 무관하게 동작 — 태블릿만 있는 학생도 메뉴 진입 가능.
    키보드 네비게이션(화살표+Enter)은 그대로 병행 유지. ======================================================================= */
 let UI_HITS = [];
+let uiFlash = null;   // TOUCH-UI-2 클릭감: 눌린 rect(프레임 넘어 유지 — UI_HITS와 별개라 uiClearHits에 안 지워짐)
 function uiClearHits(){ UI_HITS.length = 0; }
 function uiHit(x, y, w, h, fn){ if(fn) UI_HITS.push({ x:x, y:y, w:w, h:h, fn:fn }); }
 function uiMenuActive(){   // 자체 포인터 처리를 가진 화면(플레이/에디터/RPG/별빛점프)은 제외
@@ -1779,8 +1780,17 @@ function uiMenuActive(){   // 자체 포인터 처리를 가진 화면(플레이
 function uiPointerDown(p){   // 나중에 그려진 것(위层) 우선 — 역순 탐색
   if(!uiMenuActive()) return false;
   for(let i=UI_HITS.length-1;i>=0;i--){ const b=UI_HITS[i];
-    if(p.x>=b.x && p.x<=b.x+b.w && p.y>=b.y && p.y<=b.y+b.h){ try{ b.fn(); }catch(e){} return true; } }
+    if(p.x>=b.x && p.x<=b.x+b.w && p.y>=b.y && p.y<=b.y+b.h){
+      uiFlash={ x:b.x, y:b.y, w:b.w, h:b.h, until:uiTime+0.14 }; try{ playSfx("click"); }catch(e){}   // 클릭감(시각+청각)
+      try{ b.fn(); }catch(e){} return true; } }
   return false;
+}
+function drawUiFlash(){   // TOUCH-UI-2: 눌린 버튼 위 짧은 하이라이트 페이드(모든 버튼 공용 — 개별 draw 무수정)
+  if(!uiFlash || uiTime>=uiFlash.until || !uiMenuActive()) return;
+  const a=0.4*((uiFlash.until-uiTime)/0.14);
+  ctx.save(); ctx.fillStyle="rgba(255,255,255,"+a.toFixed(3)+")"; roundRect(uiFlash.x,uiFlash.y,uiFlash.w,uiFlash.h,10); ctx.fill();
+  ctx.strokeStyle="rgba(255,255,255,"+(a*1.4).toFixed(3)+")"; ctx.lineWidth=2; roundRect(uiFlash.x+0.5,uiFlash.y+0.5,uiFlash.w-1,uiFlash.h-1,10); ctx.stroke();
+  ctx.restore();
 }
 // 가상 스틱: 앵커→현재점 벡터를 반경으로 정규화(-1..1, 밖은 클램프)
 function stickVec(anchor, p, rad){
@@ -6119,8 +6129,8 @@ function edStartTest(){
     cellsLeft:ED.cells.map(r=>r.join("")), createdAt:0 };
   const map=compileEditorMap(rec);
   const i=MAPS.findIndex(m=>m.id==="__edtest"); if(i>=0) MAPS[i]=map; else MAPS.push(map);
-  edTest={ mapId:selectedMapId, modeId:selectedModeId, ruleId:selectedRuleId };
-  selectedMapId="__edtest"; selectedModeId="solo"; selectedRuleId="tdm";   // 나 + 봇 1(섬멸전)
+  if(!edTest) edTest={ mapId:selectedMapId, modeId:selectedModeId, ruleId:selectedRuleId };   // 재테스트 시 원래 선택 유지(guard)
+  selectedMapId="__edtest"; selectedRuleId=ED.mode; selectedModeId=(ED.mode==="tdm")?"solo":"trio";   // EDIT-TEST-2: 편집 중인 모드로 미리하기(tdm=나+봇1, 그 외=봇 3v3)
   selectedCharacterId=sanitizeCharacterId(profile.selectedCharacterId);
   selectedWeaponId=getWeaponForCharacter(selectedCharacterId);
   resetMatch(); gameState=STATE.PLAYING;                   // startGame 우회(applyProfileSelections가 맵을 덮어씀)
@@ -8112,14 +8122,15 @@ function updateAI(f, dt){
       mvx=-tdy/td*ai.strafeDir; mvy=tdx/td*ai.strafeDir;
     }
   }
-  ai.stuckCheck-=dt;
-  if(ai.stuckCheck<=0){
-    if(dist(f.x,f.y,ai.lastX,ai.lastY)<6){ ai.avoidDir=Math.random()<0.5?1:-1; ai.avoidTimer=0.6; }
-    ai.lastX=f.x; ai.lastY=f.y; ai.stuckCheck=0.4;
-  }
-  if(ai.avoidTimer>0){ ai.avoidTimer-=dt; const a=Math.atan2(mvy,mvx)+ai.avoidDir*1.2; mvx=Math.cos(a); mvy=Math.sin(a); }
+  // 벽 회피(BOT-SLIDE-1): 온라인 tBotUpdate·PVE와 동일한 same-frame 접선 슬라이드 — 벽에 눌리면
+  // 그 프레임에 즉시 ±90° 접선으로 빠짐(기존 0.4초 폴링+69° 회전은 벽 앞 진동·정지를 유발).
   const mlen=Math.hypot(mvx,mvy);
-  if(mlen>0){ mvx/=mlen; mvy/=mlen; moveEntity(f, mvx*effSpeed(f)*dt, mvy*effSpeed(f)*dt); }
+  if(mlen>0){ mvx/=mlen; mvy/=mlen;
+    if(ai.avoidTimer>0){ ai.avoidTimer-=dt; const t=mvx; mvx=-mvy*ai.avoidDir; mvy=t*ai.avoidDir; }   // 접선 슬라이드
+    const step=effSpeed(f)*dt, ox=f.x, oy=f.y;
+    moveEntity(f, mvx*step, mvy*step);
+    if(ai.avoidTimer<=0 && step>0.01 && Math.hypot(f.x-ox,f.y-oy) < step*0.3){ ai.avoidDir=Math.random()<0.5?1:-1; ai.avoidTimer=rand(0.4,0.8); }   // 막힘 감지→접선 개시
+  }
 
   ai.fireTimer-=dt; ai.reactionTimer-=dt;
   const range=isEnemy?MATCH.enemyRange:GAME_CONFIG.playerRange;
@@ -8452,7 +8463,7 @@ function render(){
   if(edTest && gameState===STATE.PLAYING){   // EDIT-TEST-1: 미리하기 상단 배너 + 🔙 버튼(마우스·터치)
     ctx.save(); ctx.fillStyle="rgba(95,200,140,0.92)"; roundRect(LOGW/2-190,8,380,32,10); ctx.fill();
     ctx.fillStyle="#0c2418"; ctx.font="bold 15px 'Malgun Gothic',sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
-    ctx.fillText("🛠 미리하기 중 (나 + 봇 1 · 보상 없음) — Esc/🔙 에디터로", LOGW/2, 24);
+    ctx.fillText("🛠 "+(getRule(matchRuleId())?getRule(matchRuleId()).name:"")+" 미리하기 ("+(matchRuleId()==="tdm"?"나+봇1":"봇 3v3")+" · 보상 없음) — Esc/🔙 에디터로", LOGW/2, 24);
     ctx.fillStyle="rgba(20,30,26,0.85)"; roundRect(LOGW-96,LOGH-44,84,32,9); ctx.fill();
     ctx.fillStyle="#bfffd8"; ctx.fillText("🔙 에디터", LOGW-54, LOGH-28);
     ctx.textAlign="left"; ctx.textBaseline="alphabetic"; ctx.restore();
@@ -8480,6 +8491,7 @@ function render(){
 
   drawControlOverlays();   // UPDATE-1 P3: 마우스 크로스헤어 / 터치 조이스틱(플레이 중에만)
   if(confirmLeave) drawLeaveConfirm();
+  drawUiFlash();           // TOUCH-UI-2: 클릭감(눌린 버튼 하이라이트)
   drawToast();
 }
 
@@ -8864,31 +8876,11 @@ function drawSpawnMark(x,y,color){
   ctx.beginPath(); ctx.arc(x,y,18,0,Math.PI*2); ctx.stroke(); ctx.restore();
 }
 /* OVERNIGHT-1 1-4: 쿠션벽 9-slice(336×336 = 112px 3×3) — 코너/엣지/센터를 잘라 임의 사각형에 맞춤 */
-/* BIG-BATCH-1 A1: 쿠션벽 오토타일 — 56px 셀 벽이 각각 사방 테두리(9-slice)로 그려져 '표'처럼 보이던 문제.
-   이웃 벽(같은 구조물 벽 — 팀 무관)을 보고 타일셋의 코너/엣지/센터 조각을 고른다. 충돌은 셀 그대로, 렌더만 병합.
-   비정형 크기(siege 28×56 등)·고립 셀·이미지 없음은 기존 경로 유지. */
+/* CUSHION-1x1: 인접 배치도 병합하지 않고 각 셀을 개별 1×1 조각으로 렌더(사용자 요청 — BIG-BATCH-1 A1 오토타일 병합 되돌림).
+   PvE/캠페인(drawStructsPacked→drawWallTile)과 동일한 셀 단위 모양. 충돌·HP·네트 동기화는 불변(렌더만). */
 function drawWallAuto(o, tc){
-  const img=worldImage("wall_tiles"); if(!img) return false;
-  const CS=STUDENT_CELL, S=112;
-  const cx=o.x+o.w/2, cy=o.y+o.h/2;
-  const isWallAt=(px,py)=>{ for(const b of OBSTACLES){ if(!b.sid||!b.structure||b.sid.indexOf("rtower_")===0||!(b.hp>0)) continue;
-    if(px>=b.x&&px<=b.x+b.w&&py>=b.y&&py<=b.y+b.h) return true; } return false; };
-  const gridCell = Math.abs(o.w-CS)<=2 && Math.abs(o.h-CS)<=2;
-  const L=gridCell&&isWallAt(cx-CS,cy), R=gridCell&&isWallAt(cx+CS,cy), U=gridCell&&isWallAt(cx,cy-CS), D=gridCell&&isWallAt(cx,cy+CS);
-  if(!gridCell || (!L&&!R&&!U&&!D)){
-    if(!drawWallTile(o.x,o.y,o.w,o.h)) return false;
-    ctx.strokeStyle=hexA(tc,0.8); ctx.lineWidth=2; roundRect(o.x-1,o.y-1,o.w+2,o.h+2,6); ctx.stroke();
-    return true;
-  }
-  const scol=!L?0:(!R?2:1), srow=!U?0:(!D?2:1);
-  ctx.drawImage(img, scol*S, srow*S, S, S, o.x, o.y, o.w, o.h);
-  // 팀색 표시는 바깥 면에만 얇게(내부 이음새 선 제거)
-  ctx.strokeStyle=hexA(tc,0.7); ctx.lineWidth=2; ctx.beginPath();
-  if(!L){ ctx.moveTo(o.x+1,o.y); ctx.lineTo(o.x+1,o.y+o.h); }
-  if(!R){ ctx.moveTo(o.x+o.w-1,o.y); ctx.lineTo(o.x+o.w-1,o.y+o.h); }
-  if(!U){ ctx.moveTo(o.x,o.y+1); ctx.lineTo(o.x+o.w,o.y+1); }
-  if(!D){ ctx.moveTo(o.x,o.y+o.h-1); ctx.lineTo(o.x+o.w,o.y+o.h-1); }
-  ctx.stroke();
+  if(!drawWallTile(o.x,o.y,o.w,o.h)) return false;   // 이미지 없으면 false → 호출부 도형 폴백
+  ctx.strokeStyle=hexA(tc,0.65); ctx.lineWidth=2; roundRect(o.x-1,o.y-1,o.w+2,o.h+2,6); ctx.stroke();
   return true;
 }
 function drawWallTile(x,y,w,h){
