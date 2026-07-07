@@ -1805,6 +1805,18 @@ function handleTouchStart(e){
     if(e.changedTouches&&e.changedTouches.length){ const t=e.changedTouches[0]; if(uiPointerDown(canvasToLogical(t.clientX,t.clientY))) e.preventDefault(); }
     return;
   }
+  if(gameState===STATE.EDITOR && ED && ED.step==="edit" && e.changedTouches&&e.changedTouches.length){   // TOUCH-UI-1: 에디터 터치 배치
+    const t=e.changedTouches[0], p=canvasToLogical(t.clientX,t.clientY);
+    if(edTestBtnHit(p)){ e.preventDefault(); return; }
+    const pal=edPalette();
+    if(p.x>=24&&p.x<=250){ for(let i=0;i<pal.length;i++){ const py=134+i*34; if(p.y>=py-14&&p.y<=py+16){ ED.palIdx=i; e.preventDefault(); return; } } }
+    if(!ED.slot){ ED.mbtn=1; edPaintAt(p); }
+    e.preventDefault(); return;
+  }
+  if(edTest && gameState===STATE.PLAYING && e.changedTouches&&e.changedTouches.length){   // EDIT-TEST-1: 🔙 에디터 버튼(우하단)
+    const p=canvasToLogical(e.changedTouches[0].clientX,e.changedTouches[0].clientY);
+    if(p.x>LOGW-96&&p.y>LOGH-44){ edEndTest(); e.preventDefault(); return; }
+  }
   if(controlMode()!=="touch") return;
   if(gameState===STATE.PLATFORMER){ e.preventDefault();
     for(const t of e.changedTouches){ const p=canvasToLogical(t.clientX,t.clientY); pfTouchAt(p,true); } return; }
@@ -1820,6 +1832,10 @@ function handleTouchStart(e){
   }
 }
 function handleTouchMove(e){
+  if(gameState===STATE.EDITOR && ED && ED.step==="edit" && ED.mbtn){   // TOUCH-UI-1: 에디터 드래그 배치
+    if(e.changedTouches&&e.changedTouches.length){ edPaintAt(canvasToLogical(e.changedTouches[0].clientX,e.changedTouches[0].clientY)); e.preventDefault(); }
+    return;
+  }
   if(controlMode()!=="touch") return;
   e.preventDefault();
   if(gameState===STATE.RPG){ for(const t of e.changedTouches){ rpgTouchMove(t.identifier, canvasToLogical(t.clientX,t.clientY)); } return; }   // RPG모드 §4.7
@@ -1830,6 +1846,7 @@ function handleTouchMove(e){
   }
 }
 function handleTouchEnd(e){
+  if(gameState===STATE.EDITOR && ED){ ED.mbtn=0; return; }   // TOUCH-UI-1: 에디터 드래그 종료
   if(controlMode()!=="touch") return;
   if(gameState===STATE.PLATFORMER){ e.preventDefault();
     if(PF){ PF.touch.l=false; PF.touch.r=false; PF.touch.j=false; PF.touch.dn=false; } return; }
@@ -1903,6 +1920,15 @@ function myAimAngle(it){
 function showToast(text){ toastText = text; toastTimer = 1.8; }
 
 function handleKeyPress(code){
+  // EDIT-TEST-1: 에디터 미리하기 중엔 Esc/Enter로 에디터 복귀(맵 그대로)
+  if(edTest && (gameState===STATE.PLAYING||gameState===STATE.PAUSED||gameState===STATE.OVER)){
+    if(code==="Escape"){ edEndTest(); return; }
+    if(gameState===STATE.OVER){
+      if(code==="KeyR"){ edStartTest(); return; }                               // 다시 테스트
+      if(code==="Enter"||code==="NumpadEnter"||code==="Space"){ edEndTest(); return; }
+    }
+    // 그 외 키(이동·공격·P 일시정지 등)는 아래 일반 처리로
+  }
   // 나가기 확인 오버레이가 떠 있으면 Y/N만 처리(다른 입력 무시)
   if(confirmLeave){
     if(code==="KeyY"){ confirmLeave=false; doLeaveToStart(); return; }
@@ -5873,9 +5899,19 @@ function edAutoScroll(){
   if(ED.cur.c < G.viewC+2) ED.viewC=Math.max(0, ED.cur.c-2);
   else if(ED.cur.c > G.viewC+vc-3) ED.viewC=Math.min(Math.max(0,ED.cols-vc), ED.cur.c-vc+3);
 }
+function edTestBtnHit(p){   // EDIT-TEST-1: 미리하기 버튼 클릭 판정(마우스·터치 공용)
+  const b=ED&&ED._testBtn; if(!b) return false;
+  if(p.x>=b.x&&p.x<=b.x+b.w&&p.y>=b.y&&p.y<=b.y+b.h){
+    if(ED.pf){ const v=validateEditorMap(); if(!v.ok){ ED.msg="⚠ "+v.msg; return true; } pfStartLevel({ id:"__edtest", name:"테스트", rows:ED.cells.map(r=>r.join("")) }, {test:true}); }
+    else edStartTest();
+    return true;
+  }
+  return false;
+}
 function edMouseDown(e){
   const p=canvasToLogical(e.clientX,e.clientY);
   const pal=edPalette();
+  if(edTestBtnHit(p)) return;                                // EDIT-TEST-1: 미리하기 버튼
   if(p.x>=24 && p.x<=250){   // 팔레트 클릭으로 선택
     for(let i=0;i<pal.length;i++){ const py=134+i*34; if(p.y>=py-14 && p.y<=py+16){ ED.palIdx=i; return; } }
   }
@@ -5940,6 +5976,7 @@ function handleEditorKey(code){
     pfStartLevel({ id:"__edtest", name:"테스트", rows:ED.cells.map(r=>r.join("")) }, {test:true});
     return;
   }
+  if(!ED.pf && code==="KeyT"){ edStartTest(); return; }                          // EDIT-TEST-1: 아레나 미리하기(나+봇1)
   if(code==="KeyQ"){ ED.palIdx=(ED.palIdx+pal.length-1)%pal.length; return; }
   if(code==="KeyE"||(!ED.pf&&code==="Tab")){ ED.palIdx=(ED.palIdx+1)%pal.length; return; }
   if(code==="KeyF"){ ED.floorIdx=(ED.floorIdx+1)%FLOOR_THEME_LIST.length; edSaveDraft(); return; }   // 바닥 테마 순환
@@ -6042,6 +6079,32 @@ function edSubmit(){
   _reviewSt=null; _adminPendingN=-1; _pfSel=null;          // PERF-2: 화면 캐시 무효화
   showToast("제출 완료! 선생님 승인을 기다려요 🛠");
   goToStartScreen();
+}
+/* ── EDIT-TEST-1: 아레나 모드 에디터 미리하기(나 + 봇 1) — 별빛점프 테스트플레이의 탑다운판 ──
+   현재 편집 중인 맵을 즉석 컴파일해 solo(1대1) 섬멸전으로 플레이. 점수·보상·제출 게이트 없음.
+   Esc(또는 결과화면 버튼·터치 🔙)로 편집하던 맵 그대로 에디터 복귀. */
+let edTest=null;   // {mapId,modeId,ruleId} 복원용 — 활성 시 테스트 중
+function edStartTest(){
+  if(!ED || ED.pf) return;                                 // 플랫포머는 기존 pfStartLevel 테스트 사용
+  const v=validateEditorMap(); if(!v.ok){ ED.msg="⚠ "+v.msg; return; }
+  const rec={ id:"__edtest", name:(getRule(ED.mode)?getRule(ED.mode).name:"")+" 테스트", author:profile.nickname||"",
+    mode:ED.mode, size:[ED.cols,ED.rows], floor:FLOOR_THEME_LIST[ED.floorIdx],
+    cellsLeft:ED.cells.map(r=>r.join("")), createdAt:0 };
+  const map=compileEditorMap(rec);
+  const i=MAPS.findIndex(m=>m.id==="__edtest"); if(i>=0) MAPS[i]=map; else MAPS.push(map);
+  edTest={ mapId:selectedMapId, modeId:selectedModeId, ruleId:selectedRuleId };
+  selectedMapId="__edtest"; selectedModeId="solo"; selectedRuleId="tdm";   // 나 + 봇 1(섬멸전)
+  selectedCharacterId=sanitizeCharacterId(profile.selectedCharacterId);
+  selectedWeaponId=getWeaponForCharacter(selectedCharacterId);
+  resetMatch(); gameState=STATE.PLAYING;                   // startGame 우회(applyProfileSelections가 맵을 덮어씀)
+}
+function edEndTest(){   // 테스트 종료 → 에디터 복귀 + 임시 맵/선택 정리
+  if(!edTest) return false;
+  selectedMapId=edTest.mapId; selectedModeId=edTest.modeId; selectedRuleId=edTest.ruleId; edTest=null;
+  const i=MAPS.findIndex(m=>m.id==="__edtest"); if(i>=0) MAPS.splice(i,1);
+  keysDown.clear(); confirmLeave=false;
+  gameState=STATE.EDITOR;
+  return true;
 }
 /* 승인된 에디터 맵 → 플레이 가능한 MAPS로 컴파일(기본 크기만 — 대형은 카메라 후속) */
 function compileEditorMap(rec){
@@ -8252,6 +8315,7 @@ function addExp(n){
 }
 function grantMatchReward(){
   if(matchRewardGiven) return;
+  if(edTest){ matchRewardGiven=true; matchGoldEarned=0; matchExpEarned=0; matchDropName=""; return; }   // EDIT-TEST-1: 미리하기는 보상·기록 없음
   matchRewardGiven=true;
   const r=calculateMatchReward();
   // BIG-BATCH-1 E17: 방치 방지 — 이번 판 기여(딜·킬·보스)가 0이면 보상 30%(아군 봇 캐리로 골드 수급되던 구멍)
@@ -8358,6 +8422,14 @@ function render(){
 
   if(gameState===STATE.ONLINE_PLAYING) renderOnlineMatch();
   worldEnd();                              // P4: 안전망(온라인 로비/결과 등 — 미사용 시 무해)
+  if(edTest && gameState===STATE.PLAYING){   // EDIT-TEST-1: 미리하기 상단 배너 + 🔙 버튼(마우스·터치)
+    ctx.save(); ctx.fillStyle="rgba(95,200,140,0.92)"; roundRect(LOGW/2-190,8,380,32,10); ctx.fill();
+    ctx.fillStyle="#0c2418"; ctx.font="bold 15px 'Malgun Gothic',sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText("🛠 미리하기 중 (나 + 봇 1 · 보상 없음) — Esc/🔙 에디터로", LOGW/2, 24);
+    ctx.fillStyle="rgba(20,30,26,0.85)"; roundRect(LOGW-96,LOGH-44,84,32,9); ctx.fill();
+    ctx.fillStyle="#bfffd8"; ctx.fillText("🔙 에디터", LOGW-54, LOGH-28);
+    ctx.textAlign="left"; ctx.textBaseline="alphabetic"; ctx.restore();
+  }
 
   if(gameState===STATE.SPLASH) drawSplashScreen();
   else if(gameState===STATE.START) drawStartScreen();
@@ -9688,6 +9760,12 @@ function drawEditorGrid(){
   ctx.fillText("🛠 맵공방 — "+(ED.pf?"🦘 별빛 점프":getRule(ED.mode).name)+" · "+ED.cols+"×"+ED.rows, 24, 40);
   ctx.fillStyle="#ffd23f"; ctx.font="bold 14px 'Malgun Gothic',sans-serif";
   if(!ED.pf) ctx.fillText("바닥: "+FLOOR_THEME_NAME[FLOOR_THEME_LIST[ED.floorIdx]]+" (F 변경)", 24, 66);
+  // EDIT-TEST-1: 미리하기 버튼(마우스·터치 — edMouseDown/edTouch에서 히트) · ED._testBtn에 rect 저장
+  ED._testBtn={ x:LOGW-360, y:30, w:170, h:38 };
+  ctx.fillStyle="rgba(95,200,140,0.9)"; roundRect(ED._testBtn.x,ED._testBtn.y,ED._testBtn.w,ED._testBtn.h,10); ctx.fill();
+  ctx.fillStyle="#0c2418"; ctx.font="bold 16px 'Malgun Gothic',sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillText(ED.pf?"▶ 테스트 (T)":"▶ 미리하기 (T)", ED._testBtn.x+ED._testBtn.w/2, ED._testBtn.y+ED._testBtn.h/2);
+  ctx.textAlign="left"; ctx.textBaseline="alphabetic";
   // 좌: 팔레트
   const pal=edPalette();
   ctx.fillStyle="rgba(16,22,52,0.9)"; roundRect(24, 88, panelW-24, pal.length*34+52, 12); ctx.fill();
@@ -9745,7 +9823,7 @@ function drawEditorGrid(){
   ctx.textAlign="center"; ctx.fillStyle="#aab4e0"; ctx.font="14px 'Malgun Gothic',sans-serif";
   ctx.fillText(ED.pf
     ? "🖱 클릭/드래그 배치 · 우클릭 지우기 · U 되돌리기 · S 저장 슬롯 · Shift+←→ 이동 · Tab 전체보기 · T 테스트플레이 · Enter 제출 · Esc 나가기"
-    : "🖱 클릭/드래그 배치 · 우클릭 지우기 · U 되돌리기 · S 저장 슬롯 · N 새로 · F 바닥 · Enter 제출 · Esc 나가기  (왼쪽만 편집 — 오른쪽 자동 대칭)", LOGW/2, LOGH-40);
+    : "🖱 클릭/드래그 배치 · 우클릭 지우기 · U 되돌리기 · S 슬롯 · N 새로 · F 바닥 · T 미리하기(나+봇1) · Enter 제출 · Esc 나가기  (왼쪽만 편집 · 오른쪽 자동 대칭)", LOGW/2, LOGH-40);
   if(ED.msg){ ctx.fillStyle="#ff9a9a"; ctx.font="bold 16px 'Malgun Gothic',sans-serif"; ctx.fillText(ED.msg, LOGW/2, LOGH-16); }
   if(ED.slot) drawSlotOverlay();   // BIG-BATCH-2 P1-A
 }
@@ -12834,6 +12912,12 @@ function drawResultScreen(){
     ctx.textAlign="right"; ctx.fillStyle="#ffffff"; ctx.font="bold 18px 'Malgun Gothic',sans-serif"; ctx.fillText(String(lines[i][1]),boxX+boxW-28,ly);
   }
   ctx.restore();
+  if(edTest){   // EDIT-TEST-1: 미리하기 결과 — 에디터로 복귀 경로
+    drawButton("다시 테스트",LOGW/2-150,648,240,54,resultButtonIndex===0, function(){ edStartTest(); });
+    drawButton("🔙 에디터로",LOGW/2+150,648,240,54,resultButtonIndex===1, function(){ edEndTest(); });
+    ctx.save(); ctx.textAlign="center"; ctx.fillStyle="#8893bb"; ctx.font="15px 'Malgun Gothic',sans-serif"; ctx.fillText("← → 선택 · Enter 에디터로 · R 다시 테스트 · 이 맵은 미리하기(보상 없음)",LOGW/2,692); ctx.restore();
+    return;
+  }
   drawButton("다시 시작",LOGW/2-150,648,240,54,resultButtonIndex===0, function(){ startGame(); });
   drawButton("시작 화면으로",LOGW/2+150,648,240,54,resultButtonIndex===1, function(){ goToStartScreen(); });
   ctx.save(); ctx.textAlign="center"; ctx.fillStyle="#8893bb"; ctx.font="15px 'Malgun Gothic',sans-serif"; ctx.fillText("← → 선택 · Enter 실행 · R 즉시 다시 시작",LOGW/2,692); ctx.restore();
