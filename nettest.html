@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>별빛아레나 · 교실 연결 테스트</title>
+<style>
+  :root{
+    --bg:#0f1424; --card:#1a2238; --line:#2c3757;
+    --ink:#eef2ff; --dim:#9aa8cc; --accent:#5b8cff;
+    --green:#1fbf6b; --yellow:#e8b23a; --red:#e05a5a;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+    background:var(--bg); color:var(--ink); line-height:1.5;
+    padding:16px; max-width:720px; margin:0 auto;
+    -webkit-text-size-adjust:100%;
+  }
+  h1{font-size:22px; margin:6px 0 2px}
+  .sub{color:var(--dim); font-size:14px; margin:0 0 16px}
+  .card{background:var(--card); border:1px solid #2c3757; border-radius:16px; padding:16px; margin:12px 0}
+  .big-btn{
+    display:block; width:100%; border:0; border-radius:14px; padding:18px;
+    font-size:19px; font-weight:700; color:#fff; cursor:pointer; margin:8px 0;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .btn-host{background:linear-gradient(135deg,#5b8cff,#7a5bff)}
+  .btn-guest{background:linear-gradient(135deg,#1fbf6b,#12a0a0)}
+  .btn-ghost{background:#39456b; font-size:15px; padding:12px}
+  .big-btn:active{transform:scale(.98)}
+  .row{display:flex; gap:10px; align-items:center}
+  input[type=text]{
+    flex:1; font-size:26px; letter-spacing:6px; text-align:center; font-weight:800;
+    padding:14px; border-radius:12px; border:2px solid #3a466e; background:#0f1526; color:#fff;
+  }
+  .code-box{
+    font-size:52px; font-weight:900; letter-spacing:12px; text-align:center;
+    padding:10px 0 4px; color:#ffe14d;
+  }
+  .verdict{border-radius:16px; padding:18px; text-align:center; margin:12px 0; display:none}
+  .verdict .emoji{font-size:44px; line-height:1}
+  .verdict .head{font-size:22px; font-weight:800; margin:6px 0 4px}
+  .verdict .desc{font-size:14px; opacity:.95}
+  .v-green{background:rgba(31,191,107,.16); border:2px solid var(--green)}
+  .v-yellow{background:rgba(232,178,58,.16); border:2px solid var(--yellow)}
+  .v-red{background:rgba(224,90,90,.16); border:2px solid var(--red)}
+  .v-wait{background:#232c47; border:2px solid #3a466e}
+  .metrics{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px}
+  .m{background:#141b2e; border:1px solid #2c3757; border-radius:12px; padding:12px; text-align:center}
+  .m .lab{font-size:12px; color:var(--dim)}
+  .m .val{font-size:28px; font-weight:800; margin-top:2px}
+  .m .unit{font-size:13px; color:var(--dim); font-weight:600}
+  .m.wide{grid-column:1 / -1}
+  .pill{display:inline-block; font-size:12px; font-weight:700; padding:3px 10px; border-radius:20px; background:#2c3757}
+  .note{font-size:13px; color:var(--dim); background:#141b2e; border-left:3px solid var(--accent); padding:10px 12px; border-radius:8px; margin:10px 0}
+  .note b{color:#ffd76a}
+  #log{font-family:ui-monospace,Menlo,monospace; font-size:11px; color:#8fa0c8; background:#0c1120;
+       border-radius:10px; padding:10px; max-height:150px; overflow:auto; white-space:pre-wrap; margin-top:8px}
+  details summary{cursor:pointer; color:var(--dim); font-size:13px; margin-top:8px}
+  .hidden{display:none !important}
+  .status-line{font-size:14px; color:var(--dim); text-align:center; margin:6px 0}
+  .fb-ref{font-size:12px; color:var(--dim); text-align:center; margin-top:2px}
+</style>
+</head>
+<body>
+  <h1>🌟 별빛아레나 · 교실 연결 테스트</h1>
+  <p class="sub">이 교실 와이파이에서 기기끼리 <b style="color:#fff">직접 연결(WebRTC)</b>이 되는지, 그리고 지금보다 얼마나 빠른지 확인합니다.</p>
+
+  <div class="note" id="howto">
+    <b>사용법</b> — 학생들이 쓸 <b>바로 그 와이파이</b>에서, <b>서로 다른 기기 2대</b>(예: 크롬북 2대, 또는 노트북+태블릿)로 이 페이지를 각각 엽니다.<br>
+    ① 한 기기에서 <b>방 만들기</b> → 네 자리 숫자가 나옵니다.<br>
+    ② 다른 기기에서 <b>참가하기</b> → 그 숫자를 입력합니다.<br>
+    ⚠️ 같은 기기의 탭 2개로 하면 항상 성공으로 나와서 <b>교실 테스트가 안 됩니다</b>. 꼭 기기 2대로 하세요.
+  </div>
+
+  <!-- 시작 선택 -->
+  <div class="card" id="chooser">
+    <button class="big-btn btn-host" id="btnHost">📡 방 만들기 (호스트)</button>
+    <button class="big-btn btn-guest" id="btnGuestOpen">🔑 참가하기 (게스트)</button>
+    <div class="status-line" id="bootStatus">연결 준비 중…</div>
+  </div>
+
+  <!-- 호스트: 코드 표시 -->
+  <div class="card hidden" id="hostPanel">
+    <div class="status-line">아래 숫자를 상대 기기에 입력하세요</div>
+    <div class="code-box" id="hostCode">----</div>
+    <div class="status-line" id="hostWait">상대가 참가하기를 기다리는 중… ⏳</div>
+  </div>
+
+  <!-- 게스트: 코드 입력 -->
+  <div class="card hidden" id="guestPanel">
+    <div class="status-line">호스트 기기에 나온 네 자리 숫자를 입력하세요</div>
+    <div class="row">
+      <input type="text" id="codeInput" inputmode="numeric" maxlength="4" placeholder="0000">
+      <button class="big-btn btn-guest" style="width:auto; margin:0; padding:14px 22px" id="btnJoin">연결</button>
+    </div>
+  </div>
+
+  <!-- 판정 -->
+  <div class="verdict v-wait" id="verdict">
+    <div class="emoji" id="vEmoji">⏳</div>
+    <div class="head" id="vHead">연결 중…</div>
+    <div class="desc" id="vDesc">기기끼리 직접 통로를 찾는 중입니다. 보통 몇 초 안에 끝납니다.</div>
+  </div>
+
+  <!-- 측정 -->
+  <div class="card hidden" id="metricsCard">
+    <div class="metrics">
+      <div class="m wide">
+        <div class="lab">연결 방식</div>
+        <div class="val" id="mType" style="font-size:20px">–</div>
+      </div>
+      <div class="m">
+        <div class="lab">WebRTC 직접 왕복</div>
+        <div class="val" style="color:#5bd6a0"><span id="mRtt">–</span><span class="unit"> ms</span></div>
+      </div>
+      <div class="m">
+        <div class="lab">지금 방식(Firebase) 왕복</div>
+        <div class="val" style="color:#e8b23a"><span id="mFb">–</span><span class="unit"> ms</span></div>
+      </div>
+      <div class="m wide">
+        <div class="lab">WebRTC 지연 상세</div>
+        <div class="val" style="font-size:16px"><span id="mRttStats">측정 중…</span></div>
+      </div>
+    </div>
+    <div class="fb-ref">숫자가 작을수록 빠릅니다. 상용 게임 목표는 왕복 50ms 이하입니다.</div>
+    <button class="big-btn btn-ghost" id="btnStop" style="margin-top:12px">테스트 끝내기</button>
+  </div>
+
+  <details>
+    <summary>기술 로그 보기 (문제 있을 때 스크린샷 찍어 보내주세요)</summary>
+    <div id="log"></div>
+  </details>
+
+<script>
+/* ============================================================
+   별빛아레나 교실 연결 테스트
+   - 시그널링: 기존 Firebase RTDB (starArenaOnline/rooms/<code>/webrtcTest)
+   - 전송: WebRTC DataChannel (STUN: Google 공개서버, TURN 없음)
+   - 측정: DataChannel 왕복(RTT) + 같은 경로 Firebase 왕복(A/B 비교)
+   ============================================================ */
+
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBv8dKSdu6-1EYpwXlvEEZo3TMCDOIOWYs",
+  authDomain: "classgame-a1b3e.firebaseapp.com",
+  databaseURL: "https://classgame-a1b3e-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "classgame-a1b3e",
+  storageBucket: "classgame-a1b3e.firebasestorage.app",
+  messagingSenderId: "425382463153",
+  appId: "1:425382463153:web:448c647fb0e40ae4ab4490"
+};
+const FB_SDK = [
+  "https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js",
+  "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js",
+  "https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"
+];
+const ICE_SERVERS = [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }];
+
+const $ = id => document.getElementById(id);
+function log(m){ const el=$("log"); el.textContent += m + "\n"; el.scrollTop = el.scrollHeight; }
+function now(){ return performance.now(); }
+
+let db = null, roomRef = null, role = null, roomCode = null;
+let pc = null, dc = null;
+let pendingIce = [];        // 원격 설명 설정 전 도착한 ICE 버퍼
+let remoteSet = false;
+let connectTimeout = null;
+let statsPoll = null;
+
+// ---- 부팅: Firebase 로드 + 익명 로그인 ----
+function loadSdk(i, done){
+  if(i>=FB_SDK.length){ done(); return; }
+  const s=document.createElement("script"); s.src=FB_SDK[i];
+  s.onload=()=>loadSdk(i+1,done);
+  s.onerror=()=>{ $("bootStatus").textContent="❌ Firebase 로드 실패 (인터넷/차단 확인)"; log("SDK load fail: "+FB_SDK[i]); };
+  document.head.appendChild(s);
+}
+loadSdk(0, ()=>{
+  try{
+    firebase.initializeApp(FIREBASE_CONFIG);
+    db = firebase.database();
+    firebase.auth().signInAnonymously().then(()=>{
+      $("bootStatus").textContent = "✅ 준비 완료 — 위 버튼을 누르세요";
+      log("anon auth OK");
+    }).catch(e=>{
+      $("bootStatus").textContent = "❌ 로그인 실패: "+e.code;
+      log("auth fail: "+e.message);
+    });
+  }catch(e){
+    $("bootStatus").textContent = "❌ 초기화 실패: "+e.message;
+    log("init fail: "+e.message);
+  }
+});
+
+// ---- 공통: PeerConnection 만들기 ----
+function makePc(){
+  const p = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  p.oniceconnectionstatechange = ()=>{
+    log("ICE: "+p.iceConnectionState);
+    if(p.iceConnectionState==="failed" || p.iceConnectionState==="disconnected"){
+      // disconnected 는 잠깐일 수 있으나 failed 는 확정 실패
+      if(p.iceConnectionState==="failed") setVerdict("red");
+    }
+  };
+  p.onconnectionstatechange = ()=> log("PC: "+p.connectionState);
+  return p;
+}
+function wireChannel(ch){
+  dc = ch;
+  dc.onopen = ()=>{ log("DataChannel OPEN"); onConnected(); };
+  dc.onclose = ()=> log("DataChannel closed");
+  dc.onmessage = ev=>{
+    const s = ev.data;
+    if(s[0]==="P"){ dc.send("R"+s.slice(1)); }          // ping 받으면 즉시 되쏨
+    else if(s[0]==="R"){ recordRtt(now() - parseFloat(s.slice(1))); }
+  };
+}
+
+// ---- 호스트 ----
+$("btnHost").onclick = async ()=>{
+  if(!db){ alert("아직 준비 중입니다. 잠시 후 다시."); return; }
+  role="host";
+  roomCode = String(Math.floor(1000 + Math.random()*9000));
+  roomRef = db.ref("starArenaOnline/rooms/"+roomCode+"/webrtcTest");
+  await roomRef.remove().catch(()=>{});
+  $("chooser").classList.add("hidden");
+  $("howto").classList.add("hidden");
+  $("hostPanel").classList.remove("hidden");
+  $("hostCode").textContent = roomCode;
+  showVerdict();
+  log("host room "+roomCode);
+
+  pc = makePc();
+  wireChannel(pc.createDataChannel("test", { ordered:true }));
+  pc.onicecandidate = e=>{ if(e.candidate) roomRef.child("hostIce").push(e.candidate.toJSON()); };
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  await roomRef.child("offer").set({ type:offer.type, sdp:offer.sdp });
+  log("offer sent");
+
+  // 게스트 answer 대기
+  roomRef.child("answer").on("value", async snap=>{
+    const a = snap.val();
+    if(a && !remoteSet){
+      remoteSet = true;
+      await pc.setRemoteDescription(new RTCSessionDescription(a));
+      flushIce();
+      $("hostWait").textContent = "상대 접속됨 — 연결 확정 중…";
+      log("answer received");
+    }
+  });
+  roomRef.child("guestIce").on("child_added", s=> queueIce(s.val()));
+  armTimeout();
+  startFbEchoResponder();  // 호스트는 Firebase 핑 응답기 역할
+};
+
+// ---- 게스트 진입 ----
+$("btnGuestOpen").onclick = ()=>{
+  if(!db){ alert("아직 준비 중입니다. 잠시 후 다시."); return; }
+  $("chooser").classList.add("hidden");
+  $("howto").classList.add("hidden");
+  $("guestPanel").classList.remove("hidden");
+  $("codeInput").focus();
+};
+$("codeInput").addEventListener("input", e=>{ e.target.value=e.target.value.replace(/\D/g,""); });
+
+$("btnJoin").onclick = async ()=>{
+  const code = $("codeInput").value.trim();
+  if(code.length!==4){ alert("네 자리 숫자를 입력하세요."); return; }
+  role="guest"; roomCode=code;
+  roomRef = db.ref("starArenaOnline/rooms/"+code+"/webrtcTest");
+  $("guestPanel").classList.add("hidden");
+  showVerdict();
+  log("guest joining "+code);
+
+  const offSnap = await roomRef.child("offer").get();
+  if(!offSnap.exists()){
+    setVerdict("red", "❓", "방을 찾을 수 없어요", "숫자가 맞는지, 호스트가 먼저 '방 만들기'를 눌렀는지 확인하세요.");
+    return;
+  }
+  pc = makePc();
+  pc.ondatachannel = e=> wireChannel(e.channel);
+  pc.onicecandidate = e=>{ if(e.candidate) roomRef.child("guestIce").push(e.candidate.toJSON()); };
+
+  remoteSet = true;
+  await pc.setRemoteDescription(new RTCSessionDescription(offSnap.val()));
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+  await roomRef.child("answer").set({ type:answer.type, sdp:answer.sdp });
+  flushIce();
+  log("answer sent");
+
+  roomRef.child("hostIce").on("child_added", s=> queueIce(s.val()));
+  armTimeout();
+  startFbEchoInitiator(); // 게스트가 Firebase 왕복 측정 주도
+};
+
+// ---- ICE 버퍼 처리 ----
+function queueIce(c){
+  if(!c) return;
+  if(remoteSet && pc.remoteDescription){ pc.addIceCandidate(new RTCIceCandidate(c)).catch(e=>log("addIce err "+e.message)); }
+  else pendingIce.push(c);
+}
+function flushIce(){
+  pendingIce.forEach(c=> pc.addIceCandidate(new RTCIceCandidate(c)).catch(e=>log("addIce(flush) err "+e.message)));
+  pendingIce = [];
+}
+
+// ---- 연결 성공 처리 ----
+let rtts = [];
+function onConnected(){
+  clearTimeout(connectTimeout);
+  $("hostPanel").classList.add("hidden");
+  $("metricsCard").classList.remove("hidden");
+  // ping 루프 시작
+  setInterval(()=>{ if(dc && dc.readyState==="open") dc.send("P"+now()); }, 250);
+  // 연결 방식(candidate type) 판정
+  statsPoll = setInterval(pollStats, 1000);
+  pollStats();
+}
+function recordRtt(ms){
+  rtts.push(ms); if(rtts.length>40) rtts.shift();
+  const avg = rtts.reduce((a,b)=>a+b,0)/rtts.length;
+  const mn = Math.min(...rtts), mx=Math.max(...rtts);
+  $("mRtt").textContent = Math.round(avg);
+  $("mRttStats").textContent = `평균 ${avg.toFixed(0)} · 최소 ${mn.toFixed(0)} · 최대 ${mx.toFixed(0)} ms (${rtts.length}회)`;
+}
+
+// ---- getStats: 어떤 후보로 연결됐는지 ----
+let verdictLocked=false;
+async function pollStats(){
+  if(!pc) return;
+  const stats = await pc.getStats();
+  let pair=null, cands={};
+  stats.forEach(r=>{
+    if(r.type==="candidate-pair" && (r.state==="succeeded") && (r.nominated || r.selected)) pair=r;
+    if(r.type==="local-candidate"||r.type==="remote-candidate") cands[r.id]=r;
+  });
+  if(!pair){ // nominated 없으면 succeeded 아무거나
+    stats.forEach(r=>{ if(r.type==="candidate-pair" && r.state==="succeeded" && !pair) pair=r; });
+  }
+  if(!pair) return;
+  const lt = cands[pair.localCandidateId] ? cands[pair.localCandidateId].candidateType : "?";
+  const rt = cands[pair.remoteCandidateId] ? cands[pair.remoteCandidateId].candidateType : "?";
+  const label = t => ({host:"직접 LAN", srflx:"STUN 경유", prflx:"직접(추정)", relay:"TURN 릴레이"}[t] || t);
+  $("mType").textContent = `${label(lt)} ↔ ${label(rt)}`;
+  log(`pair: local=${lt} remote=${rt} rttMs=${pair.currentRoundTripTime? (pair.currentRoundTripTime*1000).toFixed(0):"?"}`);
+
+  clearTimeout(connectTimeout);
+  if(verdictLocked) return;
+  const direct = t => (t==="host" || t==="prflx");
+  const isDirect = direct(lt) && direct(rt);
+  const hasRelay = (lt==="relay" || rt==="relay");
+  if(hasRelay){
+    verdictLocked = true;   // 확정
+    setVerdict("yellow","🟡","연결됐지만 TURN 릴레이 경유",
+      "직접 연결이 아니라 외부 릴레이를 탔습니다. 이 방식은 지금 미지원이라, 실제 게임에선 이 자리가 폴백(현행)으로 돌아갑니다.");
+  } else if(isDirect){
+    verdictLocked = true;   // 확정 — 가장 좋은 결과
+    setVerdict("green","🟢","이 교실은 직접 연결 OK! ✨",
+      "기기끼리 LAN으로 바로 이어졌습니다. WebRTC를 도입하면 이 교실에서 지금보다 훨씬 쾌적해집니다. 본작업 진행을 추천합니다.");
+  } else {
+    // srflx 등 — 아직 확정 아님. 그린(일반)으로 두되 다음 폴에서 host↔host로 승격 가능(잠그지 않음)
+    setVerdict("green","🟢","연결 성공 (STUN 경유)",
+      "직접 LAN은 아니지만 연결됐고, 아래 왕복 지연이 낮으면 여전히 지금보다 빠릅니다. 지연 숫자를 확인하세요.");
+  }
+}
+
+// ---- 판정 UI ----
+function showVerdict(){ $("verdict").style.display="block"; }
+function setVerdict(kind, emoji, head, desc){
+  const v=$("verdict"); v.style.display="block";
+  v.className = "verdict " + ({green:"v-green",yellow:"v-yellow",red:"v-red",wait:"v-wait"}[kind]||"v-wait");
+  if(emoji){ $("vEmoji").textContent=emoji; $("vHead").textContent=head; $("vDesc").textContent=desc; }
+}
+function armTimeout(){
+  connectTimeout = setTimeout(()=>{
+    if(!dc || dc.readyState!=="open"){
+      setVerdict("red","🔴","직접 연결 실패",
+        "15초 안에 기기끼리 통로를 못 찾았습니다. 이 교실 와이파이가 기기 간 직접통신을 막고 있을 가능성이 큽니다(클라이언트 격리). 이 경우 WebRTC를 넣어도 이 교실에선 현행 방식으로 자동 폴백됩니다.");
+      log("TIMEOUT: no connection in 15s");
+    }
+  }, 15000);
+}
+
+// ---- Firebase 왕복 측정 (A/B 비교) : 게스트가 주도, 호스트가 응답 ----
+function startFbEchoInitiator(){
+  let seq=0;
+  roomRef.child("fbEcho/h2g").on("value", snap=>{
+    const v=snap.val();
+    if(v && v.gt){ const rtt = now() - v.gt; $("mFb").textContent = Math.round(rtt); }
+  });
+  setInterval(()=>{
+    if(!roomRef) return;
+    seq++;
+    roomRef.child("fbEcho/g2h").set({ seq, gt: now() }).catch(()=>{});
+  }, 1500);
+}
+function startFbEchoResponder(){
+  roomRef.child("fbEcho/g2h").on("value", snap=>{
+    const v=snap.val();
+    if(v) roomRef.child("fbEcho/h2g").set(v).catch(()=>{}); // 게스트 타임스탬프 그대로 반사
+  });
+}
+
+// ---- 정리 ----
+function cleanup(){
+  try{ if(statsPoll) clearInterval(statsPoll); }catch(e){}
+  try{ if(dc) dc.close(); }catch(e){}
+  try{ if(pc) pc.close(); }catch(e){}
+  try{ if(roomRef) roomRef.remove(); }catch(e){}
+}
+$("btnStop").onclick = ()=>{ cleanup(); location.reload(); };
+window.addEventListener("beforeunload", cleanup);
+</script>
+</body>
+</html>
