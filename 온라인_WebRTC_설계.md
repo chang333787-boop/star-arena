@@ -44,10 +44,16 @@
 - 송신: `sendState(st)`(열린 게스트 DC 브로드캐스트, `st._sq=++stateSeq`), `sendInput(inp,key)`(내 DC로, `inp._sq=++inputSeq`). DC 미개방이면 false 반환 → 호출부가 RTDB로.
 - `reset()` — 모든 PC/DC 닫고 구독 해제(leaveRoom에서 호출).
 
-## 송/수신 통합 방식
+## 송/수신 통합 방식 (2026-07-07 현행 — 가산 모델로 확정)
 
-- **writeInput**: `const sent=RTCNet.sendInput(inp,key); if(!sent) RTDB set`. (DC 열리면 DC만 → 대역폭 절감; 안 열리면 RTDB. ICE failed→open=false→RTDB 자동 복귀.)
-- **writeHostState**: `RTCNet.sendState(st)`로 열린 DC에 브로드캐스트 + **항상 RTDB도 set(floor)**. seq 가드가 RTDB 사본을 자동 드롭하므로 히칭 없음. (v1은 상태 RTDB를 끄지 않는다 = 안전. 대역폭 절감은 후속 최적화에서 저빈도 하트비트로.)
+> ⚠️ 초기 설계는 "입력은 DC 열리면 DC만"이었으나, **half-open DataChannel**(readyState=open인데 실제로 죽어 ICE-failed 감지까지 수 초간 입력 유실) 위험 때문에 **입력도 '둘 다 보내기 + seq dedup'로 변경**. 입력 패킷은 작아 RTDB 병행 비용이 미미하고 안전이 우선.
+
+- **writeInput(입력)**: `RTCNet.sendInput(inp,key)`(DC 열렸으면 DC로, inp._sq 부여) **+ 항상 RTDB set**. 수신측 icb가 슬롯별 seq로 dedup(DC가 먼저 적용→RTDB 사본 드롭). half-open이어도 RTDB로 안전 도달. onDisconnect emptyInput(_sq 없음)은 그대로 통과=클리어.
+- **writeHostState(상태)**: `RTCNet.sendState(st)`(열린 DC 브로드캐스트, st._sq 부여) + **RTDB floor를 적응형으로**:
+  - DC 없음 → RTDB 항상(유일 통로).
+  - DC 있고 **모든 사람 게스트가 DC**(`RTCNet.allGuestsOpen()`) → RTDB를 `RTC_RTDB_FALLBACK_FPS`(=5Hz)로 억제(Firebase 절약). DC가 30Hz로 부드러움 담당.
+  - DC 있으나 **RTDB-only 게스트가 하나라도 있음** → RTDB 15Hz(그 학생 보호). DC 죽으면 allGuestsOpen=false라 **자동 15Hz 복귀(self-healing)**.
+  - 수신측 scb가 seq로 dedup → DC/RTDB 히칭 없음.
 - **scb(수신 상태)**: `if(v._sq!==undefined){ if(v._sq<=RTCNet.lastStateSeq) return; RTCNet.lastStateSeq=v._sq; }` 후 기존대로.
 - **icb(수신 입력)**: 슬롯별 병합+seq 가드로 변경(기존 통째 replace→merge). `_sq` 없으면(플래그 OFF/onDisconnect emptyInput) 그냥 적용(하위호환·연결끊김 클리어 유지).
 

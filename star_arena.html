@@ -18,10 +18,27 @@
     display: block; background: #14142a;
     box-shadow: 0 0 40px rgba(120,160,255,0.25);
   }
+  #fsBtn {
+    position: fixed; top: 10px; right: 12px; z-index: 9999;
+    width: 42px; height: 42px; border-radius: 50%;
+    background: rgba(20,26,46,0.55); border: 1px solid rgba(140,170,255,0.35);
+    color: #cdd8ff; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+    transition: background .15s ease, transform .08s ease;
+    -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+  }
+  #fsBtn:hover { background: rgba(44,56,92,0.85); }
+  #fsBtn:active { transform: scale(.9); }
+  #fsBtn svg { display: block; pointer-events: none; }
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
+<button id="fsBtn" title="전체화면" aria-label="전체화면">
+  <svg id="fsIcoIn" viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+  <svg id="fsIcoOut" viewBox="0 0 24 24" width="22" height="22" style="display:none"><path fill="currentColor" d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/></svg>
+</button>
 
 <script>
 "use strict";
@@ -780,6 +797,23 @@ window.addEventListener("resize", resizeCanvas);
 window.addEventListener("scroll", function(){ try{ _canvasRect=null; }catch(e){} }, {passive:true});   // PERF-2
 resizeCanvas();
 
+/* 전체화면 버튼 — 진입 시 캔버스가 뷰포트에 맞춰 자동 확대(resize 핸들러). Fullscreen API(크롬북/크롬 완전지원, webkit 폴백). */
+(function(){
+  const btn=document.getElementById("fsBtn"), icoIn=document.getElementById("fsIcoIn"), icoOut=document.getElementById("fsIcoOut");
+  if(!btn || typeof btn.addEventListener!=="function") return;   // 하니스(Node) 등 비브라우저 환경에서 안전 탈출
+  function fsElement(){ return document.fullscreenElement || document.webkitFullscreenElement || null; }
+  function toggleFs(){
+    try{
+      if(!fsElement()){ const el=document.documentElement; const req=el.requestFullscreen||el.webkitRequestFullscreen; if(req) req.call(el); }
+      else { const exit=document.exitFullscreen||document.webkitExitFullscreen; if(exit) exit.call(document); }
+    }catch(e){}
+  }
+  btn.addEventListener("click", toggleFs);
+  function onFsChange(){ const fs=!!fsElement(); icoIn.style.display=fs?"none":"block"; icoOut.style.display=fs?"block":"none"; btn.title=fs?"전체화면 종료":"전체화면"; try{ resizeCanvas(); }catch(e){} }
+  document.addEventListener("fullscreenchange", onFsChange);
+  document.addEventListener("webkitfullscreenchange", onFsChange);
+})();
+
 /* =======================================================================
    수학 / 충돌 도우미
    ======================================================================= */
@@ -1491,8 +1525,8 @@ const OnlineManager = {
   writeHostState:function(stateObj){
     try{ if(this.role!=="host") return; if(!this.roomRef) return;
       RTCNet.sendState(stateObj);   // WebRTC DC 브로드캐스트(+stateObj._sq 부여, 켜졌을 때만).
-      // RTDB floor: DC 없으면 항상(유일 통로), DC 열려 있으면 15Hz로만 억제(DC가 30Hz로 부드러움 담당, Firebase 사용량은 종전과 동일). 게스트는 seq로 dedup.
-      if(RTCNet.anyOpen()){ const nowMs=Date.now(); if(this._lastRtdbAt && nowMs-this._lastRtdbAt < (1000/T_STATE_FPS)-3) return; this._lastRtdbAt=nowMs; }
+      // RTDB floor: DC 없으면 항상(유일 통로). DC 열려 있으면 억제 — 단 '모든' 사람 게스트가 DC면 저빈도(RTC_RTDB_FALLBACK_FPS)로, RTDB-only 게스트가 하나라도 있으면 15Hz로(그 학생 보호). DC 끊기면 allGuestsOpen=false라 자동 15Hz 복귀. 게스트는 seq로 dedup.
+      if(RTCNet.anyOpen()){ const rate=RTCNet.allGuestsOpen()?RTC_RTDB_FALLBACK_FPS:T_STATE_FPS; const nowMs=Date.now(); if(this._lastRtdbAt && nowMs-this._lastRtdbAt < (1000/rate)-3) return; this._lastRtdbAt=nowMs; }
       stateObj.updatedAt=firebase.database.ServerValue.TIMESTAMP;
       const p=this.roomRef.child("state").set(this._sanitizePacket(stateObj,"state"));
       if(p && p.catch) p.catch(function(e){ try{ console.warn("[online] state 전송 실패", e); }catch(e2){} });
@@ -1759,7 +1793,16 @@ const RTCNet = {
     }catch(e){}
     return n;
   },
-  anyOpen:function(){ return this._openCount>0; }
+  anyOpen:function(){ return this._openCount>0; },
+  // 접속한 '사람' 게스트가 전부 DC로 붙었나? (봇·호스트 자신 제외). RTDB floor를 저빈도로 낮춰도 되는 조건.
+  // 하나라도 RTDB-only이거나 DC가 죽으면 false → writeHostState가 15Hz로 자동 복귀(mixed room에서 그 학생 보호·self-healing).
+  allGuestsOpen:function(){
+    if(!this.on || this.role!=="host") return false;
+    const players=OnlineManager.players||{}, mySlot=OnlineManager.mySlot||"host";
+    let need=0, open=0;
+    for(const k in players){ const p=players[k]; if(!p || p.connected===false || p.isBot) continue; if(k===mySlot) continue; need++; const b=this.peers[k]; if(b && b.open) open++; }
+    return need>0 && open===need;
+  }
 };
 
 /* =======================================================================
@@ -11043,6 +11086,7 @@ function isTeamOnline(){ return OnlineManager.mode==="online3v3" || OnlineManage
 
 const T_STATE_FPS = 15;   // 다인 모드 상태 동기화(초당) — payload가 크므로 1대1보다 낮게
 const RTC_STATE_FPS = 30; // WebRTC(P2P) 활성 시 상태율 상향 — DC는 P2P라 Firebase 비용 없이 부드러움↑(RTDB는 15Hz floor로 별도 억제)
+const RTC_RTDB_FALLBACK_FPS = 5; // 모든 사람 게스트가 DC로 붙었을 때만 RTDB state를 이 저빈도로 억제(Firebase 절약). 하나라도 RTDB-only거나 DC 끊기면 T_STATE_FPS로 자동 복귀(그 학생 보호).
 // (입력 전송 주기는 ONLINE_INPUT_KEEPALIVE 공용 — 변화 시 즉시 + keepalive)
 const T_MAX_BULLETS = 80;
 const TEAM_COLOR = { blue:"#5aa0ff", red:"#ff6a6a" };
