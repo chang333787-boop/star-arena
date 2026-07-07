@@ -897,6 +897,8 @@ function saveProfile(){
     a.selectedDifficultyId=profile.selectedDifficultyId; a.selectedMapId=profile.selectedMapId; a.selectedModeId=profile.selectedModeId;
     a.unlockedCharacters=profile.unlockedCharacters; a.unlockedWeapons=profile.unlockedWeapons;
     a.level=profile.level||a.level||1; a.exp=profile.exp||a.exp||0; a.lastUpdated=profile.lastUpdated;
+    if(profile.nickname) a.name=profile.nickname;   // 유기성: 별명 변경이 계정 name에 동승(재로그인 시 원복 방지)
+    a.controlMode=profile.controlMode; a.sfxVolume=profile.sfxVolume;   // 유기성: 조작 방식·효과음 볼륨도 계정 동승
     a.rpg=profile.rpg||null;   /* RPG모드 §7.3 ②: 계정 동승 저장(클라우드 동기 포함) */
     saveAccounts();
     pushCloudOrPending(currentStudentId);   // 진행도 클라우드 동기화(불가하면 pending)
@@ -1032,6 +1034,8 @@ const AccountStore = {
       unlockedCharacters:(a.unlockedCharacters||[]).slice(), unlockedWeapons:(a.unlockedWeapons||[]).slice(),
       createdAt:a.createdAt||nowTs(), lastLoginAt:a.lastLoginAt||0, lastUpdated:a.lastUpdated||nowTs(),
       rpg:a.rpg||null,   /* RPG모드 §7.3 ③: 클라우드 화이트리스트 포함(미포함 시 새로고침이 로컬 세이브 역파괴) */
+      controlMode:(["keyboard","mouse","touch"].indexOf(a.controlMode)>=0?a.controlMode:"keyboard"),   // 유기성: 조작 방식·볼륨 클라우드 화이트리스트
+      sfxVolume:(typeof a.sfxVolume==="number"?a.sfxVolume:0.7),
       isActive:(a.isActive!==false)
     };
   },
@@ -5754,7 +5758,7 @@ const ED_CELL_COLOR={ ".":null, W:"#878da8", B:"#5ad36b", S:"#ff6a6a", L:"#7fd88
 const ED_FLOOR_TINT={ basic:"#2b3358", grass:"#22402c", snow:"#39414f", sand:"#4a4230", wood:"#3a2c1e", void_:"#161228" };
 function edCellEmoji(ch, pf){
   if(pf){ const p={ "#":"", "-":"➖", S:"🔺", J:"⏫", M:"👾", o:"⭐", F:"🚩", i:"🧊", b:"📦", P:"🔫", "!":"🌟", w:"🪶", m:"🧲", G:"🏁", "*":"🟢" }; return p[ch]!==undefined?p[ch]:""; }
-  const a={ W:"", B:"", S:"🔺", L:"🫧", I:"🧊", C:"🧩", "*":"🟢", "@":"🏃", Y:"🔫", O:"🎯", X:"🗼", G:"💎" }; return a[ch]!==undefined?a[ch]:"";
+  const a={ W:"", B:"", S:"🔺", L:"🫧", I:"🧊", C:"🧩", "*":"🟢", "@":"🏃", Y:"🏯", O:"🎯", X:"🗼", G:"💎" }; return a[ch]!==undefined?a[ch]:"";   // Y=보조 수정탑(🏯, 인게임 탑 그래픽과 일치)
 }
 // 한 칸을 게임 그래픽으로: 벽/수풀은 스프라이트, 그 외는 아이콘(+옅은 틴트)
 function edCellArt(g, ch, x, y, s, pf){
@@ -5889,6 +5893,7 @@ function openEditor(){
   if(d){   // C8: 이전 초안 복원 — 실수로 나가도 이어서
     ED={ step:"edit", modeIdx:d.modeIdx||0, sizeIdx:d.sizeIdx||0, floorIdx:d.floorIdx||0, mode:d.mode||"tdm",
          cols:d.cols, rows:d.rows, half:d.half, cells:d.cells, cur:{c:2,r:Math.floor(d.rows/2)}, palIdx:1,
+         pf:(d.mode==="platformer"), viewC:0, fitAll:false, testCleared:false,   // 유기성: 파생 pf 재도출(별빛점프 초안이 탑다운으로 복원되던 것 해소)
          msg:"이전 초안을 복원했어요 (N: 새로 만들기)", undo:[], mbtn:0 };
   } else {
     ED={ step:"mode", modeIdx:0, sizeIdx:0, floorIdx:0, mode:"tdm",
@@ -6083,7 +6088,7 @@ function validateEditorMap(){
   const grid=edFullGrid();
   let sc=-1, sr=-1;
   for(let r=0;r<ED.rows;r++) for(let c=0;c<ED.cols;c++) if((grid[r][c]==="*"||grid[r][c]==="@")&&c<ED.half){ sc=c; sr=r; }   // 시작점(*·@) 시드
-  const open=(ch)=>ch!=="W"&&ch!=="C";
+  const open=(ch)=>ch!=="W"&&ch!=="C"&&ch!=="X"&&ch!=="Y";   // 유기성: 수정탑(X·Y)도 솔리드 구조물 → 연결성에서 벽으로 계산(탑으로 막힌 병목 오판 방지)
   const seen=grid.map(row=>row.map(()=>false));
   const q=[[sc,sr]]; seen[sr][sc]=true; let reach=0, openN=0;
   for(let r=0;r<ED.rows;r++) for(let c=0;c<ED.cols;c++) if(open(grid[r][c])) openN++;
@@ -7139,7 +7144,8 @@ function drawRuleHUD(){
 }
 
 function startGame(){ applyProfileSelections(); resetMatch(); gameState=STATE.PLAYING; }
-function goToStartScreen(){ gameState=STATE.START; keysDown.clear(); settingsOpen=false; restoreLocalArena(); }
+function goToStartScreen(){ if(edTest) edEndTest();   // 유기성: 미리하기 중 다른 경로(일시정지→시작화면)로 나가도 __edtest·edTest 정리(팬텀 맵 누수 방지)
+  gameState=STATE.START; keysDown.clear(); settingsOpen=false; restoreLocalArena(); }
 function restoreLocalArena(){ OBSTACLES=getMap(selectedMapId).obstacles; BUSHES=getMap(selectedMapId).bushes; setCameraForMap(getMap(selectedMapId)); }
 function setPaused(p){
   if(p && gameState===STATE.PLAYING){ gameState=STATE.PAUSED; keysDown.clear(); }
@@ -8113,8 +8119,8 @@ function updateAI(f, dt){
       let bs=null, bd2=560;
       for(const s of RULE.stars){ const d2=dist(f.x,f.y,s.x,s.y); if(d2<bd2){ bd2=d2; bs=s; } }
       if(bs) objTarget={x:bs.x, y:bs.y, ideal:6};
-    } else if(RULE.id==="siege" && isEnemy){
-      const tw=RULE.towers.player;
+    } else if(RULE.id==="siege"){   // 유기성: 아군 봇도 상대 탑을 압박(온라인 tBotUpdate와 동형 — 적 봇만 밀던 편향 해소)
+      const tw = isEnemy ? RULE.towers.player : RULE.towers.enemy;
       if(tw && tw.hp>0 && d>MATCH.enemyRange*1.1) objTarget={x:tw.x+tw.w/2, y:tw.y+tw.h/2, ideal:170, siege:true};
     } else if(RULE.id==="paint" && d>260){
       // GENRE-EXPAND-1 §2.7: 상대가 멀면 '내 색이 아닌' 가장 가까운 칸으로 이동+사격(탄이 바닥을 칠함)
@@ -8185,7 +8191,7 @@ function updateAI(f, dt){
   }
   // v1.27 캐릭터 봇 X/C(빠른대전 적 전용 — tBotUpdate 로직 이식, 난이도 파라미터로 빈도 조절).
   // 아군 봇·보스는 기존 그대로(스킬 없음). 시전 전 타겟을 바라보게 해 방향성 스킬이 유효하게.
-  if(isEnemy && !f.isBoss && f.char){
+  if(!f.isBoss && f.char){   // 유기성: 아군 봇도 X/C·궁 사용(적 봇만 쓰던 것 → 온라인 tBotUpdate와 동형). updateAI는 봇 전용이라 사람은 미포함
     tickThornTrail(f);                          // 시고니 X: 이동 경로 가시(시전한 봇만 유효)
     f.superGauge=Math.min(GAME_CONFIG.superCharge, (f.superGauge||0)+MATCH.botUltChargeRate*dt);
     if(ai.knowsTarget && canBeHit(target) && hasLineOfSight(f.x,f.y,target.x,target.y)){
@@ -8350,7 +8356,7 @@ function update(dt){
   for(const e of enemies) updateAI(e, dt);
   updateBullets(dt);
   tickSkillZones(dt, envLocal());                                     // X/C 장판(별똥별·가시·얼음·구급상자·블랙홀)
-  tickPowerupsHost(dt, [player]);                                     // 아이템: 로컬은 플레이어만 획득
+  if(!(RULE&&RULE.id==="tag")) tickPowerupsHost(dt, [player]);        // 아이템: 로컬은 플레이어만 · 술래는 전투 아이템 없음(온라인과 일치)
   if(RULE) tickRule(dt);                                              // GAMEPLAY-1 Phase 3: 포탑/거점/별 진행 + 즉시 승리
   if(matchRuleId()==="tdm") tickBuffOrbs();                           // GAMEPLAY-1 1D: 성장 오브 픽업(섬멸전)
   updateEffects(dt);
@@ -8899,8 +8905,13 @@ function drawArenaFloor(){
   // BIG-BATCH-1 A3: 플레이 화면 격자선 제거(그래프용지 인상) — 격자는 에디터(drawEditorGrid)에서만.
   ctx.strokeStyle="rgba(150,180,255,0.15)"; ctx.lineWidth=4; ctx.beginPath(); ctx.arc(ARENA.x+ARENA.w/2,ARENA.y+ARENA.h/2,90,0,Math.PI*2); ctx.stroke();
   ctx.restore();
-  drawSpawnMark(map.playerSpawn.x,map.playerSpawn.y,"#7fd6ff");
-  drawSpawnMark(map.enemySpawn.x,map.enemySpawn.y,"#c98bff");
+  if(map.playerSpawns){   // 유기성: 술래 개인 시작점 6개 전부 표시(단일 2개만 보이던 것)
+    for(const s of map.playerSpawns) drawSpawnMark(s.x,s.y,"#7fd6ff");
+    for(const s of map.enemySpawns) drawSpawnMark(s.x,s.y,"#c98bff");
+  } else {
+    drawSpawnMark(map.playerSpawn.x,map.playerSpawn.y,"#7fd6ff");
+    drawSpawnMark(map.enemySpawn.x,map.enemySpawn.y,"#c98bff");
+  }
   ctx.save(); ctx.strokeStyle=map.strokeColor; ctx.lineWidth=5; roundRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h,18); ctx.stroke(); ctx.restore();
 }
 function drawSpawnMark(x,y,color){
@@ -11806,6 +11817,20 @@ function tDrawFighter(d){
     ctx.fillText("👹", d.x, d.y-22-44+Math.sin(uiTime*5)*3);
     ctx.restore();
   }
+  if(isTagRule && !d.tg){   // 유기성: 온라인에도 방어막 링(별골렘)·최후의 생존자 링(오프라인 9083과 동형)
+    if(d.sh>0){
+      ctx.save(); ctx.globalAlpha=alpha*0.85; ctx.strokeStyle="#ffe066"; ctx.lineWidth=2.5;
+      ctx.setLineDash([7,5]); ctx.beginPath(); ctx.arc(d.x,d.y,22+9,uiTime*1.5,uiTime*1.5+Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+      ctx.restore();
+    }
+    if(RULE && RULE.lastOne && RULE.survivors===1){
+      const lp=0.5+0.5*Math.sin(uiTime*6);
+      ctx.save(); ctx.globalAlpha=0.5+0.4*lp; ctx.strokeStyle="#ffd23f"; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.arc(d.x,d.y,22+14+lp*4,0,Math.PI*2); ctx.stroke();
+      ctx.textAlign="center"; ctx.font="bold 15px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#ffe066";
+      ctx.fillText("⭐ 최후의 생존자", d.x, d.y-22-58); ctx.restore();
+    }
+  }
   if(RULE && RULE.id==="stargrab" && (d.st||0)>0){   // ⭐ 보유 배지 + 캐리어 링
     ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.globalAlpha=alpha;
     ctx.font="bold 15px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#ffe14d";
@@ -11837,7 +11862,7 @@ function tRender(){
   const data=tGetDrawData();
   const me=data.fighters.find(f=>f.isMe); _viewer = me ? { x:me.x, y:me.y, team:me.team } : null;
   if(RULE && RULE.id==="paint") drawPaintGrid();     // P2: 유닛 아래층 페인트
-  if(RULE) drawRuleObjects();                        // P2: 거점/별/구조물(양 역할 공통 — RULE·OBSTACLES 기반)
+  drawRuleObjects();                                 // 유기성: RULE 없어도(온라인 tdm) 호출 — 학생 맵 쿠션벽(team:null 구조물)이 안 보이던 유령벽 해소. 규칙 오브젝트 분기는 자체 if(RULE) 가드
   drawSkillZonesPacked(data.zones);
   for(const b of data.bullets) drawOnlineBullet(b);
   for(const f of data.fighters) tDrawFighter(f);
