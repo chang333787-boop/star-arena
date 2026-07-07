@@ -1487,9 +1487,12 @@ const OnlineManager = {
     try{ if(this.role!=="host") return; if(!this.roomRef) return; const u={ status:status, updatedAt:firebase.database.ServerValue.TIMESTAMP };
       if(extra){ for(const k in extra) u[k]=extra[k]; } this.roomRef.child("meta").update(this._sanitizePacket(u,"meta")); }catch(e){ try{ console.warn("[online] meta 전송 실패", e); }catch(e2){} }
   },
+  _lastRtdbAt:0,
   writeHostState:function(stateObj){
     try{ if(this.role!=="host") return; if(!this.roomRef) return;
-      RTCNet.sendState(stateObj);   // WebRTC DC 브로드캐스트(+stateObj._sq 부여, 켜졌을 때만). RTDB는 아래에서 floor로 항상 전송, seq로 dedup.
+      RTCNet.sendState(stateObj);   // WebRTC DC 브로드캐스트(+stateObj._sq 부여, 켜졌을 때만).
+      // RTDB floor: DC 없으면 항상(유일 통로), DC 열려 있으면 15Hz로만 억제(DC가 30Hz로 부드러움 담당, Firebase 사용량은 종전과 동일). 게스트는 seq로 dedup.
+      if(RTCNet.anyOpen()){ const nowMs=Date.now(); if(this._lastRtdbAt && nowMs-this._lastRtdbAt < (1000/T_STATE_FPS)-3) return; this._lastRtdbAt=nowMs; }
       stateObj.updatedAt=firebase.database.ServerValue.TIMESTAMP;
       const p=this.roomRef.child("state").set(this._sanitizePacket(stateObj,"state"));
       if(p && p.catch) p.catch(function(e){ try{ console.warn("[online] state 전송 실패", e); }catch(e2){} });
@@ -10252,6 +10255,7 @@ let onlineMenuIndex = 0;
 let onlineLobbyMsg = "";
 // 참가자(guest) 화면을 부드럽게: 받은 위치 사이를 보간(interpolation)/외삽(extrapolation)
 let onlineRender = { host:null, guest:null };
+let onlinePrevOppDead = false;   // 리스폰(dead→alive) 첫 프레임 스냅 판정용
 let onlineBulletsView = [];
 let onlineLastStateRef = null;
 let onlineSnapBuf = [], onlineInterpClock = 0;   // P1: 스냅샷 페어 보간 버퍼(도착 시계=dt 누적)
@@ -10263,10 +10267,11 @@ function lerpAngle(a,b,t){ let d=b-a; while(d>Math.PI)d-=Math.PI*2; while(d<-Mat
    도착 시계(dt 누적 — 하니스 결정성 유지) 기준으로 렌더 시점을 INTERP_DELAY만큼 과거에 두고
    두 스냅샷 사이를 등속 보간, 최신 초과분은 1.4패킷까지만 소폭 외삽 후 홀드. 워밍업(버퍼<2)은 기존 지수 lerp 폴백. */
 const ONLINE_INTERP_DELAY = 0.12;
+const RTC_INTERP_DELAY = 0.07;   // WebRTC(P2P) 활성 시 더 짧은 보간 버퍼 — 지연이 낮고 상태율이 높아 안전
 function onlineSnapPush(buf, clock, s){ buf.push({ at:clock, s:s }); if(buf.length>4) buf.shift(); }
 function onlineInterpTarget(buf, clock, pick, prev, dt){
   if(!buf.length) return prev;
-  const rt=clock-ONLINE_INTERP_DELAY;
+  const rt=clock-(RTCNet.anyOpen()?RTC_INTERP_DELAY:ONLINE_INTERP_DELAY);   // P2P 활성 시 보간 지연 단축(더 즉각적)
   const newest=pick(buf[buf.length-1].s);
   if(!newest) return prev;
   if(buf.length<2 || rt<=buf[0].at){   // 워밍업/스냅샷 부족 — 지수 lerp 폴백(기존 동작)
@@ -10443,7 +10448,7 @@ function resetOnlineMatchFromRoom(){
   resetSkillZones(); resetAttackLog();
   POWERUPS=[]; powerupAcc=0; powerupId=0;
   onlineWriteAcc=0; onlineInputAcc=0; onlineLastInputStr="";
-  onlineRender={ host:null, guest:null }; onlineBulletsView=[]; onlineLastStateRef=null; onlinePredict=null;
+  onlineRender={ host:null, guest:null }; onlinePrevOppDead=false; onlineBulletsView=[]; onlineLastStateRef=null; onlinePredict=null;
   onlineSnapBuf=[]; onlineInterpClock=0; onlineLastInputBtn="";
   onlinePredictBullets=[]; onlinePredictCd=0;
 }
@@ -10537,8 +10542,9 @@ function updateOnlineGuest(dt){
   // 상대 캐릭터: 스냅샷 페어 보간(P1 — 패킷 지연·지터에도 등속으로 매끈)
   const op=s[oppSlot];
   if(op){
-    if(!onlineRender[oppSlot] || op.dead) onlineRender[oppSlot]={ x:op.x, y:op.y, facing:op.facing||0 };
+    if(!onlineRender[oppSlot] || op.dead || onlinePrevOppDead) onlineRender[oppSlot]={ x:op.x, y:op.y, facing:op.facing||0 };   // 리스폰 첫 프레임 스냅(죽은 자리에서 미끄러짐 방지)
     else onlineRender[oppSlot]=onlineInterpTarget(onlineSnapBuf, onlineInterpClock, function(ss){ return ss?ss[oppSlot]:null; }, onlineRender[oppSlot], dt);
+    onlinePrevOppDead=op.dead;
   }
 
   // 내 캐릭터: 로컬 입력으로 즉시 이동(예측) + 연속 화해(P1 — 70px 하드스냅=순간이동 제거)
@@ -11036,6 +11042,7 @@ function getOnlineMode(id){ for(const m of ONLINE_MODES){ if(m.id===id) return m
 function isTeamOnline(){ return OnlineManager.mode==="online3v3" || OnlineManager.mode==="onlinePve6"; }
 
 const T_STATE_FPS = 15;   // 다인 모드 상태 동기화(초당) — payload가 크므로 1대1보다 낮게
+const RTC_STATE_FPS = 30; // WebRTC(P2P) 활성 시 상태율 상향 — DC는 P2P라 Firebase 비용 없이 부드러움↑(RTDB는 15Hz floor로 별도 억제)
 // (입력 전송 주기는 ONLINE_INPUT_KEEPALIVE 공용 — 변화 시 즉시 + keepalive)
 const T_MAX_BULLETS = 80;
 const TEAM_COLOR = { blue:"#5aa0ff", red:"#ff6a6a" };
@@ -11048,6 +11055,7 @@ let tWriteAcc = 0, tInputAcc = 0, tLastInputStr = "", tLastInputBtn = "";
 let tWinner = null, tResultText = "";
 // guest 렌더 보간/예측
 let tRenderFighters = {};  // slot -> {x,y,facing}
+let tPrevDead = {};        // slot -> 직전 dead 상태(리스폰 첫 프레임 스냅 판정)
 let tPredict = null;       // 내 슬롯 예측
 let tBulletsView = [];
 let tLastStateRef = null;
@@ -11178,7 +11186,7 @@ function tBuildFighters(){
 function resetTeamMatchFromRoom(){
   const mode=getOnlineMode(OnlineManager.mode);
   tBullets=[]; tWriteAcc=0; tInputAcc=0; tLastInputStr=""; tLastInputBtn=""; tWinner=null; tResultText="";
-  tRenderFighters={}; tPredict=null; tBulletsView=[]; tLastStateRef=null; tSnapBuf=[]; tInterpClock=0;
+  tRenderFighters={}; tPrevDead={}; tPredict=null; tBulletsView=[]; tLastStateRef=null; tSnapBuf=[]; tInterpClock=0;
   tPaintLastRLE=""; tPaintRLESkips=99;
   tEnemies={}; tEnemyId=0; tEnemiesView={};
   resetSkillZones(); resetAttackLog();
@@ -11271,7 +11279,7 @@ function tUpdateHost(dt){
   for(const slot in tFighters){ const f=tFighters[slot]; f.displayHp=lerp(f.displayHp,f.hp,Math.min(1,dt*8)); }
   if(OnlineManager.role==="host" && tFighters[OnlineManager.mySlot]) tMyTagRole=!!tFighters[OnlineManager.mySlot].isTagger;
   tTimeLeft-=dt;
-  tWriteAcc+=dt; if(tWriteAcc>=1/T_STATE_FPS){ tWriteAcc=0; tHostWriteState(); }
+  tWriteAcc+=dt; if(tWriteAcc>=1/(RTCNet.anyOpen()?RTC_STATE_FPS:T_STATE_FPS)){ tWriteAcc=0; tHostWriteState(); }
   if(tTimeLeft<=0){ tTimeLeft=0; if(RULE) tRuleTimeUpTeam(); else tHostEndMatch(); }
 }
 
@@ -11898,6 +11906,7 @@ function tPackFighter(f){
     rl:f.reloading?1:0, sg:Math.round(f.superGauge||0), fr:f.fireRevealTimer>0?1:0,
     xc:Math.round(Math.max(0,f.specialCd||0)*10)/10,     // X 쿨타임(HUD용)
     lv:(f.lives===undefined?-1:f.lives) };               // PVE 개인 목숨(-1=해당 없음/3v3)
+  if(f.isBot){ o.c=f.char.id; o.tm=f.team; }             // 봇은 players 로스터에 없어 게스트가 charId/team 역산 불가 → 패킷에 실어 화면 일치(안 하면 게스트에서 봇이 전부 기본 캐릭/blue로 보임)
   if(RULE){                                              // P2: 규칙별 개인 상태(술래 여부·별 보유)
     if(RULE.id==="tag") o.tg=f.isTagger?1:0;
     else if(RULE.id==="stargrab") o.st=f.stars||0;
@@ -11997,8 +12006,9 @@ function tUpdateGuest(dt){
         predictMoveAim(tPredict, inp, dt);   // UPDATE-1 P3: 예측도 의도 공용
         onlineReconcile(tPredict, p, dt); }   // P1: 연속 화해(70px 하드스냅 제거)
     } else {
-      if(!tRenderFighters[slot] || p.dead) tRenderFighters[slot]={ x:p.x,y:p.y,facing:p.facing||0 };
+      if(!tRenderFighters[slot] || p.dead || tPrevDead[slot]) tRenderFighters[slot]={ x:p.x,y:p.y,facing:p.facing||0 };   // 리스폰 첫 프레임 스냅(죽은 자리에서 미끄러짐 방지)
       else tRenderFighters[slot]=onlineInterpTarget(tSnapBuf, tInterpClock, function(ss){ return (ss&&ss.fighters)?ss.fighters[slot]:null; }, tRenderFighters[slot], dt);   // P1: 페어 보간
+      tPrevDead[slot]=p.dead;
     }
   }
   if(s.enemies){   // P1b: PVE 적도 페어 보간 — 적 최대 40마리가 15Hz마다 뚝뚝 점프하던 것(파이터와 동일 헬퍼)
@@ -12028,8 +12038,8 @@ function tGetDrawData(){
     for(const slot in s.fighters){ const p=s.fighters[slot]; let rx=p.x,ry=p.y,rf=p.facing;
       if(slot===myslot && tPredict && !p.dead){ rx=tPredict.x; ry=tPredict.y; rf=tPredict.facing; }
       else if(tRenderFighters[slot] && !p.dead){ rx=tRenderFighters[slot].x; ry=tRenderFighters[slot].y; rf=tRenderFighters[slot].facing; }
-      out.fighters.push({ x:rx,y:ry,facing:rf,hp:p.hp,maxHp:p.maxHp||tRosterMaxHp(slot),dead:p.dead,inv:p.inv,charId:p.charId||tRosterCharId(slot),team:p.team||tRosterTeam(slot),slot:slot,isMe:slot===myslot,fr:p.fr,
-        tg:p.tg||0, st:p.st||0 }); }   // P2: 규칙 배지
+      out.fighters.push({ x:rx,y:ry,facing:rf,hp:p.hp,maxHp:p.maxHp||(p.c?GAME_CONFIG.playerMaxHp*getCharacter(p.c).hpMul:tRosterMaxHp(slot)),dead:p.dead,inv:p.inv,charId:p.c||p.charId||tRosterCharId(slot),team:p.tm||p.team||tRosterTeam(slot),slot:slot,isMe:slot===myslot,fr:p.fr,
+        tg:p.tg||0, st:p.st||0 }); }   // P2: 규칙 배지 (봇은 p.c/p.tm으로 캐릭/팀 동기화)
     out.bullets=tBulletsView.map(b=>({ x:b.x,y:b.y,r:b.r,c:b.c,w:b.w||null,vx:b.vx,vy:b.vy }));
     out.teamScores=s.teamScores||{blue:0,red:0}; out.timeLeft=s.timeLeft;
     out.zones=(s.zones||[]);
@@ -12532,7 +12542,7 @@ function tPveUpdateHost(dt){
   tickSkillZones(dt, envTeam());
   tickPowerupsHost(dt, Object.keys(tFighters).map(s=>tFighters[s]).filter(f=>!f.inactive));
   tPveProgress(dt);
-  tWriteAcc+=dt; if(tWriteAcc>=1/T_STATE_FPS){ tWriteAcc=0; tHostWriteState(); }
+  tWriteAcc+=dt; if(tWriteAcc>=1/(RTCNet.anyOpen()?RTC_STATE_FPS:T_STATE_FPS)){ tWriteAcc=0; tHostWriteState(); }
 }
 function tPveUpdatePlayer(f,input,dt){
   // 강화 선택(1/2/3) — 죽은/관전 플레이어도 선택 가능(host 판정, 1회만)
