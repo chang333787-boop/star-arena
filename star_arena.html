@@ -5739,6 +5739,33 @@ const ED_PAL_EXCLUDE={ tag:{S:1,L:1,C:1} };
 const ED_CELL_COLOR={ ".":null, W:"#878da8", B:"#5ad36b", S:"#ff6a6a", L:"#7fd88a", I:"#8fd9ff", C:"#ff9ec2", "*":"#ffe14d", O:"#ffd23f", X:"#5aa0ff", G:"#ffcf4d",
   "#":"#5a6aa8", "-":"#8fd0a0", J:"#ffd23f", M:"#c58bff", o:"#ffe875", F:"#7dffb0",
   i:"#8fd9ff", b:"#a97a4a", P:"#ffb347", "!":"#fff06a", w:"#cfe0ff", m:"#ff9ec2" };   /* GENRE-EXPAND-1 + P1.5 플랫포머 legend */
+/* EDIT-WYSIWYG-1: 에디터 칸을 색+글자 대신 게임 그래픽으로 — 바닥=테마 스프라이트, 벽/수풀=실제 스프라이트, 나머지=이모지 아이콘 */
+const ED_FLOOR_TINT={ basic:"#2b3358", grass:"#22402c", snow:"#39414f", sand:"#4a4230", wood:"#3a2c1e", void_:"#161228" };
+function edCellEmoji(ch, pf){
+  if(pf){ const p={ "#":"", "-":"➖", S:"🔺", J:"⏫", M:"👾", o:"⭐", F:"🚩", i:"🧊", b:"📦", P:"🔫", "!":"🌟", w:"🪶", m:"🧲", G:"🏁", "*":"🟢" }; return p[ch]!==undefined?p[ch]:""; }
+  const a={ W:"", B:"", S:"🔺", L:"🫧", I:"🧊", C:"🧩", "*":"🟢", O:"🎯", X:"🗼", G:"💎" }; return a[ch]!==undefined?a[ch]:"";
+}
+// 한 칸을 게임 그래픽으로: 벽/수풀은 스프라이트, 그 외는 아이콘(+옅은 틴트)
+function edCellArt(g, ch, x, y, s, pf){
+  const wallCh=(ch==="W"||ch==="#"), bushCh=(ch==="B");
+  if(wallCh){ const im=(typeof worldImage==="function")?worldImage("wall_tiles"):null;
+    if(im){ const prev=g.imageSmoothingEnabled; g.imageSmoothingEnabled=false;
+      const sx=(im.width>=336)?112:0, sy=(im.height>=336)?112:0, cs=Math.min(112, im.width);   // 9-slice 중앙(꽉 찬 벽) 조각
+      g.drawImage(im, sx,sy, cs,cs, x, y, s, s); g.imageSmoothingEnabled=prev; return; }
+    g.fillStyle="#6b74a0"; roundRect(x+1,y+1,s-2,s-2,3); g.fill(); g.fillStyle="rgba(0,0,0,0.22)"; g.fillRect(x+1,y+s*0.6,s-2,s*0.4-1); return; }
+  if(bushCh){ const im=(typeof worldImage==="function")?worldImage("bush"):null;
+    if(im){ g.drawImage(im, x-2, y-5, s+4, s+6); return; }
+    g.fillStyle="#3f8f4e"; g.beginPath(); g.arc(x+s/2,y+s*0.55,s*0.42,0,Math.PI*2); g.fill(); g.fillStyle="#57b268"; g.beginPath(); g.arc(x+s*0.38,y+s*0.45,s*0.24,0,Math.PI*2); g.fill(); return; }
+  // 그 외: 옅은 틴트 사각형 + 이모지 아이콘
+  const col=ED_CELL_COLOR[ch]||"#888";
+  g.fillStyle=col; g.globalAlpha=0.28; roundRect(x+2,y+2,s-4,s-4,4); g.fill(); g.globalAlpha=1;
+  g.strokeStyle=col; g.lineWidth=1.5; roundRect(x+2.5,y+2.5,s-5,s-5,4); g.stroke();
+  const em=edCellEmoji(ch, pf);
+  g.textAlign="center"; g.textBaseline="middle";
+  if(em){ g.font=Math.round(s*0.62)+"px sans-serif"; g.fillText(em, x+s/2, y+s/2+1); }
+  else { g.fillStyle="#0a0e24"; g.font="bold "+Math.round(s*0.5)+"px 'Malgun Gothic',sans-serif"; g.fillText(ch, x+s/2, y+s/2+1); }
+  g.textAlign="left"; g.textBaseline="alphabetic";
+}
 const EDITOR_STORE_KEY="starArena.editorMaps.v1";
 let ED=null;            // 에디터 상태
 let reviewIdx=0;        // 교사 승인 화면 선택
@@ -9774,27 +9801,39 @@ function drawEditorGrid(){
   for(let i=0;i<pal.length;i++){
     const py=134+i*34, sel=(i===ED.palIdx);
     if(sel){ ctx.fillStyle="rgba(95,160,255,0.25)"; roundRect(34, py-14, panelW-44, 28, 6); ctx.fill(); }
-    ctx.fillStyle=pal[i].color||"#666"; roundRect(42, py-9, 18, 18, 4); ctx.fill();
-    ctx.fillStyle=sel?"#ffe066":"#dfe6ff"; ctx.font="bold 14px 'Malgun Gothic',sans-serif";
-    ctx.fillText(pal[i].name+(pal[i].ch!=="."?" ("+pal[i].ch+")":""), 68, py);
+    // EDIT-WYSIWYG-1: 스와치도 게임 그래픽으로(칸과 동일한 렌더)
+    if(pal[i].ch==="."){ ctx.strokeStyle="#8fa2d6"; ctx.lineWidth=1.5; roundRect(42,py-9,18,18,4); ctx.stroke(); ctx.strokeStyle="#8fa2d6"; ctx.beginPath(); ctx.moveTo(45,py-6); ctx.lineTo(57,py+6); ctx.moveTo(57,py-6); ctx.lineTo(45,py+6); ctx.stroke(); }
+    else edCellArt(ctx, pal[i].ch, 42, py-9, 18, ED.pf);
+    ctx.fillStyle=sel?"#ffe066":"#dfe6ff"; ctx.font="bold 14px 'Malgun Gothic',sans-serif"; ctx.textAlign="left"; ctx.textBaseline="alphabetic";
+    ctx.fillText(pal[i].name, 68, py);
   }
   // 그리드(플랫포머는 viewC부터 창 렌더 — §3.8 스크롤 편집)
   const grid=edFullGrid();
   const G2=edGridGeom(), vC=G2.viewC||0, vCols=G2.viewCols||ED.cols;
   ctx.fillStyle="#1b2150"; ctx.fillRect(gx-2, gy-2, gw+4, gh+4);
+  // EDIT-WYSIWYG-1: 바닥 테마 스프라이트/틴트 + 요소 게임 그래픽
+  const theme=ED.pf?null:FLOOR_THEME_LIST[ED.floorIdx];
+  const fimg=(!ED.pf&&typeof worldImage==="function")?worldImage(FLOOR_THEMES[theme]||"tile_floor"):null;
+  const floorTint=ED.pf?"#12162e":(ED_FLOOR_TINT[theme]||"#2b3358");
   for(let r=0;r<ED.rows;r++) for(let c=vC;c<Math.min(ED.cols, vC+vCols);c++){
     const x=gx+(c-vC)*CS*sc, y=gy+r*CS*sc, s=CS*sc;
     const mirror=(!ED.pf && c>=ED.half);
-    ctx.fillStyle=mirror?"rgba(30,36,80,0.9)":"rgba(38,46,96,0.9)";
-    ctx.fillRect(x, y, s-1, s-1);
+    // 바닥
+    if(fimg){ const pv=ctx.imageSmoothingEnabled; ctx.imageSmoothingEnabled=true; ctx.drawImage(fimg, 0,0, fimg.width,fimg.height, x, y, s+0.5, s+0.5); ctx.imageSmoothingEnabled=pv; }
+    else { ctx.fillStyle=floorTint; ctx.fillRect(x, y, s, s); }
+    ctx.fillStyle="rgba(10,14,40,0.18)"; ctx.fillRect(x,y,s,s);
+    if(mirror){ ctx.fillStyle="rgba(20,24,54,0.42)"; ctx.fillRect(x,y,s,s); }   // 자동 대칭 우측 = 살짝 어둡게
     const ch=grid[r][c];
     if(ch!=="."){
-      ctx.fillStyle=ED_CELL_COLOR[ch]||"#888"; ctx.globalAlpha=mirror?0.55:0.95;
-      ctx.fillRect(x+1, y+1, s-3, s-3); ctx.globalAlpha=1;
-      ctx.fillStyle="#0a0e24"; ctx.font="bold "+Math.max(9,Math.round(12*sc*1.6))+"px 'Malgun Gothic',sans-serif"; ctx.textAlign="center";
-      ctx.fillText(ch==="*"?"★":ch, x+s/2, y+s/2+1); ctx.textAlign="left";
+      if(mirror) ctx.globalAlpha=0.6;
+      edCellArt(ctx, ch, x, y, s, ED.pf);
+      ctx.globalAlpha=1;
     }
   }
+  // 칸 격자선(옅게 — 편집 좌표 감각 유지)
+  ctx.strokeStyle="rgba(150,180,255,0.10)"; ctx.lineWidth=1;
+  for(let c=vC;c<=Math.min(ED.cols,vC+vCols);c++){ const x=gx+(c-vC)*CS*sc; ctx.beginPath(); ctx.moveTo(x,gy); ctx.lineTo(x,gy+ED.rows*CS*sc); ctx.stroke(); }
+  for(let r=0;r<=ED.rows;r++){ const y=gy+r*CS*sc; ctx.beginPath(); ctx.moveTo(gx,y); ctx.lineTo(gx+(Math.min(ED.cols,vC+vCols)-vC)*CS*sc,y); ctx.stroke(); }
   // 중앙 대칭선(전투 모드) + 커서
   if(!ED.pf){
     ctx.strokeStyle="rgba(255,224,102,0.5)"; ctx.lineWidth=2;
@@ -13008,6 +13047,14 @@ function startLoopOnce(){
           if(RPG){ RPG.dialog=null; RPG.ui=(h.indexOf("!map")>=0)?"map":"field"; }   // !map=전체지도 화면 검증
         }catch(e){}
       }, 900);   // 에셋 로딩 후 진입(스크린샷 대기와 맞춤)
+    }
+    if(h.indexOf("#dev_editor")===0){   // 에디터 WYSIWYG 검증용: #dev_editor[_모드] — 데모 요소 배치
+      setTimeout(function(){ try{
+        const mode=h.slice("#dev_editor_".length)||"tdm";
+        openEditor(); ED.step="mode"; ED.mode=(mode&&mode!=="#dev_editor")?mode:"tdm"; ED.modeIdx=0; ED.sizeIdx=0; edStartGrid();
+        const demo=[["W",3,2],["W",4,2],["W",5,2],["B",2,5],["B",3,5],["S",6,6],["L",7,4],["I",8,7],["C",4,7],["O",9,4],["X",2,3],["*",1,4]];
+        for(const d of demo){ if(d[2]<ED.rows&&d[1]<ED.half) ED.cells[d[2]][d[1]]=d[0]; }
+      }catch(e){} }, 900);
     }
   }catch(e){}
 }
