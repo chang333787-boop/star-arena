@@ -5038,6 +5038,20 @@ function rpgBuildLayer(){   // 정적 타일 오프스크린 1회 합성(§11-4)
     else if(ch==="V"){ if(veinImg) g.drawImage(veinImg,x,y,56,56); else if(crysImg) g.drawImage(crysImg,x+4,y-8,48,62); }
     if((theme==="den_cloud")&&(ch==="T"||ch==="B"||ch==="#")){ g.fillStyle="rgba(24,12,46,0.62)"; g.fillRect(x,y,56,56); }   // 요새 벽 = 먹구름 톤
   }
+  if(RPG.map.id==="rpg_village"){   // ASSET: 밭 둘레 나무 울타리(rpgSoil 경계 감지 → 실제 CC0 가로 레일[47,23] 회전 배치)
+    const sheetImg=(typeof worldImage==="function")?worldImage("rpg_sheet"):null;
+    let soil=[]; try{ soil=rpgSoil(); }catch(e){}
+    if(sheetImg&&soil.length){
+      const S={}; for(const s of soil) S[s[0]+","+s[1]]=1; const has=function(cc,rr){ return S[cc+","+rr]===1; };
+      const SX=47*17, SY=23*17;
+      for(const s of soil){ const c=s[0], r=s[1], x=c*56, y=r*56;
+        if(!has(c,r-1)) g.drawImage(sheetImg,SX,SY,16,16, x,y-10,56,19);      // 위
+        if(!has(c,r+1)) g.drawImage(sheetImg,SX,SY,16,16, x,y+47,56,19);      // 아래
+        if(!has(c-1,r)){ g.save(); g.translate(x,y+28); g.rotate(Math.PI/2); g.drawImage(sheetImg,SX,SY,16,16,-28,-10,56,19); g.restore(); }   // 왼
+        if(!has(c+1,r)){ g.save(); g.translate(x+56,y+28); g.rotate(Math.PI/2); g.drawImage(sheetImg,SX,SY,16,16,-28,-10,56,19); g.restore(); }   // 오른
+      }
+    }
+  }
   if(theme==="village_meadow"){ g.fillStyle="rgba(255,214,120,0.055)"; g.fillRect(0,0,cvs.width,cvs.height); }   // QUALITY-2: 마을=따뜻한 햇살 톤(세 초록맵 차별화)
   if(theme==="field_dew"){ g.fillStyle="rgba(150,255,205,0.05)"; g.fillRect(0,0,cvs.width,cvs.height); }   // 들판=상큼한 이슬 톤
   if(theme==="forest_rain"){ g.fillStyle="rgba(40,60,100,0.14)"; g.fillRect(0,0,cvs.width,cvs.height); }   // 가랑비=푸른 톤
