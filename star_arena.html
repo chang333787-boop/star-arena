@@ -3311,6 +3311,16 @@ function rpgAddExp(n){
     rpgPersist();
   }
 }
+// QUALITY-1: 공용 축하 연출(링+별 버스트+옅은 전신 플래시). 레벨업·전직·보스격파·엔딩이 재사용.
+function rpgCelebrate(x,y,color,power){
+  if(!RPG||!RPG.fx) return; power=power||1; color=color||"#ffe066";
+  const rings=(power>=2)?3:((power>=1.5)?2:1);
+  for(let r=0;r<rings;r++) RPG.fx.push({kind:"ring",x:x,y:y-6,t:0.6+r*0.14,color:color});
+  const n=Math.round(10*power);
+  for(let i=0;i<n;i++){ const a=rand(0,Math.PI*2), sp=rand(80,140+70*power);
+    RPG.fx.push({kind:"star",x:x,y:y-10,t:rand(0.5,0.95),vx:Math.cos(a)*sp,vy:Math.sin(a)*sp-80,g:300,color:color,size:12+Math.round(power*2)}); }
+  RPG.flashT=Math.max(RPG.flashT||0, 0.10*Math.min(2,power));
+}
 function rpgLearnSkills(sv){
   for(const sk of rpgDb().skills){
     if(sk.acquire&&sk.acquire.by==="level"&&sk.acquire.value<=sv.level&&sv.skills.indexOf(sk.id)<0){
@@ -4477,6 +4487,7 @@ function rpgUpdate(dt){
   RPG.p.candyCd=Math.max(0,(RPG.p.candyCd||0)-dt);
   RPG.p.squashT=Math.max(0,(RPG.p.squashT||0)-dt);
   RPG.vignT=Math.max(0,(RPG.vignT||0)-dt); RPG.shakeT=Math.max(0,(RPG.shakeT||0)-dt);   // 비네트·흔들림 감쇠(POLISH-2)
+  RPG.flashT=Math.max(0,(RPG.flashT||0)-dt);   // QUALITY-1: 전신 플래시 감쇠
   if(RPG.swing&&(RPG.swing.t-=dt)<=0) RPG.swing=null;
   if((RPG.hitstop||0)>0){ RPG.hitstop=Math.max(0,RPG.hitstop-dt); return; }   // 히트스톱: 월드 정지(주스 ②)
   let mx=0,my=0;
@@ -4496,7 +4507,7 @@ function rpgUpdate(dt){
   p.dashT=Math.max(0,(p.dashT||0)-dt); p.dashInvulT=Math.max(0,(p.dashInvulT||0)-dt);
   p.skillCd=Math.max(0,(p.skillCd||0)-dt); p.attackT=Math.max(0,(p.attackT||0)-dt);
   if(keysDown.has("KeyZ")||RPG.touch.atkHold) rpgAttack();
-  for(const mob of RPG.mobs){ if(!mob.dead) rpgMobUpdate(mob,dt); }
+  for(const mob of RPG.mobs){ if(!mob.dead) rpgMobUpdate(mob,dt); else if((mob.deadT||0)>0) mob.deadT-=dt; }   // QUALITY-1: 사망 팝 트윈 감쇠
   if(!RPG) return;   // 피격 사망 → rpgDie가 맵을 갈아치울 수 있음
   rpgBulletsUpdate(dt);
   for(const d of RPG.drops){
@@ -4701,8 +4712,14 @@ function rpgHitMob(mob,dmg,opt){
       const kb=ambushed?200:140, ka=Math.atan2(mob.y-RPG.p.y,mob.x-RPG.p.x);
       mob.kbx=(mob.kbx||0)+Math.cos(ka)*kb; mob.kby=(mob.kby||0)+Math.sin(ka)*kb;
     }
+    // QUALITY-1: 접점 임팩트 스파크(기습이면 노란·개수+) + 명중 햅틱
+    const _ka=Math.atan2(mob.y-RPG.p.y,mob.x-RPG.p.x), _hx=mob.x-Math.cos(_ka)*mob.r*0.55, _hy=mob.y-4-Math.sin(_ka)*mob.r*0.55;
+    const _sc=ambushed?6:4, _scol=ambushed?"#ffd93d":"#fff2c8";
+    for(let i=0;i<_sc;i++){ const a=_ka+Math.PI+rand(-0.9,0.9), sp=rand(70,190);
+      RPG.fx.push({kind:"dot",x:_hx,y:_hy,t:rand(0.16,0.32),vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,g:140,color:_scol,size:rand(2,4)}); }
+    try{ if(navigator.vibrate) navigator.vibrate(9); }catch(e){}
   }
-  RPG.fx.push({x:mob.x+rand(-10,10),y:mob.y-26,t:0.7,text:""+final,color:behind?"#ffd93d":"#ffffff",size:ambushed?20:16});   // 기습 숫자 강조+산포(POLISH-2)
+  RPG.fx.push({x:mob.x+rand(-10,10),y:mob.y-26,t:0.7,life:0.7,pop:true,text:""+final,color:behind?"#ffd93d":"#ffffff",size:ambushed?20:16});   // 기습 숫자 강조+산포+팝인(POLISH-2·QUALITY-1)
   if(RPG.save.skills.indexOf("sk_sparkle_dash")>=0){ const g=rpgFind("skills","sk_sparkle_dash"); RPG.gauge=Math.min((g.gauge&&g.gauge.max)||100,(RPG.gauge||0)+((g.gauge&&g.gauge.perHit)||12)); }
   if(rpgMobHas(mob,"blink")&&mob.hp>0&&mob.blinkCd<=0){   // 피격 순간이동(신규 프리미티브)
     mob.blinkCd=args.blinkCd||3;
@@ -4718,7 +4735,8 @@ function rpgPityTargets(){   // POLISH-1: 활성 collect 퀘스트 대상 아이
   return t;
 }
 function rpgKillMob(mob){
-  mob.dead=true; playSfx("clear");
+  mob.dead=true; mob.deadT=0.24; playSfx("clear");   // QUALITY-1: 사망 팝 트윈
+  try{ if(navigator.vibrate) navigator.vibrate([18,24,18]); }catch(e){}   // QUALITY-1: 처치 햅틱(데스크톱 no-op)
   const def=mob.def, sv=RPG.save;
   if(mob.spawnKey&&!def.isBoss){ if(!sv.resp)sv.resp={}; sv.resp[mob.spawnKey]=sv.playSec||0; }   // POLISH-1 리스폰 기록
   const n=def.isBoss?18:6;   // 별가루 귀환 — 별 파티클(주스 ⑥)
@@ -5004,6 +5022,16 @@ function rpgDrawNpc(n){
 function rpgDrawMob(mob){
   const face=RPG_MOB_FACE[mob.id]||["👾","#6a5f8a"], def=mob.def;
   ctx.save(); ctx.translate(mob.x,mob.y);
+  if(mob.dead){   // QUALITY-1: 사망 팝 — 부풀며 위로 뜨고 페이드('마침표'). 이름표·HP바·경고 생략
+    const k=Math.max(0,(mob.deadT||0)/0.24);
+    ctx.globalAlpha=k; ctx.translate(0,-(1-k)*20); ctx.scale(1+(1-k)*0.4,1+(1-k)*0.4);
+    const dimg=(typeof getMonsterImage==="function")?getMonsterImage(def.asset||""):null;
+    if(dimg){ const iw=dimg.naturalWidth||dimg.width||1, ih=dimg.naturalHeight||dimg.height||1, dh=mob.r*2.8, dw=dh*(iw/ih);
+      if(Math.cos(mob.facing)<0) ctx.scale(-1,1); ctx.drawImage(dimg,-dw/2,-dh+mob.r*0.85,dw,dh); }
+    else { ctx.fillStyle=face[1]; ctx.beginPath(); ctx.arc(0,-4,mob.r,0,Math.PI*2); ctx.fill();
+      ctx.font=(def.isBoss?"40px":"18px")+" sans-serif"; ctx.textAlign="center"; ctx.fillText(face[0],0,def.isBoss?10:4); ctx.textAlign="left"; }
+    ctx.globalAlpha=1; ctx.restore(); return;
+  }
   ctx.fillStyle="rgba(0,0,0,0.25)"; ctx.beginPath(); ctx.ellipse(0,mob.r*0.8,mob.r,mob.r*0.35,0,0,Math.PI*2); ctx.fill();
   ctx.save();
   ctx.scale(mob.hitT>0?1.07:1,(mob.hitT>0?0.9:1)*(1+0.03*Math.sin(uiTime*2.2+(mob.uid||0))));   // 피격 스쿼시+유휴 호흡(주스 ④⑥)
@@ -5050,8 +5078,10 @@ function rpgDrawPlayer(){
   if(p.invulT>0&&(uiTime*10|0)%2===0) ctx.globalAlpha=0.45;   // 피격 무적 깜빡임
   if((p.dashT||0)>0){ ctx.strokeStyle="rgba(143,208,255,0.8)"; ctx.beginPath(); ctx.arc(0,-4,22,0,Math.PI*2); ctx.stroke(); }
   ctx.fillStyle="rgba(0,0,0,0.25)"; ctx.beginPath(); ctx.ellipse(0,13,15,6,0,0,Math.PI*2); ctx.fill();
+  const _at=(p.attackT||0)/0.18;   // QUALITY-1: 공격 전진 런지 + 가로 스트레치(휘두르는 무게감)
+  if(_at>0) ctx.translate(Math.cos(p.facing)*6*_at, Math.sin(p.facing)*6*_at);
   const _sq=(p.squashT||0)/0.18;   // 피격 스쿼시+유휴 호흡(주스 ④⑥)
-  ctx.scale(1+0.12*_sq,(1-0.16*_sq)*(p.moving?1:1+0.02*Math.sin(uiTime*2.4)));
+  ctx.scale((1+0.12*_sq)*(1+0.10*_at),(1-0.16*_sq)*(p.moving?1:1+0.02*Math.sin(uiTime*2.4)));
   const drew=drawCharacterSprite("student_03", 16, p.facing, { moving:p.moving, attacking:(p.attackT||0)>0 });
   if(!drew){ ctx.fillStyle="#ffd93d"; ctx.beginPath(); ctx.arc(0,-4,15,0,Math.PI*2); ctx.fill();
     ctx.font="15px sans-serif"; ctx.textAlign="center"; ctx.fillText("🐱",0,2); ctx.textAlign="left"; }
@@ -5452,7 +5482,7 @@ function rpgRender(){
   }
   const ents=[];
   for(const n of RPG.npcsOnMap){ if(rpgOnScreen(n.x,n.y)) ents.push({ y:n.y, k:"n", a:n }); }
-  for(const mob of RPG.mobs){ if(!mob.dead&&rpgOnScreen(mob.x,mob.y)) ents.push({ y:mob.y, k:"m", a:mob }); }
+  for(const mob of RPG.mobs){ if((!mob.dead||(mob.deadT||0)>0)&&rpgOnScreen(mob.x,mob.y)) ents.push({ y:mob.y, k:"m", a:mob }); }   // QUALITY-1: 사망 팝 동안 계속 렌더
   ents.push({ y:RPG.p.y, k:"p", a:null });
   ents.sort(function(a,b){ return a.y-b.y; });
   for(const e of ents){ if(e.k==="n") rpgDrawNpc(e.a); else if(e.k==="m") rpgDrawMob(e.a); else rpgDrawPlayer(); }
@@ -5474,10 +5504,12 @@ function rpgRender(){
     ctx.globalAlpha=Math.min(1,f.t*2);
     if(f.kind==="dot"){ ctx.fillStyle=f.color||"#ffffff"; ctx.beginPath(); ctx.arc(f.x,f.y,f.size||3,0,Math.PI*2); ctx.fill(); }
     else if(f.kind==="star"){ ctx.fillStyle=f.color||"#ffe066"; ctx.font=(f.size||13)+"px sans-serif"; ctx.textAlign="center"; ctx.fillText("✦",f.x,f.y); ctx.textAlign="left"; }
-    else if(f.kind==="ring"){ const pr=1-f.t/0.6; ctx.strokeStyle="rgba(255,224,102,"+(1-pr).toFixed(2)+")"; ctx.lineWidth=4;
+    else if(f.kind==="ring"){ const pr=1-f.t/0.6; ctx.strokeStyle=f.color?hexA(f.color,1-pr):"rgba(255,224,102,"+(1-pr).toFixed(2)+")"; ctx.lineWidth=4;
       ctx.beginPath(); ctx.arc(f.x,f.y,20+pr*90,0,Math.PI*2); ctx.stroke(); ctx.lineWidth=1; }
-    else { ctx.fillStyle=f.color||"#ffffff"; ctx.font="bold "+(f.size||16)+"px 'Malgun Gothic',sans-serif"; ctx.textAlign="center";
-      ctx.fillText(f.text,f.x,f.y); ctx.textAlign="left"; }
+    else { const pk=(f.pop&&f.life)?(1+0.55*Math.max(0,Math.min(1,(f.t-f.life+0.16)/0.16))):1;   // QUALITY-1: 팝인
+      ctx.font="bold "+Math.round((f.size||16)*pk)+"px 'Malgun Gothic',sans-serif"; ctx.textAlign="center";
+      ctx.lineWidth=3; ctx.strokeStyle="rgba(10,8,26,0.85)"; ctx.strokeText(f.text,f.x,f.y);   // 검은 외곽선(밝은 배경 가독성)
+      ctx.fillStyle=f.color||"#ffffff"; ctx.fillText(f.text,f.x,f.y); ctx.textAlign="left"; ctx.lineWidth=1; }
     ctx.globalAlpha=1;
   }
   if(RPG.ui==="field"){   // 추적 퀘스트 방향 화살표(§6 — 대상이 이 맵에 있을 때, 멀면 표시)
@@ -5526,6 +5558,7 @@ function rpgRender(){
     ctx.strokeRect(29,75,1222,566); ctx.lineWidth=1;
   }
   if(RPG.veil){ ctx.fillStyle="rgba(6,4,18,0.5)"; ctx.fillRect(0,64,LOGW,LOGH-92); }   // 보스 3페이즈: 먹구름 장막
+  if((RPG.flashT||0)>0){ ctx.fillStyle="rgba(255,255,255,"+((RPG.flashT/0.2)*0.22).toFixed(3)+")"; ctx.fillRect(24,70,1232,576); }   // QUALITY-1: 축하/전환 전신 플래시
   rpgDrawHUD();
   if(RPG.ui==="dialog") rpgDrawDialog();
   else if(RPG.ui==="shop") rpgDrawShop();
