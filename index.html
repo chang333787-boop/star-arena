@@ -5063,8 +5063,14 @@ function rpgBuildLayer(){   // 정적 타일 오프스크린 1회 합성(§11-4)
   for(const o of (RPG.map.objects||[])){ const x=o.tx*56, y=o.ty*56;
     if(o.type==="vein"){ if(veinImg){ g.drawImage(veinImg,x,y,56,56); continue; } if(crysImg){ g.drawImage(crysImg,x+4,y-8,48,62); continue; } }
     if(o.type==="chest"&&boxImg){ g.drawImage(boxImg,x+6,y+4,44,48); continue; }
-    if(o.type==="camp"&&rockImg){ g.drawImage(rockImg,x+6,y+8,44,44);
-      g.font="20px sans-serif"; g.textAlign="center"; g.fillText("🔥", x+28, y+22); g.textAlign="left"; continue; }
+    if(o.type==="camp"){   // ASSET: 모닥불 = 절차적 장작 교차 + 불꽃 스프라이트[13,8](빛은 rpgRender glow 패스) — 이모지 🔥 대체
+      g.fillStyle="rgba(0,0,0,0.18)"; g.beginPath(); g.ellipse(x+28,y+46,17,6,0,0,Math.PI*2); g.fill();
+      g.strokeStyle="#6b4a2b"; g.lineWidth=6; g.lineCap="round";
+      g.beginPath(); g.moveTo(x+15,y+44); g.lineTo(x+41,y+37); g.moveTo(x+41,y+44); g.lineTo(x+15,y+37); g.stroke();   // 장작 X
+      g.strokeStyle="#8a6338"; g.lineWidth=2; g.beginPath(); g.moveTo(x+15,y+41); g.lineTo(x+41,y+40); g.stroke();       // 하이라이트
+      g.lineCap="butt"; g.lineWidth=1;
+      if(!rpgSheetDraw(g, [13,8], x+12, y+1, 32) && rockImg){ g.drawImage(rockImg,x+6,y+8,44,44); g.font="20px sans-serif"; g.textAlign="center"; g.fillText("🔥", x+28, y+22); g.textAlign="left"; }
+      continue; }
     if(o.type==="egg"){   // 챕터 최대 여백 — 크게, 은은한 빛
       g.fillStyle="rgba(255,224,150,0.18)"; g.beginPath(); g.arc(x+28,y+24,34,0,Math.PI*2); g.fill();
       g.fillStyle="#e8e0f5"; g.beginPath(); g.ellipse(x+28,y+26,17,23,0,0,Math.PI*2); g.fill();
