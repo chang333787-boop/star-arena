@@ -5055,16 +5055,27 @@ function rpgBuildLayer(){   // 정적 타일 오프스크린 1회 합성(§11-4)
 }
 function rpgDrawNpc(n){
   const npc=rpgFind("npcs",n.id);
+  const col=(npc&&npc.color)||"#8fd0ff";
   ctx.save(); ctx.translate(n.x,n.y);
   ctx.fillStyle="rgba(0,0,0,0.25)"; ctx.beginPath(); ctx.ellipse(0,14,16,6,0,0,Math.PI*2); ctx.fill();
+  ctx.save(); ctx.globalAlpha=0.22; ctx.fillStyle=col; ctx.beginPath(); ctx.ellipse(0,14,20,7,0,0,Math.PI*2); ctx.fill(); ctx.restore();   // QUALITY-2: 역할 컬러 접지 링
+  ctx.save();   // QUALITY-2: 유휴 호흡 bob+스쿼시(몹·플레이어와 통일 — 마을이 살아있게)
+  const _b=Math.sin(uiTime*2.1 + n.x*0.13 + n.y*0.07);
+  ctx.translate(0,14); ctx.scale(1+0.014*_b, 1-0.02*Math.abs(_b)); ctx.translate(0,-14-Math.max(0,_b)*1.2);
   const drew=rpgSheetDraw(ctx, RPG_NPC_SHEET[n.id], -22, -30, 44, "rpg_char");   // 공개 에셋 NPC(CC0)
   if(!drew){
-    ctx.fillStyle=(npc&&npc.color)||"#8fd0ff"; ctx.beginPath(); ctx.arc(0,-4,16,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle=col; ctx.beginPath(); ctx.arc(0,-4,16,0,Math.PI*2); ctx.fill();
     ctx.strokeStyle="rgba(255,255,255,0.5)"; ctx.stroke();
     ctx.font="17px sans-serif"; ctx.textAlign="center"; ctx.fillText((npc&&npc.emoji)||"🙂", 0, 3);
   }
-  ctx.textAlign="center";
-  ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#ffffff"; ctx.fillText(npc?npc.name:n.id, 0, -28);
+  ctx.restore();
+  // QUALITY-2: 이름표 pill+암색 외곽선+역할색(몹과 통일·가독성)
+  const nm=npc?npc.name:n.id;
+  ctx.textAlign="center"; ctx.font="bold 13px 'Malgun Gothic',sans-serif";
+  const nw=ctx.measureText(nm).width;
+  ctx.fillStyle="rgba(0,0,0,0.45)"; roundRect(-nw/2-7,-41,nw+14,17,8); ctx.fill();
+  ctx.lineWidth=3; ctx.strokeStyle="#0a081a"; ctx.strokeText(nm,0,-29);
+  ctx.fillStyle=col; ctx.fillText(nm,0,-29); ctx.lineWidth=1;
   const mk=rpgNpcMarker(n.id);   // 퀘스트 마커(❗새 부탁 · ❓보고 · …진행)
   if(mk){ ctx.font="bold 22px sans-serif";
     ctx.fillStyle=(mk==="❗")?"#ffd93d":(mk==="❓"?"#8fdba0":"#bfb6dd");
@@ -5569,6 +5580,18 @@ function rpgRender(){
     const sw=Math.min(RPG.layer.width-sx,1232+112), sh=Math.min(RPG.layer.height-sy,576+112);
     if(sw>0&&sh>0) ctx.drawImage(RPG.layer, sx,sy,sw,sh, sx,sy,sw,sh);
   }
+  // QUALITY-2: 별광맥·화톳불 가법 발광(라이트풀) — 요새 어둠 속 온광원·마법자원 시인성. 대상 소수+화면컬링이라 저비용.
+  { ctx.save(); ctx.globalCompositeOperation="lighter";
+    const _glow=function(cx,cy,R,br,bg,bb){ const p=0.85+0.15*Math.sin(uiTime*3+cx*0.05), rr=R*p;
+      const gr=ctx.createRadialGradient(cx,cy,4,cx,cy,rr); gr.addColorStop(0,"rgba("+br+","+bg+","+bb+",0.5)"); gr.addColorStop(1,"rgba("+br+","+bg+","+bb+",0)");
+      ctx.fillStyle=gr; ctx.beginPath(); ctx.arc(cx,cy,rr,0,Math.PI*2); ctx.fill(); };
+    for(const o of (RPG.objects||[])){ const cx=(o.tx+0.5)*56, cy=(o.ty+0.5)*56; if(!rpgOnScreen(cx,cy)) continue;
+      if(o.type==="camp"||o.type==="stove") _glow(cx,cy,90,255,150,60);
+      else if(o.type==="vein") _glow(cx,cy,70,130,200,255); }
+    const c0=Math.max(0,((RPG.cam.x/56)|0)-1), c1=Math.min(RPG.cols-1,(((RPG.cam.x+1232)/56)|0)+1);
+    const r0=Math.max(0,((RPG.cam.y/56)|0)-1), r1=Math.min(RPG.rows-1,(((RPG.cam.y+576)/56)|0)+1);
+    for(let rr=r0;rr<=r1;rr++){ const row=RPG.grid[rr]; if(!row) continue; for(let cc=c0;cc<=c1;cc++){ if(row[cc]==="V") _glow((cc+0.5)*56,(rr+0.5)*56,66,130,200,255); } }
+    ctx.restore(); }
   const _soil=rpgSoil();   // 밭 상태(경작 줄·젖음·작물 단계 — §5.2)
   for(let i=0;i<_soil.length;i++){
     const cell=RPG.save.farm[i]; if(!cell) continue;
