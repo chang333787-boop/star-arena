@@ -5151,7 +5151,9 @@ function rpgDrawHUD(){
   ctx.textAlign="left";
   ctx.fillStyle="rgba(255,255,255,0.12)"; roundRect(LOGW-136,10,116,42,10); ctx.fill();
   ctx.font="bold 15px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#ffffff"; ctx.fillText("🎒 가방", LOGW-118, 37);
-  const hint=RPG.ctxTarget?((RPG.ctxTarget.kind==="npc")?"Space: 대화하기":(RPG.ctxTarget.kind==="farm"?("Space: "+RPG.ctxTarget.farm.label):"Space: 살펴보기")):"방향키 이동 · Z 공격 · X 기술 · Space 상호작용 · I 가방 · B 도감 · M 지도 · Q 사탕 · Esc 나가기";
+  const _tc=controlMode()==="touch";   // QUALITY-1: 터치 모드면 화면 버튼에 맞는 안내로 분기(초등·태블릿)
+  const hint=RPG.ctxTarget?((RPG.ctxTarget.kind==="npc")?(_tc?"💬 버튼: 대화하기":"Space: 대화하기"):(RPG.ctxTarget.kind==="farm"?((_tc?"👆 ":"Space: ")+RPG.ctxTarget.farm.label):(_tc?"👀 버튼: 살펴보기":"Space: 살펴보기")))
+    :(_tc?"왼쪽 눌러 이동 · ⚔️ 공격 · 💬 상호작용 · 🎒 가방 · 🗺 지도 · 🍬 사탕":"방향키 이동 · Z 공격 · X 기술 · Space 상호작용 · I 가방 · B 도감 · M 지도 · Q 사탕 · Esc 나가기");
   ctx.fillStyle="rgba(10,12,32,0.6)"; ctx.fillRect(0,LOGH-28,LOGW,28);
   ctx.fillStyle="#bfb6dd"; ctx.font="13px 'Malgun Gothic',sans-serif"; ctx.fillText(hint, 24, LOGH-9);
   ctx.textAlign="right"; ctx.fillStyle="#e8a0a0"; ctx.font="bold 13px 'Malgun Gothic',sans-serif";
