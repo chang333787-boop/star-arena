@@ -4964,6 +4964,20 @@ function rpgBuildLayer(){   // 정적 타일 오프스크린 1회 합성(§11-4)
     const ch=RPG.grid[r][c], x=c*56, y=r*56;
     if(floorImg) g.drawImage(floorImg,x,y,56,56);
     else if(((r+c)&1)===0){ g.fillStyle="rgba(255,255,255,0.025)"; g.fillRect(x,y,56,56); }
+    // QUALITY-2: 절차적 바닥 디테일(grass 테마·걷는 바닥만·베이크 1회, 결정적 해시로 안정 배치). 야외맵 단조로움 해소.
+    if(grassy && "~fTB#CV".indexOf(ch)<0){
+      const hsh=((r*374761393)^(c*668265263))>>>0, q=function(k){ return ((hsh>>(k*4))&15)/15; };
+      if(theme==="forest_rain" && q(0)>0.86){ g.fillStyle="rgba(18,30,20,0.16)"; g.beginPath(); g.ellipse(x+28,y+26,34,26,0,0,Math.PI*2); g.fill(); }   // 나무 캐노피 그늘(숲 분위기)
+      g.fillStyle="rgba(255,255,255,"+(0.015+q(1)*0.045).toFixed(3)+")"; g.fillRect(x+q(2)*40,y+q(3)*40,9+q(4)*13,9+q(5)*13);   // 잔디 명암 얼룩
+      if(q(3)>0.48){ g.strokeStyle=(theme==="forest_rain")?"rgba(110,160,105,0.5)":"rgba(150,210,130,0.55)"; g.lineWidth=1.4;   // 잔디 포기
+        const gx=x+8+q(4)*40, gy=y+40+q(5)*10; g.beginPath(); g.moveTo(gx,gy); g.lineTo(gx-3,gy-7); g.moveTo(gx,gy); g.lineTo(gx+3,gy-7); g.stroke(); g.lineWidth=1; }
+      if(theme==="village_meadow" && q(6)>0.8){ const fc=["#ff9ec2","#ffe066","#c9a8ff","#8fd0ff"][(hsh>>3)&3], fx=x+10+q(2)*36, fy=y+10+q(3)*36;   // 들꽃
+        g.fillStyle=fc; g.beginPath(); g.arc(fx,fy,2.6,0,Math.PI*2); g.fill(); g.fillStyle="#fffbe0"; g.beginPath(); g.arc(fx,fy,1,0,Math.PI*2); g.fill(); }
+      else if(theme==="forest_rain" && q(6)>0.78){ g.fillStyle=["#c98a4a","#9c6636"][(hsh>>5)&1]; const lx=x+10+q(2)*36, ly=y+10+q(3)*36;   // 낙엽
+        g.save(); g.translate(lx,ly); g.rotate(q(4)*6); g.beginPath(); g.ellipse(0,0,4,2,0,0,Math.PI*2); g.fill(); g.restore(); }
+      else if(theme==="field_dew" && q(6)>0.83){ g.fillStyle="rgba(205,240,255,0.7)"; g.beginPath(); g.arc(x+10+q(2)*36,y+10+q(3)*36,1.6,0,Math.PI*2); g.fill(); }   // 이슬
+      if(q(7)>0.9){ g.fillStyle="rgba(110,112,130,0.5)"; g.beginPath(); g.ellipse(x+q(2)*44,y+q(3)*44,3,2,0,0,Math.PI*2); g.fill(); }   // 돌멩이
+    }
     if(ch==="~"){ g.fillStyle="#1d3a5f"; g.fillRect(x,y,56,56); g.fillStyle="rgba(255,255,255,0.16)"; g.fillRect(x+8,y+18,24,3); g.fillRect(x+26,y+40,20,3); }
     else if(ch==="f"){ g.fillStyle="#5a4023"; g.fillRect(x+3,y+3,50,50); g.strokeStyle="rgba(0,0,0,0.3)"; g.strokeRect(x+3.5,y+3.5,49,49); }
     else if(ch==="T"){
@@ -4984,7 +4998,9 @@ function rpgBuildLayer(){   // 정적 타일 오프스크린 1회 합성(§11-4)
     else if(ch==="V"){ if(veinImg) g.drawImage(veinImg,x,y,56,56); else if(crysImg) g.drawImage(crysImg,x+4,y-8,48,62); }
     if((theme==="den_cloud")&&(ch==="T"||ch==="B"||ch==="#")){ g.fillStyle="rgba(24,12,46,0.62)"; g.fillRect(x,y,56,56); }   // 요새 벽 = 먹구름 톤
   }
-  if(theme==="forest_rain"){ g.fillStyle="rgba(40,60,100,0.12)"; g.fillRect(0,0,cvs.width,cvs.height); }   // 가랑비 톤
+  if(theme==="village_meadow"){ g.fillStyle="rgba(255,214,120,0.055)"; g.fillRect(0,0,cvs.width,cvs.height); }   // QUALITY-2: 마을=따뜻한 햇살 톤(세 초록맵 차별화)
+  if(theme==="field_dew"){ g.fillStyle="rgba(150,255,205,0.05)"; g.fillRect(0,0,cvs.width,cvs.height); }   // 들판=상큼한 이슬 톤
+  if(theme==="forest_rain"){ g.fillStyle="rgba(40,60,100,0.14)"; g.fillRect(0,0,cvs.width,cvs.height); }   // 가랑비=푸른 톤
   if(theme==="den_cloud"){ g.fillStyle="rgba(10,6,26,0.25)"; g.fillRect(0,0,cvs.width,cvs.height); }
   const _signSeen={};
   for(const w of (RPG.map.portals||[])){ const x=w.at[0]*56, y=w.at[1]*56;
