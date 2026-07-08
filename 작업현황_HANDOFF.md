@@ -7,7 +7,8 @@
 ### 🎮 RPG 1장 인디 퀄리티 개선 (2026-07-08, 배치1~3 배포 · 커밋 7e0097b)
 - **울트라코드 12에이전트**(8요소 분석+3철학 토론+디렉터 종합) 로드맵: doNow 14항목. 핵심 통찰 = juice 인프라(rpgCelebrate/fx/hitstop/flash/배너)가 이미 있는데 '결정적 순간'에 미배선 + secret·개그대사·여백이 데이터로만 존재. 전체 결과: `/private/tmp/.../tasks/wuw59mm48.output`.
 - **구현 완료(10/14, 커밋 ff0f575·d1f6fa5·7e0097b)**: 배치1 전투손맛(사망 팝 deadT·타격 스파크·대미지 숫자 팝+외곽선·공격 런지·햅틱·rpgCelebrate/flashT 기반) · 배치2 보스·축하(보스 대형체력바+페이즈눈금·페이즈 스펙터클+개그 전체노출·전직 팡파레·엔딩 별빛축제 불꽃) · 배치3 대사창 초상+화자색+워드랩(하드컷 버그 수정)·테마별 환경파티클(가랑비=비+반딧불 등).
-- **잔여 doNow(4)**: #7 터치 조작안내 입력분기(rpgDrawHUD 힌트 5129·튜토리얼·controlMode) · #14 상점/인벤 아이템 한줄설명(rpgDrawShop/Inven, rpgShopRows의 id 필요) · #8 secret·여백 오브젝트 발견 배선(rpgUseObject/rpgTalkTo + **wiki 편집→inject_db.py→verify→RPG harness**) · #9 들판 첫순찰 사이드퀘(sq_patrol, **mq 체인 requires/unlocks에 넣지 말 것**·giver 트리거만·wiki+inject). 보류: #10 미세 화면킥(멀미 리스크·SHAKE_PX 게이트·실기기 QA 후). doNext 12항목(보스 시그니처기·따라오는 젤리·일기 수집·미니맵 등)은 후속.
+- **배치4 완료(2026-07-08, 커밋 c0e8bc7)**: #7 터치 조작안내 입력분기 · #14 상점/인벤 아이템 한줄설명(rpgItemDescLine) · #8 NPC 비밀 배선(rpgTalkTo idle 3회째 secret 1회 공개, flag 게이트) · #9 들판 순찰 사이드퀘(sq_patrol: 피코·젤리3·사탕2, requires mq02·giver트리거만, wiki+대사→inject 재주입). 회귀수정: 로비 별빛마을 추가로 깨졌던 harness_online(온라인 row9)·fixed_loadout(MENU_ROWS14) 단언 갱신.
+- **doNow 완료 = 13/14** (#1~#14 중 #10 미세 화면킥만 보류). **잔여**: #8 여백 오브젝트(알·우물·지하실 — 맵 objects 배치 필요라 doNext) · #10 미세 화면킥(멀미 리스크·SHAKE_PX 게이트·실기기 QA 후). doNext 12항목(보스 시그니처 재채기소나기·따라오는 젤리·할머니 일기 수집·컷신 레터박스·미니맵·맵전환 페이드·도감 5탭·Lv2 스킬 등)은 후속 패스.
 - 원칙: 연출/런타임은 RPG.* 만(profile.rpg 세이브 금지), 데이터는 wiki→inject, 아레나/플랫포머 비접촉.
 
 ### 🟢 3v3 온라인 WebRTC 전송 — Phase 1 구현·검증 완료 (2026-07-07)
