@@ -4978,7 +4978,16 @@ function rpgBuildLayer(){   // 정적 타일 오프스크린 1회 합성(§11-4)
       else if(theme==="field_dew" && q(6)>0.83){ g.fillStyle="rgba(205,240,255,0.7)"; g.beginPath(); g.arc(x+10+q(2)*36,y+10+q(3)*36,1.6,0,Math.PI*2); g.fill(); }   // 이슬
       if(q(7)>0.9){ g.fillStyle="rgba(110,112,130,0.5)"; g.beginPath(); g.ellipse(x+q(2)*44,y+q(3)*44,3,2,0,0,Math.PI*2); g.fill(); }   // 돌멩이
     }
-    if(ch==="~"){ g.fillStyle="#1d3a5f"; g.fillRect(x,y,56,56); g.fillStyle="rgba(255,255,255,0.16)"; g.fillRect(x+8,y+18,24,3); g.fillRect(x+26,y+40,20,3); }
+    if(ch==="~"){   // QUALITY-2: 물 깊이 그라데이션 + 기슭 거품(이웃이 물 아닌 변)
+      const wg=g.createLinearGradient(0,y,0,y+56); wg.addColorStop(0,theme==="forest_rain"?"#243f5e":"#2a5378"); wg.addColorStop(1,theme==="forest_rain"?"#13253d":"#16304f");
+      g.fillStyle=wg; g.fillRect(x,y,56,56);
+      g.fillStyle="rgba(255,255,255,0.12)"; g.fillRect(x+8,y+18,24,3); g.fillRect(x+26,y+40,20,3);
+      const gr=RPG.grid; g.fillStyle="rgba(210,235,255,0.3)";
+      if(r>0&&gr[r-1][c]!=="~") g.fillRect(x+2,y+2,52,4);
+      if(r<RPG.rows-1&&gr[r+1][c]!=="~") g.fillRect(x+2,y+50,52,4);
+      if(c>0&&gr[r][c-1]!=="~") g.fillRect(x+2,y+2,4,52);
+      if(c<RPG.cols-1&&gr[r][c+1]!=="~") g.fillRect(x+50,y+2,4,52);
+    }
     else if(ch==="f"){ g.fillStyle="#5a4023"; g.fillRect(x+3,y+3,50,50); g.strokeStyle="rgba(0,0,0,0.3)"; g.strokeRect(x+3.5,y+3.5,49,49); }
     else if(ch==="T"){
       if(grassy&&bushImg) g.drawImage(bushImg,x-2,y-6,60,62);
@@ -5592,6 +5601,13 @@ function rpgRender(){
     const r0=Math.max(0,((RPG.cam.y/56)|0)-1), r1=Math.min(RPG.rows-1,(((RPG.cam.y+576)/56)|0)+1);
     for(let rr=r0;rr<=r1;rr++){ const row=RPG.grid[rr]; if(!row) continue; for(let cc=c0;cc<=c1;cc++){ if(row[cc]==="V") _glow((cc+0.5)*56,(rr+0.5)*56,66,130,200,255); } }
     ctx.restore(); }
+  // QUALITY-2: 물 시머 — 흐르는 하이라이트 밴드로 물결감(화면 내 물 타일만 스캔)
+  { const c0=Math.max(0,((RPG.cam.x/56)|0)-1), c1=Math.min(RPG.cols-1,(((RPG.cam.x+1232)/56)|0)+1);
+    const r0=Math.max(0,((RPG.cam.y/56)|0)-1), r1=Math.min(RPG.rows-1,(((RPG.cam.y+576)/56)|0)+1);
+    for(let rr=r0;rr<=r1;rr++){ const row=RPG.grid[rr]; if(!row) continue; for(let cc=c0;cc<=c1;cc++){ if(row[cc]!=="~") continue;
+      const x=cc*56, y=rr*56, off=((uiTime*10+rr*13)%50);
+      ctx.fillStyle="rgba(190,225,255,"+(0.06+0.05*Math.sin(uiTime*1.6+cc*0.7+rr)).toFixed(3)+")";
+      ctx.fillRect(x+8,y+off,40,2); ctx.fillRect(x+8,y+((off+25)%50),40,2); } } }
   const _soil=rpgSoil();   // 밭 상태(경작 줄·젖음·작물 단계 — §5.2)
   for(let i=0;i<_soil.length;i++){
     const cell=RPG.save.farm[i]; if(!cell) continue;
