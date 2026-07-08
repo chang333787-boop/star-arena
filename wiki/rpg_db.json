@@ -1054,6 +1054,31 @@
    "dialogStart": "",
    "dialogEnd": "",
    "nextHint": ""
+  },
+  {
+   "id": "sq_patrol",
+   "name": "들판 순찰",
+   "giver": "npc_pico",
+   "goal": {
+    "type": "kill",
+    "target": "mob_jelly",
+    "count": 3,
+    "item": null,
+    "to": null
+   },
+   "reward": {
+    "exp": 25,
+    "gold": 20,
+    "itemId": "it_jelly_candy",
+    "itemCount": 2
+   },
+   "requires": [
+    "mq02"
+   ],
+   "unlocks": [],
+   "dialogStart": "",
+   "dialogEnd": "",
+   "nextHint": ""
   }
  ],
  "npcs": [

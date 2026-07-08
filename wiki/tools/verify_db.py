@@ -43,8 +43,8 @@ REWARDABLE = EQUIPPABLE | set(C)               # reward.itemId 대상(crop=씨�
 
 # ── 0. 테이블 행 수 ──────────────────────────────────────────────
 section("0. 테이블 행 수")
-for tbl, want in [("monsters", 8), ("weapons", 7), ("armors", 6), ("items", 9),
-                  ("skills", 6), ("jobs", 3), ("crops", 6), ("quests", 10), ("npcs", 6)]:
+for tbl, want in [("monsters", 8), ("weapons", 7), ("armors", 6), ("items", 10),
+                  ("skills", 6), ("jobs", 3), ("crops", 6), ("quests", 11), ("npcs", 6)]:
     got = len(db[tbl])
     check(got == want, "%s: %d행 (기대 %d)" % (tbl, got, want))
     print("  %-9s %d행 %s" % (tbl, got, "OK" if got == want else "!! 기대 " + str(want)))

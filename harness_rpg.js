@@ -84,8 +84,8 @@ function clearIntro(){ for(let i=0;i<8&&R.RPG&&R.RPG.dialog;i++) drainDialog(80)
 console.log("=== RPG-1) 데이터 무결성(T1 축소판) ===");
 run("데이터", ()=>{
   const db=R.rpgDb();
-  check("테이블 규모: 맵10·몬스터8·도구7·작물6·NPC6·퀘스트10",
-    db.maps.length===10&&db.monsters.length===8&&db.weapons.length===7&&db.crops.length===6&&db.npcs.length===6&&db.quests.length===10);
+  check("테이블 규모: 맵10·몬스터8·도구7·작물6·NPC6·퀘스트11",
+    db.maps.length===10&&db.monsters.length===8&&db.weapons.length===7&&db.crops.length===6&&db.npcs.length===6&&db.quests.length===11);
   let ghost=0;
   for(const n of db.npcs) for(const s of (n.shop||[])){ const ref=s.itemRef||s; if(!R.rpgItemAny(ref)) ghost++; }
   for(const mo of db.monsters) for(const d of (mo.drops||[])){ if(!R.rpgItemAny(d.itemId)) ghost++; }
@@ -473,7 +473,7 @@ run("경제·경험치 총량(§3.1 단일 출처)", ()=>{
   const mainExp=qs.filter(q=>q.id[0]==="m").reduce((a,q)=>a+q.reward.exp,0);
   const sideExp=qs.filter(q=>q.id[0]==="s").reduce((a,q)=>a+q.reward.exp,0);
   const mainG=qs.filter(q=>q.id[0]==="m").reduce((a,q)=>a+(q.reward.gold||0),0);
-  check("퀘스트 exp 600+130 · 골드 460+120", mainExp===600&&sideExp===130&&mainG===460&&qs.filter(q=>q.id[0]==="s").reduce((a,q)=>a+(q.reward.gold||0),0)===120);
+  check("퀘스트 exp 600+155 · 골드 460+140", mainExp===600&&sideExp===155&&mainG===460&&qs.filter(q=>q.id[0]==="s").reduce((a,q)=>a+(q.reward.gold||0),0)===140);
 });
 run("mq01 도착: 자동 시작→촌장 대화=완료·호미·씨앗5", ()=>{
   R.profile.rpg=null; R.rpgEnter();

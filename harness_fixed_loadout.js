@@ -117,7 +117,7 @@ run("학생 캐릭터 선택은 그대로 유지", ()=>{
 
 console.log("=== 5) 로비/상점 구조 ===");
 run("메뉴 13행(3층 IA + 맵공방 + 별빛 점프) + 상점 비활성", ()=>{
-  check("MENU_ROWS=13(+별빛 점프)", api.MENU_ROWS===13);
+  check("MENU_ROWS=14(+별빛 점프·별빛 마을)", api.MENU_ROWS===14);
   check("SHOP_ENABLED=false", api.SHOP_ENABLED===false);
 });
 run("아군 봇도 학생 캐릭터 + 고정 무기", ()=>{
