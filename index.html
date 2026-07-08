@@ -4107,7 +4107,8 @@ function rpgQuestComplete(q){
   if(q.id==="mq06") sv.flags.raidOn=0;
   if(q.id==="mq07"){   // 챕터 1 엔딩(§3.1): 별빛 귀환·마을 축제
     const end=(rpgDb().dialogs.ending||[]).slice();
-    if(end.length) rpgOpenDialog(null, end, { onDone:function(){ showToast("🎆 별빛이 돌아왔다! 챕터 1 완결!"); } });
+    if(end.length) rpgOpenDialog(null, end, { onDone:function(){ RPG.festival={t:0,parts:[],spawn:0}; rpgCelebrate(RPG.p.x,RPG.p.y,"#ffd93d",2.2); } });   // QUALITY-1: 엔딩 축제
+    else { RPG.festival={t:0,parts:[],spawn:0}; }
   }
   rpgPersist();
 }
@@ -4130,7 +4131,9 @@ function rpgQuestOnKill(mobId){
         for(const skid of (j.grantSkills||[])) if(sv.skills.indexOf(skid)<0) sv.skills.push(skid);
         delete sv.flags.trialJob; delete sv.flags.trialN;
         sv.hp=rpgMaxHpFor(sv);
-        showToast("🎊 전직 완료: "+j.name+"! (V로 기술 바꾸기)");
+        const jc=(j.id==="job_swordsman")?"#6ea0ff":((j.id==="job_hunter")?"#5fd39a":"#ffd85a");   // QUALITY-1: 전직 팡파레
+        rpgCelebrate(RPG.p.x,RPG.p.y,jc,2); rpgBanner("🎊 전직! "+j.name);
+        showToast("전직 완료: "+j.name+"! (V로 기술 바꾸기)");
         playSfx("clear"); rpgPersist();
       }
     }
@@ -4488,6 +4491,12 @@ function rpgUpdate(dt){
   RPG.p.squashT=Math.max(0,(RPG.p.squashT||0)-dt);
   RPG.vignT=Math.max(0,(RPG.vignT||0)-dt); RPG.shakeT=Math.max(0,(RPG.shakeT||0)-dt);   // 비네트·흔들림 감쇠(POLISH-2)
   RPG.flashT=Math.max(0,(RPG.flashT||0)-dt);   // QUALITY-1: 전신 플래시 감쇠
+  if(RPG.festival){ const F=RPG.festival; F.t+=dt; F.spawn=(F.spawn||0)-dt;   // QUALITY-1: 엔딩 불꽃 축제
+    if(F.spawn<=0 && F.t<5.5){ F.spawn=rand(0.22,0.45); const cols=["#ffd93d","#ff8fbf","#8fd0ff","#8ff0b0","#c9a8ff"], col=cols[Math.floor(rand(0,cols.length))]; const cx=rand(160,LOGW-160), cy=rand(130,420);
+      for(let i=0;i<14;i++){ const a=rand(0,Math.PI*2), sp=rand(60,220); F.parts.push({x:cx,y:cy,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,t:rand(0.7,1.4),col:col}); } }
+    for(const q of F.parts){ q.t-=dt; q.x+=q.vx*dt; q.y+=q.vy*dt; q.vy+=130*dt; }
+    F.parts=F.parts.filter(q=>q.t>0);
+    if(F.t>6.5 && F.parts.length===0) RPG.festival=null; }
   if(RPG.swing&&(RPG.swing.t-=dt)<=0) RPG.swing=null;
   if((RPG.hitstop||0)>0){ RPG.hitstop=Math.max(0,RPG.hitstop-dt); return; }   // 히트스톱: 월드 정지(주스 ②)
   let mx=0,my=0;
@@ -4563,7 +4572,10 @@ function rpgMobUpdate(mob,dt){
     if(ph!==mob.phase){
       mob.phase=ph;
       const bl=(rpgDb().dialogs.boss||{})["phase"+(ph+1)];
-      if(bl&&bl.length) showToast("☁️ "+bl[0]);
+      if(bl&&bl.length){ rpgBanner("☁️ "+bl[0]);   // QUALITY-1: 1줄 배너(가독) + 나머지 개그줄 fx 텍스트(전투 비중단)
+        for(let bi=1;bi<bl.length;bi++) RPG.fx.push({x:mob.x,y:mob.y-64-bi*24,t:2.6,life:2.6,text:bl[bi],color:"#e6dcff",size:15}); }
+      RPG.hitstop=Math.max(RPG.hitstop||0,0.35); RPG.flashT=Math.max(RPG.flashT||0,0.18); RPG.shakeT=Math.max(RPG.shakeT||0,0.14); mob.hitT=0.3;   // 판 전환 임팩트
+      rpgCelebrate(mob.x,mob.y,"#b39ddb",1.4);
       playSfx("hit");
     }
     mob._patterns=def.phases[ph].patterns||def.pattern;
@@ -5055,7 +5067,7 @@ function rpgDrawMob(mob){
   ctx.restore();
   ctx.textAlign="center";
   if(mob.state==="warn"){ ctx.fillStyle="#ff5d5d"; ctx.font="bold 22px sans-serif"; ctx.fillText("❗", 0, -mob.r-14); }
-  if(mob.hp<mob.maxHp){   // 피해 입은 몬스터만 HP바
+  if(mob.hp<mob.maxHp&&!def.isBoss){   // 피해 입은 몬스터만 HP바(보스는 상단 대형 바로 대체)
     const w=Math.max(34,mob.r*2);
     ctx.fillStyle="rgba(0,0,0,0.5)"; ctx.fillRect(-w/2,-mob.r-10,w,5);
     ctx.fillStyle="#ff8f8f"; ctx.fillRect(-w/2,-mob.r-10,w*clamp(mob.hp/mob.maxHp,0,1),5);
@@ -5121,6 +5133,19 @@ function rpgDrawHUD(){
   ctx.fillStyle="#ffe066"; ctx.font="bold 18px 'Malgun Gothic',sans-serif";
   ctx.fillText((RPG.map?RPG.map.name:"")+" · "+sv.day+"일차", LOGW/2, 26);
   ctx.fillStyle="#cfc7e8"; ctx.font="14px 'Malgun Gothic',sans-serif"; ctx.fillText(rpgTrackText(), LOGW/2, 50);
+  // QUALITY-1: 보스 전용 큰 체력바 + 페이즈 눈금(진행감·긴장감)
+  const _boss=RPG.mobs.find(function(m){ return !m.dead && m.def.isBoss; });
+  if(_boss){
+    const bw=560, bx=(LOGW-bw)/2, by=86, r=clamp(_boss.hp/_boss.maxHp,0,1);
+    ctx.fillStyle="rgba(10,8,22,0.82)"; roundRect(bx-10,by-24,bw+20,52,12); ctx.fill();
+    ctx.textAlign="center"; ctx.fillStyle="#ffe066"; ctx.font="bold 15px 'Malgun Gothic',sans-serif"; ctx.fillText("👑 "+_boss.def.name, LOGW/2, by-6);
+    ctx.fillStyle="#3a2436"; ctx.fillRect(bx,by,bw,16);
+    ctx.fillStyle="#ff6b6b"; ctx.fillRect(bx,by,bw*r,16);
+    ctx.strokeStyle="rgba(255,255,255,0.5)"; ctx.strokeRect(bx+0.5,by+0.5,bw,16);
+    ctx.strokeStyle="rgba(255,255,255,0.9)"; ctx.lineWidth=2;
+    for(const _ph of (_boss.def.phases||[])){ if(_ph.hpAbove>0&&_ph.hpAbove<1){ const gx=bx+bw*_ph.hpAbove; ctx.beginPath(); ctx.moveTo(gx,by-2); ctx.lineTo(gx,by+18); ctx.stroke(); } }
+    ctx.lineWidth=1; ctx.textAlign="left";
+  }
   ctx.textAlign="right";
   ctx.fillStyle="#ffd93d"; ctx.font="bold 17px 'Malgun Gothic',sans-serif"; ctx.fillText("💰 "+sv.gold+"G", LOGW-152, 30);
   ctx.textAlign="left";
@@ -5559,6 +5584,13 @@ function rpgRender(){
   }
   if(RPG.veil){ ctx.fillStyle="rgba(6,4,18,0.5)"; ctx.fillRect(0,64,LOGW,LOGH-92); }   // 보스 3페이즈: 먹구름 장막
   if((RPG.flashT||0)>0){ ctx.fillStyle="rgba(255,255,255,"+((RPG.flashT/0.2)*0.22).toFixed(3)+")"; ctx.fillRect(24,70,1232,576); }   // QUALITY-1: 축하/전환 전신 플래시
+  if(RPG.festival){ const F=RPG.festival;   // QUALITY-1: 엔딩 불꽃 축제(화면공간 오버레이)
+    ctx.fillStyle="rgba(28,14,54,"+(0.28*Math.min(1,F.t)).toFixed(3)+")"; ctx.fillRect(24,70,1232,576);
+    for(const q of F.parts){ ctx.globalAlpha=Math.min(1,q.t); ctx.fillStyle=q.col; ctx.fillRect(q.x-2,q.y-2,4,4); }
+    ctx.globalAlpha=Math.min(1,F.t*1.3); ctx.textAlign="center";
+    ctx.fillStyle="#ffe066"; ctx.font="bold 38px 'Malgun Gothic',sans-serif"; ctx.fillText("🎆 챕터 1 완결! 🎆", LOGW/2, 210);
+    ctx.fillStyle="#ffffff"; ctx.font="bold 18px 'Malgun Gothic',sans-serif"; ctx.fillText("별빛이 돌아왔어요 — 별빛 수호자 시고니 🐾", LOGW/2, 246);
+    ctx.textAlign="left"; ctx.globalAlpha=1; }
   rpgDrawHUD();
   if(RPG.ui==="dialog") rpgDrawDialog();
   else if(RPG.ui==="shop") rpgDrawShop();
