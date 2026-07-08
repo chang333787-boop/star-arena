@@ -4990,7 +4990,12 @@ function rpgBuildLayer(){   // 정적 타일 오프스크린 1회 합성(§11-4)
     }
     else if(ch==="f"){ g.fillStyle="#5a4023"; g.fillRect(x+3,y+3,50,50); g.strokeStyle="rgba(0,0,0,0.3)"; g.strokeRect(x+3.5,y+3.5,49,49); }
     else if(ch==="T"){
-      if(grassy&&bushImg) g.drawImage(bushImg,x-2,y-6,60,62);
+      if(grassy&&bushImg){   // QUALITY-2: 수풀 타일별 스케일/반전/오프셋 변주 + 열매 악센트(반복패턴 해소)
+        const bh=((r*374761393)^(c*668265263))>>>0, bf=(bh&8)?1:-1, bs=0.9+((bh>>4)&7)/16, byo=((bh>>8)&3)-1;
+        g.save(); g.translate(x+28,y+24+byo); g.scale(bf*bs,bs); g.drawImage(bushImg,-31,-33,62,64); g.restore();
+        if(((bh>>12)&15)>10){ g.fillStyle=(theme==="forest_rain")?["#c98a4a","#9c6636"][(bh>>3)&1]:["#e5484d","#ff8f3f"][(bh>>3)&1];
+          for(let bi=0;bi<3;bi++){ g.beginPath(); g.arc(x+18+((bh>>(bi*2))&7)*4, y+16+((bh>>(bi*2+1))&7)*3, 2, 0, Math.PI*2); g.fill(); } }
+      }
       else if(!grassy&&wallImg) g.drawImage(wallImg,x,y,56,56);
       else { g.fillStyle="#3d2c1e"; g.fillRect(x+24,y+34,8,16); g.fillStyle="#1f6b34"; g.beginPath(); g.arc(x+28,y+22,20,0,Math.PI*2); g.fill(); }
     }
@@ -5011,6 +5016,19 @@ function rpgBuildLayer(){   // 정적 타일 오프스크린 1회 합성(§11-4)
   if(theme==="field_dew"){ g.fillStyle="rgba(150,255,205,0.05)"; g.fillRect(0,0,cvs.width,cvs.height); }   // 들판=상큼한 이슬 톤
   if(theme==="forest_rain"){ g.fillStyle="rgba(40,60,100,0.14)"; g.fillRect(0,0,cvs.width,cvs.height); }   // 가랑비=푸른 톤
   if(theme==="den_cloud"){ g.fillStyle="rgba(10,6,26,0.25)"; g.fillRect(0,0,cvs.width,cvs.height); }
+  if(theme==="den_cloud"){   // QUALITY-2: 요새 돌바닥 — 자갈 명암+균열(걷는 바닥, 베이크). 스산한 돌 질감.
+    for(let r2=0;r2<RPG.rows;r2++){ const row2=RPG.grid[r2]; for(let c2=0;c2<RPG.cols;c2++){ const ch2=row2[c2]; if("~fTB#CV".indexOf(ch2)>=0) continue;
+      const x2=c2*56, y2=r2*56, hh=((r2*374761393)^(c2*668265263))>>>0, qq=function(k){ return ((hh>>(k*4))&15)/15; };
+      g.fillStyle=qq(0)>0.5?"rgba(44,40,74,0.5)":"rgba(8,6,20,0.5)"; g.beginPath(); g.ellipse(x2+qq(1)*44,y2+qq(2)*44,5+qq(3)*4,4+qq(4)*3,qq(5)*3,0,Math.PI*2); g.fill();
+      if(qq(7)>0.88){ g.strokeStyle="rgba(0,0,0,0.4)"; g.lineWidth=1.4; g.beginPath(); g.moveTo(x2+qq(1)*40,y2+qq(2)*40); g.lineTo(x2+qq(3)*40+8,y2+qq(4)*40+6); g.lineTo(x2+qq(5)*44,y2+qq(6)*30); g.stroke(); g.lineWidth=1; } } }
+  }
+  if(theme==="indoor_wood"){   // QUALITY-2: 실내 온기 — 판자 이음새+따뜻한 톤+램프광+가장자리 비네트(베이크)
+    for(let yy=56;yy<cvs.height;yy+=56){ g.strokeStyle="rgba(0,0,0,0.12)"; g.beginPath(); g.moveTo(0,yy+0.5); g.lineTo(cvs.width,yy+0.5); g.stroke(); }
+    g.fillStyle="rgba(255,180,90,0.05)"; g.fillRect(0,0,cvs.width,cvs.height);
+    const cx2=cvs.width/2, cy2=cvs.height/2, mx=Math.max(cvs.width,cvs.height);
+    const lr=g.createRadialGradient(cx2,cy2,10,cx2,cy2,mx*0.5); lr.addColorStop(0,"rgba(255,210,140,0.12)"); lr.addColorStop(1,"rgba(255,210,140,0)"); g.fillStyle=lr; g.fillRect(0,0,cvs.width,cvs.height);
+    const iv=g.createRadialGradient(cx2,cy2,Math.min(cvs.width,cvs.height)*0.3,cx2,cy2,mx*0.72); iv.addColorStop(0,"rgba(10,6,20,0)"); iv.addColorStop(1,"rgba(10,6,20,0.35)"); g.fillStyle=iv; g.fillRect(0,0,cvs.width,cvs.height);
+  }
   const _signSeen={};
   const BPAL={rpg_home:{roof:"#b0623a",sign:"🏠"},rpg_store:{roof:"#2f8f6e",sign:"🛒"},rpg_smith:{roof:"#4a4652",sign:"⚒️"},rpg_chief:{roof:"#5a5a92",sign:"🏛️"}};
   for(const w of (RPG.map.portals||[])){ const x=w.at[0]*56, y=w.at[1]*56;
