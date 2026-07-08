@@ -5102,15 +5102,28 @@ function rpgBuildLayer(){   // 정적 타일 오프스크린 1회 합성(§11-4)
       rpgSheetDraw(g, sp, x+sp[2], y+sp[3], sp[4]); continue; }
     const icon={vein:"💎"}[o.type]||"✨";
     g.font="34px sans-serif"; g.textAlign="center"; g.fillText(icon, x+28, y+40); g.textAlign="left"; }
-  if(RPG.map.id==="rpg_village"){   // POLISH-3: 기부 단계별 마을 장식(꽃밭→깃발→등불)
+  if(RPG.map.id==="rpg_village"){   // POLISH-3 + ASSET: 기부 단계별 장식(꽃밭→깃발→등불) — 이모지→CC0 스프라이트/절차적
     const dn=(RPG.save&&RPG.save.flags.donate)||0;
-    g.textAlign="center";
-    if(dn>=1){ g.font="24px sans-serif"; for(const f of [[8,6],[9,6],[10,6],[22,10],[23,10],[24,10]]) g.fillText("🌸", f[0]*56+28, f[1]*56+40); }
-    if(dn>=2){ g.font="26px sans-serif"; for(const f of [[3,6],[13,6],[23,6],[31,10]]) g.fillText("🚩", f[0]*56+28, f[1]*56+36); }
-    if(dn>=3){ for(const f of [[17,7],[19,7],[12,9],[26,7]]){
-      g.fillStyle="rgba(255,200,90,0.25)"; g.beginPath(); g.arc(f[0]*56+28,f[1]*56+28,30,0,Math.PI*2); g.fill();
-      g.font="24px sans-serif"; g.fillStyle="#ffffff"; g.fillText("🏮", f[0]*56+28, f[1]*56+38); } }
-    g.textAlign="left";
+    const FL=[[41,23],[42,23],[43,23]];   // 보라/노랑/주황 꽃
+    if(dn>=1){ for(const f of [[8,6],[9,6],[10,6],[22,10],[23,10],[24,10]]){   // 꽃밭: 칸마다 실제 꽃 3송이(색·위치 변주)
+      const bx=f[0]*56, by=f[1]*56, h=((f[0]*374761393)^(f[1]*668265263))>>>0;
+      for(let k=0;k<3;k++) rpgSheetDraw(g, FL[(f[0]+f[1]+k)%3], bx+8+k*15+((h>>(k*4))&3), by+16+((h>>(k*3))&7), 18); } }
+    if(dn>=2){ for(const f of [[3,6],[13,6],[23,6],[31,10]]){   // 별 깃발: 나무 기둥 + 초록 현수막 스프라이트
+      const bx=f[0]*56, by=f[1]*56;
+      g.fillStyle="rgba(0,0,0,0.18)"; g.beginPath(); g.ellipse(bx+30,by+50,9,4,0,0,Math.PI*2); g.fill();
+      g.fillStyle="#7a5334"; g.fillRect(bx+27,by+4,5,46); g.fillStyle="#9c7a4d"; g.fillRect(bx+27,by+4,2,46);   // 기둥
+      rpgSheetDraw(g, [12,3], bx+30, by+2, 26); } }                                                              // 현수막
+    if(dn>=3){ for(const f of [[17,7],[19,7],[12,9],[26,7]]){   // 별빛 등불: 절차적 종이 등불 + 은은한 빛무리
+      const cx=f[0]*56+30, cy=f[1]*56+30;
+      const lg=g.createRadialGradient(cx,cy,6,cx,cy,26); lg.addColorStop(0,"rgba(255,196,86,0.28)"); lg.addColorStop(1,"rgba(255,196,86,0)");
+      g.fillStyle=lg; g.beginPath(); g.arc(cx,cy,26,0,Math.PI*2); g.fill();
+      g.fillStyle="#6b4a2b"; g.fillRect(cx-1,cy-26,2,8);                                            // 걸이 줄
+      g.fillStyle="#d6483b"; g.beginPath(); g.ellipse(cx,cy-2,13,16,0,0,Math.PI*2); g.fill();       // 등불 몸통(빨강, 종이 배불뚝)
+      g.fillStyle="rgba(255,255,255,0.16)"; g.beginPath(); g.ellipse(cx-4,cy-4,4,12,0,0,Math.PI*2); g.fill();   // 광택
+      g.fillStyle="rgba(255,231,150,0.9)"; g.beginPath(); g.ellipse(cx,cy-2,6,12,0,0,Math.PI*2); g.fill();      // 속 불빛
+      g.fillStyle="#2e1d10"; g.fillRect(cx-7,cy-19,14,4); g.fillRect(cx-7,cy+13,14,4);              // 위·아래 나무 테
+      g.fillStyle="#f2c14e"; g.fillRect(cx-1,cy+16,2,4);                                            // 아래 술
+      g.fillStyle="rgba(138,47,38,0.55)"; g.fillRect(cx-8,cy-3,16,1); } }                            // 가로 이음선
   }
   RPG.layer=cvs;
 }
