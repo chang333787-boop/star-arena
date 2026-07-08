@@ -5003,7 +5003,22 @@ function rpgBuildLayer(){   // 정적 타일 오프스크린 1회 합성(§11-4)
   if(theme==="forest_rain"){ g.fillStyle="rgba(40,60,100,0.14)"; g.fillRect(0,0,cvs.width,cvs.height); }   // 가랑비=푸른 톤
   if(theme==="den_cloud"){ g.fillStyle="rgba(10,6,26,0.25)"; g.fillRect(0,0,cvs.width,cvs.height); }
   const _signSeen={};
+  const BPAL={rpg_home:{roof:"#b0623a",sign:"🏠"},rpg_store:{roof:"#2f8f6e",sign:"🛒"},rpg_smith:{roof:"#4a4652",sign:"⚒️"},rpg_chief:{roof:"#5a5a92",sign:"🏛️"}};
   for(const w of (RPG.map.portals||[])){ const x=w.at[0]*56, y=w.at[1]*56;
+    const bp=BPAL[w.to];
+    if(bp){   // QUALITY-2: 건물 4채 지붕색 재도색(실제 B/# 타일만)+처마 음영+간판 — 획일 창고블록 구분
+      const ax=w.at[0], ay=w.at[1];
+      for(let rr=ay-3;rr<=ay-1;rr++) for(let cc=ax-2;cc<=ax+2;cc++){
+        if(rr<0||cc<0||rr>=RPG.rows||cc>=RPG.cols) continue;
+        const gch=RPG.grid[rr][cc]; if(gch!=="B"&&gch!=="#") continue;
+        const bx=cc*56, by=rr*56;
+        g.fillStyle=bp.roof; g.fillRect(bx,by,56,56);
+        g.fillStyle="rgba(255,255,255,0.13)"; g.fillRect(bx,by,56,7);      // 처마 하이라이트
+        g.fillStyle="rgba(0,0,0,0.2)"; g.fillRect(bx,by+49,56,7);          // 처마 그늘
+      }
+      g.fillStyle="rgba(0,0,0,0.22)"; g.fillRect(ax*56-2,(ay-1)*56+40,60,10);   // 건물 접지 그림자
+      g.font="26px sans-serif"; g.textAlign="center"; g.fillText(bp.sign, ax*56+28, (ay-1)*56-2); g.textAlign="left";   // 간판
+    }
     if(w.to&&w.to.indexOf("rpg_den")===0&&gateImg) g.drawImage(gateImg,x-6,y-24,68,80);   // 요새 입구=몬스터 게이트
     g.fillStyle="rgba(255,224,102,0.22)"; g.fillRect(x+6,y+6,44,44);
     g.strokeStyle="#ffe066"; g.strokeRect(x+6.5,y+6.5,43,43);
@@ -5543,6 +5558,7 @@ function rpgDrawMapView(){   // 🗺️ EXPLORE-1 전체지도: 정적 레이어
   ctx.fillText("내 위치 ● · 포탈 ● · 보물 📦  —  M/Esc/탭: 닫기", LOGW/2, LOGH-60);
   ctx.textAlign="left";
 }
+let _rpgVign=null;   // QUALITY-2: 화면 비네트 그라디언트 1회 캐시
 function rpgRender(){
   ctx.fillStyle="#0d0a1d"; ctx.fillRect(0,0,LOGW,LOGH);
   if(!RPG||!RPG.map) return;
@@ -5641,6 +5657,10 @@ function rpgRender(){
   }
   rpgWorldEnd();
   rpgDrawEnv();   // QUALITY-1: 테마별 환경 파티클(월드 위·HUD 아래)
+  // QUALITY-2: 상시 화면 비네트 — 가장자리 광량 감쇠로 시선 집중·즉각적 깊이/조명감
+  if(!_rpgVign){ _rpgVign=ctx.createRadialGradient(640,358,420,640,358,780); _rpgVign.addColorStop(0,"rgba(0,0,0,0)"); _rpgVign.addColorStop(0.68,"rgba(0,0,0,0)"); _rpgVign.addColorStop(1,"rgba(6,4,18,1)"); }
+  { const _th=RPG.map&&RPG.map.theme, _vk=(_th==="den_cloud"||_th==="forest_rain")?0.5:(_th==="indoor_wood"?0.42:0.3);
+    ctx.save(); ctx.beginPath(); ctx.rect(24,70,1232,576); ctx.clip(); ctx.globalAlpha=_vk; ctx.fillStyle=_rpgVign; ctx.fillRect(24,70,1232,576); ctx.restore(); }
   if(RPG.ui==="field"&&(RPG.cam.maxX>0||RPG.cam.maxY>0)){   // EXPLORE-1: 화면 밖 포탈 → 가장자리 "▶ 맵이름" 라벨
     const _lbSeen={};
     for(const w of (RPG.map.portals||[])){
