@@ -3,82 +3,93 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>별빛 마을 RPG · 1장 완전 공략집</title>
+<title>별빛 마을 RPG · 1장 가이드북</title>
 <style>
   :root{
-    --bg:#0d1226; --bg2:#141b33; --card:#1a2340; --card2:#212c4e;
+    --bg:#0d1226; --bg2:#141b33; --card:#1a2340; --card2:#212c4e; --side:#111834;
     --ink:#eef2ff; --dim:#a9b6e0; --faint:#7c88b5;
     --gold:#ffd85a; --gold2:#ffb638; --blue:#6ea0ff; --green:#5fd39a; --red:#ff7a7a; --purple:#b98cff;
     --line:#2d3a63;
   }
   *{box-sizing:border-box}
-  html,body{margin:0;padding:0}
+  html,body{margin:0;padding:0;height:100%}
   body{
     font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
-    background:
-      radial-gradient(1200px 500px at 80% -10%, rgba(120,150,255,0.14), transparent),
-      radial-gradient(900px 400px at 0% 10%, rgba(255,200,90,0.08), transparent),
-      var(--bg);
-    color:var(--ink); line-height:1.65; letter-spacing:-0.2px;
+    background:var(--bg); color:var(--ink); line-height:1.6; letter-spacing:-0.2px;
+    display:flex; height:100vh; overflow:hidden;
   }
-  .wrap{max-width:1000px; margin:0 auto; padding:20px 18px 80px}
   a{color:var(--blue)}
 
-  /* ── 헤더 ── */
-  .hero{
-    text-align:center; padding:44px 20px 30px; margin-bottom:10px;
-    border-radius:24px; position:relative; overflow:hidden;
-    background:linear-gradient(160deg,#1e2950,#141d3a 60%,#101731);
-    border:1px solid var(--line);
-    box-shadow:0 10px 40px rgba(0,0,0,0.4), inset 0 0 60px rgba(110,160,255,0.06);
+  /* ── 사이드바 ── */
+  .side{
+    width:230px; flex:0 0 230px; background:linear-gradient(180deg,#151d3c,#0f1530);
+    border-right:1px solid var(--line); display:flex; flex-direction:column; overflow-y:auto;
   }
-  .hero .stars{position:absolute; inset:0; pointer-events:none; opacity:.5}
-  .hero h1{font-size:34px; margin:6px 0 6px; letter-spacing:-0.5px}
-  .hero .tag{display:inline-block; font-size:13px; font-weight:800; color:#101731; background:linear-gradient(135deg,var(--gold),var(--gold2)); padding:5px 14px; border-radius:20px; margin-bottom:8px}
-  .hero p{color:var(--dim); margin:8px auto 0; max-width:640px; font-size:15px}
-  .hero .kicker{color:var(--gold); font-weight:800; letter-spacing:2px; font-size:13px}
+  .brand{padding:18px 18px 12px; border-bottom:1px solid var(--line)}
+  .brand .k{font-size:11px; font-weight:800; letter-spacing:2px; color:var(--gold)}
+  .brand h1{font-size:17px; margin:4px 0 2px}
+  .brand .s{font-size:12px; color:var(--faint)}
+  .nav{padding:10px 10px 20px; flex:1}
+  .nav-group{font-size:11px; font-weight:800; color:var(--faint); text-transform:uppercase; letter-spacing:1px; margin:14px 8px 4px}
+  .nav-item{display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:10px; font-size:14px; font-weight:600; color:var(--dim); cursor:pointer; user-select:none; transition:.12s}
+  .nav-item .ic{font-size:17px; width:22px; text-align:center; flex:0 0 auto}
+  .nav-item:hover{background:var(--card); color:#fff}
+  .nav-item.on{background:linear-gradient(135deg,var(--blue),#7a5bff); color:#fff; box-shadow:0 4px 14px rgba(110,160,255,.3)}
+  .nav-item.on.gold{background:linear-gradient(135deg,var(--gold),var(--gold2)); color:#101731}
+  .nav-item.on.purple{background:linear-gradient(135deg,var(--purple),#8a5bff)}
 
-  /* ── 목차 ── */
-  .toc{display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin:20px 0 8px}
-  .toc a{font-size:13px; font-weight:700; color:var(--dim); text-decoration:none; background:var(--card); border:1px solid var(--line); padding:7px 13px; border-radius:20px; transition:.15s}
-  .toc a:hover{color:#fff; border-color:var(--blue); background:var(--card2)}
-
-  /* ── 섹션 ── */
-  section{margin:34px 0}
-  h2{font-size:23px; margin:0 0 4px; display:flex; align-items:center; gap:10px}
-  h2 .n{font-size:13px; color:#101731; background:var(--gold); width:26px; height:26px; border-radius:8px; display:inline-flex; align-items:center; justify-content:center; font-weight:900; flex:0 0 auto}
-  .sub{color:var(--faint); font-size:14px; margin:0 0 16px}
+  /* ── 메인 ── */
+  .main{flex:1; overflow-y:auto; padding:26px 30px 70px}
+  .panel{display:none; max-width:1000px; animation:fade .2s ease}
+  .panel.active{display:block}
+  @keyframes fade{from{opacity:0; transform:translateY(6px)}to{opacity:1; transform:none}}
+  h2.title{font-size:26px; margin:0 0 4px; display:flex; align-items:center; gap:10px}
+  .sub{color:var(--faint); font-size:14px; margin:0 0 20px}
   h3{font-size:17px; margin:22px 0 10px; color:var(--gold); border-left:3px solid var(--gold2); padding-left:10px}
 
   .card{background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px}
   .grid{display:grid; gap:14px}
-  .g2{grid-template-columns:repeat(2,1fr)}
-  .g3{grid-template-columns:repeat(3,1fr)}
-  @media(max-width:720px){ .g2,.g3{grid-template-columns:1fr} .hero h1{font-size:27px} .wrap{padding:14px} }
+  .g2{grid-template-columns:repeat(2,1fr)} .g3{grid-template-columns:repeat(3,1fr)}
+  .hl{color:var(--gold); font-weight:800} .hl-b{color:var(--blue); font-weight:800}
+  .muted{color:var(--faint)}
+
+  /* 홈 히어로 */
+  .hero{text-align:center; padding:36px 20px 26px; border-radius:22px; border:1px solid var(--line);
+    background:linear-gradient(160deg,#1e2950,#141d3a 60%,#101731); box-shadow:inset 0 0 60px rgba(110,160,255,.06)}
+  .hero .tag{display:inline-block; font-size:12px; font-weight:800; color:#101731; background:linear-gradient(135deg,var(--gold),var(--gold2)); padding:5px 14px; border-radius:20px}
+  .hero h2{font-size:30px; margin:10px 0 6px; justify-content:center}
+  .hero p{color:var(--dim); max-width:620px; margin:8px auto 0}
+  .quicklinks{display:flex; flex-wrap:wrap; gap:10px; justify-content:center; margin-top:18px}
+  .ql{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 16px; cursor:pointer; font-weight:700; font-size:14px; color:var(--dim); transition:.12s}
+  .ql:hover{border-color:var(--blue); color:#fff; transform:translateY(-2px)}
 
   /* 스토리 */
-  .story{background:linear-gradient(160deg,#182242,#131b36); border:1px solid var(--line); border-radius:18px; padding:22px 22px}
-  .story p{margin:0 0 12px}
-  .story .lead{font-size:16px}
-  .hl{color:var(--gold); font-weight:800}
-  .hl-b{color:var(--blue); font-weight:800}
+  .story p{margin:0 0 12px} .story .lead{font-size:16px}
 
-  /* NPC 카드 */
+  /* NPC */
   .npc{display:flex; gap:14px; align-items:flex-start}
-  .npc .ava{font-size:34px; width:54px; height:54px; flex:0 0 auto; border-radius:14px; background:var(--card2); display:flex; align-items:center; justify-content:center; border:1px solid var(--line)}
+  .npc .ava{font-size:32px; width:52px; height:52px; flex:0 0 auto; border-radius:14px; background:var(--card2); display:flex; align-items:center; justify-content:center; border:1px solid var(--line)}
   .npc h4{margin:0 0 2px; font-size:16px}
-  .npc .role{font-size:12px; font-weight:800; color:var(--gold); text-transform:uppercase; letter-spacing:.5px}
+  .npc .role{font-size:11px; font-weight:800; color:var(--gold); letter-spacing:.5px}
   .npc .say{font-size:13px; color:var(--dim); font-style:italic; margin:6px 0 4px}
   .npc .sec{font-size:12px; color:var(--purple)}
 
-  /* 지역 맵 */
-  .area{border-left:3px solid var(--blue); padding:2px 0 2px 14px; margin:12px 0}
-  .area .nm{font-weight:800; font-size:15px}
-  .area .info{font-size:13px; color:var(--dim)}
-  .chip{display:inline-block; font-size:11px; font-weight:800; padding:2px 8px; border-radius:12px; margin:2px 3px 0 0; background:var(--card2); border:1px solid var(--line); color:var(--dim)}
-  .chip.t1{color:var(--green); border-color:rgba(95,211,154,.4)}
-  .chip.t2{color:var(--gold); border-color:rgba(255,216,90,.4)}
-  .chip.boss{color:var(--red); border-color:rgba(255,122,122,.4)}
+  /* ── 전체 지도 ── */
+  .maprow{display:flex; align-items:stretch; gap:0; flex-wrap:wrap}
+  .maparea{flex:1 1 190px; min-width:180px; background:var(--card); border:2px solid var(--line); border-radius:16px; padding:14px; position:relative}
+  .maparea.village{border-color:rgba(255,216,90,.5)}
+  .maparea.f1{border-color:rgba(95,211,154,.5)}
+  .maparea.f2{border-color:rgba(255,216,90,.5)}
+  .maparea.den{border-color:rgba(255,122,122,.55); background:linear-gradient(160deg,#241a2e,#181230)}
+  .maparea .hd{font-weight:800; font-size:15px; display:flex; align-items:center; gap:7px; margin-bottom:8px}
+  .maparea .lvl{font-size:10px; font-weight:900; padding:2px 7px; border-radius:10px; margin-left:auto}
+  .lvl.g{background:var(--green); color:#0a1a12} .lvl.y{background:var(--gold); color:#101731} .lvl.r{background:var(--red); color:#fff}
+  .maparea ul{margin:6px 0 0; padding-left:16px; font-size:12.5px; color:var(--dim)}
+  .maparea ul li{margin:2px 0}
+  .arrow{display:flex; align-items:center; justify-content:center; flex:0 0 34px; font-size:22px; color:var(--gold); font-weight:900}
+  .bldg{display:flex; flex-wrap:wrap; gap:5px; margin-top:8px}
+  .bldg span{font-size:11px; background:var(--card2); border:1px solid var(--line); border-radius:8px; padding:3px 7px; color:var(--dim)}
+  @media(max-width:860px){ .arrow{flex-basis:100%; transform:rotate(90deg); height:26px} }
 
   /* 퀘스트 타임라인 */
   .timeline{position:relative; margin-left:8px; padding-left:26px; border-left:3px dashed var(--line)}
@@ -87,508 +98,448 @@
   .q.side .dot{background:var(--purple); color:#fff}
   .q h4{margin:0 0 4px; font-size:16px}
   .q .meta{font-size:13px; color:var(--dim)}
-  .q .rw{font-size:13px; margin-top:4px}
-  .rw b{color:var(--gold)}
+  .q .rw{font-size:13px; margin-top:4px} .rw b{color:var(--gold)}
   .q .quote{font-size:12.5px; color:var(--faint); font-style:italic; margin-top:5px; border-top:1px dotted var(--line); padding-top:5px}
 
-  /* 몬스터 카드 */
-  .mon{background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px; position:relative}
-  .mon.elite{border-color:rgba(255,216,90,.5); box-shadow:0 0 24px rgba(255,216,90,.08)}
-  .mon.boss{border-color:rgba(255,122,122,.55); background:linear-gradient(160deg,#2a1a2e,#1a1330)}
+  /* 몬스터 */
+  .mon{background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px}
+  .mon.elite{border-color:rgba(255,216,90,.5)} .mon.boss{border-color:rgba(255,122,122,.55); background:linear-gradient(160deg,#2a1a2e,#1a1330)}
   .mon .top{display:flex; align-items:center; gap:10px; margin-bottom:8px}
-  .mon .face{font-size:30px}
-  .mon h4{margin:0; font-size:16px}
+  .mon .face{font-size:28px} .mon h4{margin:0; font-size:16px}
   .mon .badge{font-size:10px; font-weight:900; padding:2px 7px; border-radius:10px; margin-left:auto}
-  .badge.elite{background:var(--gold); color:#101731}
-  .badge.boss{background:var(--red); color:#fff}
+  .badge.elite{background:var(--gold); color:#101731} .badge.boss{background:var(--red); color:#fff}
   .stat{display:flex; gap:8px; font-size:12px; color:var(--dim); flex-wrap:wrap; margin:6px 0}
   .stat b{color:var(--ink)}
   .bar{height:7px; border-radius:5px; background:var(--card2); overflow:hidden; margin:3px 0 8px}
   .bar>i{display:block; height:100%; background:linear-gradient(90deg,var(--red),var(--gold))}
-  .mon .tip{font-size:13px; background:var(--bg2); border-radius:10px; padding:8px 10px; margin-top:8px}
-  .mon .tip b{color:var(--green)}
+  .mon .tip{font-size:13px; background:var(--bg2); border-radius:10px; padding:8px 10px; margin-top:8px} .mon .tip b{color:var(--green)}
   .mon .drop{font-size:12px; color:var(--faint); margin-top:6px}
+  .chip{display:inline-block; font-size:11px; font-weight:800; padding:2px 8px; border-radius:12px; background:var(--card2); border:1px solid var(--line); color:var(--dim)}
+  .chip.g{color:var(--green)} .chip.y{color:var(--gold)} .chip.r{color:var(--red)}
 
   /* 표 */
-  table{width:100%; border-collapse:collapse; font-size:13.5px; overflow:hidden; border-radius:12px}
   .tblwrap{overflow-x:auto; border:1px solid var(--line); border-radius:12px}
+  table{width:100%; border-collapse:collapse; font-size:13.5px}
   th,td{padding:9px 12px; text-align:left; border-bottom:1px solid var(--line)}
-  th{background:var(--card2); color:var(--gold); font-size:12px; text-transform:uppercase; letter-spacing:.5px; white-space:nowrap}
-  tr:last-child td{border-bottom:0}
-  tr:nth-child(even) td{background:rgba(255,255,255,.02)}
-  td b{color:var(--ink)} .muted{color:var(--faint)}
+  th{background:var(--card2); color:var(--gold); font-size:12px; letter-spacing:.5px; white-space:nowrap}
+  tr:last-child td{border-bottom:0} tr:nth-child(even) td{background:rgba(255,255,255,.02)} td b{color:var(--ink)}
 
   /* 보스 페이즈 */
   .phase{border-radius:14px; padding:14px 16px; margin:10px 0; border:1px solid var(--line)}
-  .phase.p1{background:linear-gradient(160deg,#1c2748,#161f3c)}
-  .phase.p2{background:linear-gradient(160deg,#2a2340,#1c1b38)}
-  .phase.p3{background:linear-gradient(160deg,#331c2e,#241633)}
+  .phase.p1{background:linear-gradient(160deg,#1c2748,#161f3c)} .phase.p2{background:linear-gradient(160deg,#2a2340,#1c1b38)} .phase.p3{background:linear-gradient(160deg,#331c2e,#241633)}
   .phase h4{margin:0 0 6px; font-size:15px; display:flex; align-items:center; gap:8px}
   .phase .hp{font-size:11px; font-weight:900; padding:2px 8px; border-radius:10px; background:var(--red); color:#fff}
 
-  /* 팁 박스 */
   .tipbox{background:linear-gradient(160deg,#17233f,#131c34); border:1px solid var(--line); border-left:4px solid var(--gold); border-radius:12px; padding:14px 16px; margin:12px 0}
   .tipbox h4{margin:0 0 6px; color:var(--gold); font-size:15px}
   .callout{background:rgba(185,140,255,.1); border:1px solid rgba(185,140,255,.35); border-radius:12px; padding:14px 16px; margin:12px 0}
   .callout b{color:var(--purple)}
 
-  /* 챕터2 */
-  .ch2{text-align:center; background:linear-gradient(160deg,#241a3a,#141026); border:1px solid rgba(185,140,255,.35); border-radius:20px; padding:30px 22px}
-  .ch2 .egg{font-size:48px}
-  .ch2 h2{justify-content:center}
+  /* ── 2장 빌더 & 학습지 ── */
+  .flow{display:flex; align-items:stretch; gap:0; flex-wrap:wrap; margin:14px 0}
+  .step{flex:1 1 150px; min-width:140px; background:var(--card); border:2px solid var(--line); border-radius:14px; padding:12px; text-align:center}
+  .step .ic{font-size:26px} .step .t{font-weight:800; font-size:13px; margin:4px 0 2px} .step .d{font-size:11.5px; color:var(--faint)}
+  .flow .arrow{flex-basis:28px}
+  @media(max-width:760px){ .flow .arrow{flex-basis:100%; transform:rotate(90deg); height:22px} }
+  .seed{background:linear-gradient(160deg,#241a3a,#141026); border:1px solid rgba(185,140,255,.35); border-radius:12px; padding:12px 14px}
+  .seed h4{margin:0 0 4px; color:var(--purple); font-size:14px}
+  .seed p{margin:0; font-size:13px; color:var(--dim)}
 
-  /* ── 학습지(인쇄용) ── */
-  .ws-intro{background:linear-gradient(160deg,#16233f,#121a32); border:1px dashed var(--gold2); border-radius:16px; padding:18px 20px}
-  .print-btn{display:inline-flex; align-items:center; gap:8px; font-size:15px; font-weight:800; color:#101731; background:linear-gradient(135deg,var(--gold),var(--gold2)); border:0; border-radius:24px; padding:11px 22px; cursor:pointer; margin-top:6px}
+  .print-btn{display:inline-flex; align-items:center; gap:8px; font-size:14px; font-weight:800; color:#101731; background:linear-gradient(135deg,var(--gold),var(--gold2)); border:0; border-radius:22px; padding:10px 20px; cursor:pointer}
   .print-btn:active{transform:scale(.96)}
   .sheet{background:#fff; color:#1a1a2e; border-radius:14px; padding:20px; margin:16px 0; border:1px solid #ccc}
   .sheet h4{margin:0 0 10px; color:#3a3a6e; font-size:16px; border-bottom:2px solid #d8d8f0; padding-bottom:6px}
-  .field{margin:9px 0}
-  .field .lab{font-size:12px; font-weight:800; color:#555}
+  .field{margin:9px 0} .field .lab{font-size:12px; font-weight:800; color:#555}
   .lines{border-bottom:1.5px dotted #b7b7cf; height:26px; margin-top:2px}
   .drawbox{border:2px dashed #b7b7cf; border-radius:10px; height:120px; display:flex; align-items:center; justify-content:center; color:#b0b0c8; font-size:13px; margin-top:4px}
   .starrate{font-size:20px; letter-spacing:4px; color:#d8b84a}
-  .ws-note{font-size:12px; color:var(--faint); margin-top:6px}
+  .flow.sheetflow .step{background:#f4f4fb; border-color:#c8c8e0; color:#333}
+  .flow.sheetflow .step .d{color:#888}
+  .flow.sheetflow .arrow{color:#a9a9c8}
 
-  footer{text-align:center; color:var(--faint); font-size:12.5px; margin-top:50px; border-top:1px solid var(--line); padding-top:20px}
-
+  /* 반응형: 좁으면 사이드바를 상단 가로바로 */
+  .menubtn{display:none}
+  @media(max-width:720px){
+    body{flex-direction:column; height:auto; overflow:auto}
+    .side{width:100%; flex:0 0 auto; flex-direction:row; overflow-x:auto; border-right:0; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:20}
+    .brand{border-bottom:0; border-right:1px solid var(--line); white-space:nowrap; flex:0 0 auto}
+    .nav{display:flex; gap:6px; padding:10px; flex:1}
+    .nav-group{display:none} .nav-item{white-space:nowrap}
+    .main{padding:18px 14px 60px}
+    .g2,.g3{grid-template-columns:1fr}
+  }
   @media print{
-    body{background:#fff; color:#000}
-    .no-print{display:none !important}
-    .hero, nav.toc, footer{display:none !important}
-    section:not(#worksheet){display:none !important}   /* 인쇄 = 학습지만 */
-    .wrap{max-width:100%; padding:0}
-    #worksheet{margin:0}
-    #worksheet h2{color:#000; font-size:18px}
-    #worksheet h2 .n{background:#333; color:#fff}
-    .ws-intro{border-color:#999; background:#fff; color:#000}
-    .sheet{page-break-inside:avoid; border:1px solid #999; box-shadow:none; margin:0 0 14px}
+    body{display:block; height:auto; overflow:visible; background:#fff; color:#000}
+    .side, .no-print{display:none !important}
+    .main{overflow:visible; padding:0}
+    .panel{display:none !important} .panel.active{display:block !important}
+    .sheet{page-break-inside:avoid; border:1px solid #999; margin:0 0 14px}
+    h2.title, h3{color:#000}
   }
 </style>
 </head>
 <body>
-<div class="wrap">
 
-  <!-- 헤더 -->
-  <header class="hero">
-    <div class="kicker">★ STAR VILLAGE RPG ★</div>
-    <div class="tag">1장 완전 공략집</div>
-    <h1>별빛 마을 · 별마중 마을 이야기</h1>
-    <p>사라진 할머니, 흐려진 별빛, 그리고 먹구름단. 고양이 소녀 <b class="hl">시고니</b>의 첫 번째 모험을 낱낱이 담았어요. 2장을 준비하려면 1장을 먼저 마스터하자! 🐾</p>
-  </header>
-
-  <!-- 목차 -->
-  <nav class="toc no-print">
-    <a href="#story">📖 이야기</a>
-    <a href="#npc">👥 등장인물</a>
-    <a href="#area">🗺️ 지역</a>
-    <a href="#quest">📜 메인 퀘스트</a>
-    <a href="#side">✨ 서브 퀘스트</a>
-    <a href="#mon">👾 몬스터 도감</a>
-    <a href="#boss">👑 보스 공략</a>
-    <a href="#weapon">⚔️ 무기</a>
-    <a href="#armor">🛡️ 방어구</a>
-    <a href="#item">🎒 아이템</a>
-    <a href="#skill">🌟 스킬·전직</a>
-    <a href="#farm">🌱 농사</a>
-    <a href="#secret">🔮 꿀팁·비밀</a>
-    <a href="#ch2">🥚 2장 예고</a>
-    <a href="#worksheet">📝 나만의 공략노트</a>
-  </nav>
-
-  <!-- 이야기 -->
-  <section id="story">
-    <h2><span class="n">1</span> 이야기 — 이런 모험이에요</h2>
-    <div class="story">
-      <p class="lead">🐾 고양이 소녀 <b class="hl">시고니</b>는 <b class="hl-b">별마중 마을</b>의 <b>할머니 밭</b>을 물려받으러 왔어요. 그런데 할머니는 <b>편지 한 장 없이 사라졌고</b>, 마을을 지키던 <b class="hl">별빛</b>은 점점 흐려지고 있었죠.</p>
-      <p>별빛이 흐려지자 순하던 <b>그림자 젤리</b>들이 밤마다 밭을 습격하고, <b class="hl">먹구름단</b>이 마을의 별빛을 훔쳐가기 시작해요. 이상한 건 — 그들은 <b>부수지도, 아프게 하지도 않고 오직 별빛만 훔친다</b>는 것.</p>
-      <p>시고니는 농사를 배우고, 무기를 만들고, 안개 간부 <b>보슬보슬</b>을 물리치며 진실에 다가가요. 마침내 <b class="hl">먹구름 요새</b>의 우두머리 <b class="hl">뭉게대왕</b>과 맞서는데…</p>
-      <p style="margin-bottom:0">뭉게대왕은 쓰러지며 말해요. <i>"우리도… 빛이 필요했을 뿐이야. 알이 기다리고 있는데…"</i> 요새 깊은 곳, <b class="hl-b">작은 알</b> 하나가 희미하게 반짝였어요. 🥚 <span class="muted">— 이것이 2장의 시작이랍니다.</span></p>
+  <!-- 사이드바 -->
+  <aside class="side">
+    <div class="brand">
+      <div class="k">★ STAR VILLAGE RPG</div>
+      <h1>1장 가이드북</h1>
+      <div class="s">별마중 마을 편 🐾</div>
     </div>
-  </section>
+    <nav class="nav">
+      <div class="nav-group">둘러보기</div>
+      <div class="nav-item on" data-p="home"><span class="ic">🏠</span> 홈</div>
+      <div class="nav-item" data-p="map"><span class="ic">🗺️</span> 전체 지도</div>
+      <div class="nav-item" data-p="story"><span class="ic">📖</span> 이야기</div>
+      <div class="nav-item" data-p="npc"><span class="ic">👥</span> 등장인물</div>
+      <div class="nav-group">공략</div>
+      <div class="nav-item" data-p="quest"><span class="ic">📜</span> 퀘스트 흐름</div>
+      <div class="nav-item" data-p="mon"><span class="ic">👾</span> 몬스터 도감</div>
+      <div class="nav-item" data-p="boss"><span class="ic">👑</span> 보스 공략</div>
+      <div class="nav-item" data-p="gear"><span class="ic">⚔️</span> 무기·방어구</div>
+      <div class="nav-item" data-p="item"><span class="ic">🎒</span> 아이템</div>
+      <div class="nav-item" data-p="skill"><span class="ic">🌟</span> 스킬·전직</div>
+      <div class="nav-item" data-p="farm"><span class="ic">🌱</span> 농사</div>
+      <div class="nav-item" data-p="secret"><span class="ic">🔮</span> 비밀·떡밥</div>
+      <div class="nav-group">만들기</div>
+      <div class="nav-item" data-p="build"><span class="ic">🥚</span> 2장 만들기</div>
+      <div class="nav-item" data-p="sheet"><span class="ic">📝</span> 관찰 학습지</div>
+    </nav>
+  </aside>
 
-  <!-- NPC -->
-  <section id="npc">
-    <h2><span class="n">2</span> 등장인물 — 마을 사람들</h2>
-    <p class="sub">이야기하다 보면 각자 <b style="color:var(--purple)">비밀</b>이 숨어 있어요. 잘 들어 두면 2장에서 도움이 될지도?</p>
-    <div class="grid g2">
-      <div class="card"><div class="npc"><div class="ava">🧓</div><div>
-        <div class="role">촌장 · 퀘스트 허브</div><h4>온별 할아버지</h4>
-        <div class="say">"우리 마을 전설 말인데… 그다음이 용이었나, 곰이었나?"</div>
-        <div class="sec">🔮 비밀: 마을 전설의 뒷부분을 사실은 기억하고 있을지도?</div>
-      </div></div></div>
-      <div class="card"><div class="npc"><div class="ava">🛍️</div><div>
-        <div class="role">잡화점</div><h4>모모</h4>
-        <div class="say">"반짝이는 거라면 뭐든 좋아해! 그거 나한테 팔래?"</div>
-        <div class="sec">🔮 비밀: 창고 깊은 곳에 정리 못 한 수집품 상자가 있다.</div>
-      </div></div></div>
-      <div class="card"><div class="npc"><div class="ava">🔧</div><div>
-        <div class="role">대장장이 (mq04 후 개방)</div><h4>볼트</h4>
-        <div class="say">"…뭐. 볼일 없으면 가라. 삐빅, 수리 완료."</div>
-        <div class="sec">🔮 비밀: 고쳐 준 도구마다 몰래 별 스티커를 붙인다.</div>
-      </div></div></div>
-      <div class="card"><div class="npc"><div class="ava">🌱</div><div>
-        <div class="role">씨앗 상점</div><h4>리프</h4>
-        <div class="say">"쉿! 지금 별무가 얘기하는 중이야."</div>
-        <div class="sec">🔮 비밀: 정말로 작물과 대화할 수 있는 걸까? 아무도 모른다.</div>
-      </div></div></div>
-      <div class="card"><div class="npc"><div class="ava">📓</div><div>
-        <div class="role">기록가</div><h4>피코</h4>
-        <div class="say">"잠깐! 그거 노트에 적어야 해! 관찰 포인트야!"</div>
-        <div class="sec">🔮 비밀: 피코의 관찰 노트가 곧 게임 속 <b>'별의 도감'</b>이 된다. (← 뒤의 학습지와 연결!)</div>
-      </div></div></div>
-      <div class="card"><div class="npc"><div class="ava">🌙</div><div>
-        <div class="role">수수께끼 · 밤에만 등장</div><h4>먼별</h4>
-        <div class="say">"후후… 별이 흐려진 진짜 이유, 알고 싶나?"</div>
-        <div class="sec">🔮 비밀: 정체 미공개 — <b>우리 반이 함께 채울 여백.</b> 먹구름단을 너무 잘 안다…</div>
-      </div></div></div>
-    </div>
-  </section>
+  <main class="main">
 
-  <!-- 지역 -->
-  <section id="area">
-    <h2><span class="n">3</span> 지역 안내 — 어디로 가야 하나요?</h2>
-    <div class="grid g2">
-      <div class="card">
-        <h3 style="margin-top:0">🏘️ 별마중 마을 (중심지)</h3>
-        <div class="area"><div class="nm">🏡 할머니의 농가</div><div class="info">내 밭 · 침대(저장/하루 넘김) · 농사의 시작</div></div>
-        <div class="area"><div class="nm">🏛️ 촌장집</div><div class="info">온별 할아버지 · 대부분의 메인 퀘스트를 여기서</div></div>
-        <div class="area"><div class="nm">🛍️ 잡화점</div><div class="info">모모 · 사탕·방어구 구매, 작물 팔기</div></div>
-        <div class="area"><div class="nm">🔧 대장간</div><div class="info">볼트 · <b class="chip">mq04 후 개방</b> 무기 구매·강화·제작</div></div>
+    <!-- 홈 -->
+    <div class="panel active" id="panel-home">
+      <div class="hero">
+        <span class="tag">1장 완전 가이드</span>
+        <h2 class="title" style="justify-content:center">별빛 마을 · 별마중 마을 이야기</h2>
+        <p>사라진 할머니, 흐려진 별빛, 그리고 먹구름단. 고양이 소녀 <b class="hl">시고니</b>의 첫 모험을 낱낱이! 왼쪽 메뉴에서 원하는 걸 골라 보세요. 🐾</p>
       </div>
-      <div class="card">
-        <h3 style="margin-top:0">🌾 모험 지역</h3>
-        <div class="area" style="border-color:var(--green)"><div class="nm">🌿 이슬별 들판</div><div class="info">초반 사냥터</div>
-          <span class="chip t1">그림자 젤리</span><span class="chip t1">뿔깡총</span><span class="chip t1">씨앗총사</span><span class="chip t1">가시딱지</span></div>
-        <div class="area" style="border-color:var(--gold)"><div class="nm">🌧️ 가랑비 숲길</div><div class="info">중반 사냥터 (동쪽)</div>
-          <span class="chip t2">부슬이</span><span class="chip t2">달빛 부엉이</span><span class="chip t2">그늘 조각(정예)</span></div>
-        <div class="area" style="border-color:var(--red)"><div class="nm">☁️ 먹구름 요새</div><div class="info">1번 방(전투) → 2번 방(수집) → 3번 방(보스)</div>
-          <span class="chip boss">뭉게대왕 👑</span></div>
+      <h3>어디부터 볼까요?</h3>
+      <div class="quicklinks">
+        <div class="ql" data-go="map">🗺️ 이 게임 전체 지도 보기</div>
+        <div class="ql" data-go="quest">📜 무엇부터 해야 하나요?</div>
+        <div class="ql" data-go="mon">👾 몬스터 약점 알아보기</div>
+        <div class="ql" data-go="boss">👑 보스 이기는 법</div>
+        <div class="ql" data-go="build">🥚 내가 2장 이야기 만들기</div>
+      </div>
+      <div class="tipbox" style="margin-top:24px"><h4>📌 이 가이드 사용법</h4>
+        왼쪽 메뉴는 <b>창(화면)이 바뀌는</b> 방식이에요. 스크롤을 위아래로 왔다 갔다 하지 않아도 돼요! 게임을 <b>구조적으로</b> 이해하려면 <b class="hl">전체 지도</b>부터 보는 걸 추천해요.</div>
+    </div>
+
+    <!-- 전체 지도 -->
+    <div class="panel" id="panel-map">
+      <h2 class="title">🗺️ 전체 지도 — 별마중 마을은 이렇게 생겼어요</h2>
+      <p class="sub">왼쪽 마을에서 출발해 오른쪽으로 갈수록 강해져요. 각 지역에 <b>무엇이 있는지</b> 보고, 2장에서 <b class="hl">어디에 무엇을 놓을지</b> 상상해 보세요!</p>
+      <div class="maprow">
+        <div class="maparea village"><div class="hd">🏘️ 별마중 마을 <span class="lvl y">시작</span></div>
+          <div class="muted" style="font-size:12px">모든 모험의 출발점 · 퀘스트 받는 곳</div>
+          <div class="bldg"><span>🏡 농가(밭)</span><span>🏛️ 촌장집</span><span>🛍️ 잡화점</span><span>🔧 대장간</span></div>
+          <ul><li>👥 온별·모모·볼트·리프·피코</li><li>🌙 먼별(밤에만)</li></ul>
+        </div>
+        <div class="arrow">→</div>
+        <div class="maparea f1"><div class="hd">🌿 이슬별 들판 <span class="lvl g">1단계</span></div>
+          <ul><li>🟣 그림자 젤리 · 🐗 뿔깡총</li><li>🌰 씨앗총사 · 🦔 가시딱지</li></ul>
+          <div class="muted" style="font-size:12px; margin-top:6px">첫 사냥터 · mq02~03</div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="maparea f2"><div class="hd">🌧️ 가랑비 숲길 <span class="lvl y">2단계</span></div>
+          <ul><li>💨 부슬이 · 🦉 달빛 부엉이</li><li>🕳️ 그늘 조각 (정예!)</li></ul>
+          <div class="muted" style="font-size:12px; margin-top:6px">중반 사냥터 · mq05~06</div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="maparea den"><div class="hd">☁️ 먹구름 요새 <span class="lvl r">보스</span></div>
+          <ul><li>1번 방 — 전투 🗡️</li><li>2번 방 — 수집 📦</li><li>3번 방 — 뭉게대왕 👑</li></ul>
+          <div class="muted" style="font-size:12px; margin-top:6px">최종 관문 · mq07</div>
+        </div>
+      </div>
+      <div class="callout" style="margin-top:20px"><b>🥚 2장 상상하기:</b> 요새 뒤에 새 지역을 이어붙인다면 어떤 곳일까요? '알'이 깨어난 <b>알의 둥지</b>? 할머니가 간 <b>별의 탑</b>? — <span class="no-print">왼쪽 <b>🥚 2장 만들기</b>에서 직접 그려 봐요!</span></div>
+    </div>
+
+    <!-- 이야기 -->
+    <div class="panel" id="panel-story">
+      <h2 class="title">📖 이야기</h2>
+      <div class="card story">
+        <p class="lead">🐾 고양이 소녀 <b class="hl">시고니</b>는 <b class="hl-b">별마중 마을</b>의 할머니 밭을 물려받으러 왔어요. 그런데 할머니는 <b>편지 한 장 없이 사라졌고</b>, 마을을 지키던 <b class="hl">별빛</b>은 점점 흐려지고 있었죠.</p>
+        <p>별빛이 흐려지자 순하던 <b>그림자 젤리</b>들이 밤마다 밭을 습격하고, <b class="hl">먹구름단</b>이 마을의 별빛을 훔쳐가요. 이상한 건 그들이 <b>부수지도, 아프게 하지도 않고 오직 별빛만 훔친다</b>는 것.</p>
+        <p>시고니는 농사를 배우고 무기를 만들고 안개 간부 <b>보슬보슬</b>을 물리치며 진실에 다가가, 마침내 <b class="hl">먹구름 요새</b>의 <b class="hl">뭉게대왕</b>과 맞서요.</p>
+        <p style="margin-bottom:0">뭉게대왕은 쓰러지며 말해요. <i>"우리도… 빛이 필요했을 뿐이야. 알이 기다리고 있는데…"</i> 요새 깊은 곳, <b class="hl-b">작은 알</b> 하나가 반짝였어요. 🥚 <span class="muted">— 이것이 2장의 시작.</span></p>
       </div>
     </div>
-  </section>
 
-  <!-- 메인 퀘스트 -->
-  <section id="quest">
-    <h2><span class="n">4</span> 메인 퀘스트 흐름 — 순서대로!</h2>
-    <p class="sub">위에서 아래로 순서대로 진행돼요. <b class="hl">노란 보상</b>을 잘 챙기면 다음 퀘스트가 쉬워져요.</p>
-    <div class="timeline">
-      <div class="q"><div class="dot">1</div><h4>별마중 마을 도착</h4>
-        <div class="meta">🎯 촌장 온별과 대화</div>
-        <div class="rw">🎁 경험치 15 · <b>호미</b> · 별무 씨앗 ×5</div>
-        <div class="quote">"이 호미를 받게. 촌장의 선물이야! 내 40년 된 허리보다 튼튼하다네!"</div></div>
-      <div class="q"><div class="dot">2</div><h4>밤손님</h4>
-        <div class="meta">🎯 별무 3개 수확 (밤에 젤리가 밭을 습격!)</div>
-        <div class="rw">🎁 경험치 40 · 골드 30</div>
-        <div class="quote">"순한 젤리들이 왜 내려왔을까? 산 위의 별빛이 흐려져서… 그런가."</div></div>
-      <div class="q"><div class="dot">3</div><h4>별조각 도둑</h4>
-        <div class="meta">🎯 별조각 가루 3개 모으기 (가랑비 숲길에서)</div>
-        <div class="rw">🎁 경험치 60 · 골드 40 · <b>낡은 부메랑</b> (던지면 돌아와요!)</div>
-        <div class="quote">"할머니 물건이군. 훔친 별빛을 대체 어디에 쓰는 걸까…"</div></div>
-      <div class="q"><div class="dot">4</div><h4>마을의 부탁</h4>
-        <div class="meta">🎯 은하밀 3개를 길러 모모에게 배달</div>
-        <div class="rw">🎁 경험치 80 · 골드 60 · <b>대장간 개방</b> · 무쇠 별검</div>
-        <div class="quote">"먼별은 먹구름단을 어찌 저리 잘 알까…?"</div></div>
-      <div class="q"><div class="dot">5</div><h4>안개 간부 보슬보슬</h4>
-        <div class="meta">🎯 부슬이 5마리 처치</div>
-        <div class="rw">🎁 경험치 100 · 골드 80 · <b>빛나지 않는 별조각</b> · 전직 개방 · 반짝 질주(C) · 별방울 콩/빛나무 해금</div>
-        <div class="quote">"씨앗 돌려줄게… 그분이 기다리셔…" — 이 빛나지 않는 별조각은 대체?</div></div>
-      <div class="q"><div class="dot">6</div><h4>별광맥 방어전</h4>
-        <div class="meta">🎯 달빛 부엉이 4마리 처치 · 낮에 빛나무 묘목을 심으면 밤이 환해져요!</div>
-        <div class="rw">🎁 경험치 130 · 골드 100 · <b>별조각 ×3</b> (부메랑 재료) · 밭 확장</div>
-        <div class="quote">"부수지도, 아프게 하지도 않고 왜 훔치기만 할까?"</div></div>
-      <div class="q"><div class="dot">7</div><h4>먹구름 요새 — 뭉게대왕 👑</h4>
-        <div class="meta">🎯 뭉게대왕 처치 · <b>준비물</b>: 별방울 콩 3개(sq02) + 반짝 부메랑 완성</div>
-        <div class="rw">🎁 경험치 175 · 골드 150 · 칭호 <b>「별빛 수호자」</b> · <b class="hl-b">1장 클리어!</b></div>
-        <div class="quote">"그 알은… 분명 전설에서 봤는데… 까먹었다. 일단 축제부터!"</div></div>
-    </div>
-    <div class="tipbox"><h4>💡 진행 팁</h4>mq07은 <b>서브퀘 sq02(콩 배달)</b>를 먼저 깨야 열려요. mq06 보상으로 받은 <b>별조각 3개</b>를 대장간에 가져가 <b>반짝 부메랑</b>을 만들고 가면 보스전이 훨씬 편해요!</div>
-  </section>
-
-  <!-- 서브 퀘스트 -->
-  <section id="side">
-    <h2><span class="n">5</span> 서브 퀘스트 — 하면 이득!</h2>
-    <div class="grid g3">
-      <div class="card"><div class="q side" style="margin:0"><div class="dot" style="left:auto; position:static; display:inline-flex; margin-bottom:6px">S1</div>
-        <h4>도망간 반딧별</h4><div class="meta">피코 · 별조각 가루 4개</div><div class="rw">🎁 경험치 30 · 골드 40</div>
-        <div class="quote">보상으로 볼트의 스티커 비밀을 알려줘요!</div></div></div>
-      <div class="card"><div class="q side" style="margin:0"><div class="dot" style="position:static; display:inline-flex; margin-bottom:6px">S2</div>
-        <h4>콩 배달 대작전</h4><div class="meta">모모 · 별방울 콩 3개 배달</div><div class="rw">🎁 경험치 60 · 골드 80</div>
-        <div class="quote">⚠️ mq07(보스전)의 필수 선행 퀘스트!</div></div></div>
-      <div class="card"><div class="q side" style="margin:0"><div class="dot" style="position:static; display:inline-flex; margin-bottom:6px">S3</div>
-        <h4>껍질 수집가</h4><div class="meta">볼트 · 가시 껍질 5개</div><div class="rw">🎁 경험치 40 · <b>강화 20% 할인권</b></div>
-        <div class="quote">가시딱지가 떨어뜨려요. 조심!</div></div></div>
-    </div>
-  </section>
-
-  <!-- 몬스터 도감 -->
-  <section id="mon">
-    <h2><span class="n">6</span> 몬스터 도감 — 8종 완전 분석</h2>
-    <p class="sub">🟢 1단계(이슬별 들판) · 🟡 2단계(가랑비 숲길) · 🔴 보스</p>
-    <div class="grid g2">
-      <div class="mon"><div class="top"><span class="face">🟣</span><h4>그림자 젤리</h4></div>
-        <div class="stat"><span>❤️ HP <b>15</b></span><span>⚔️ 공격 <b>4</b></span><span>🏃 속도 <b>100</b></span><span class="chip t1">1단계</span></div>
-        <div class="bar"><i style="width:8%"></i></div>
-        <div>패턴: <b>쫓아오기</b> (단순). 가장 약해서 연습에 딱!</div>
-        <div class="tip"><b>공략:</b> 그냥 Z로 때리면 돼요. 밤에 밭을 습격하는 밤손님!</div>
-        <div class="drop">드랍: 젤리 조각 (50%)</div></div>
-
-      <div class="mon"><div class="top"><span class="face">🐗</span><h4>뿔깡총</h4></div>
-        <div class="stat"><span>❤️ HP <b>26</b></span><span>⚔️ 공격 <b>6</b></span><span>🏃 속도 <b>70</b></span><span class="chip t1">1단계</span></div>
-        <div class="bar"><i style="width:13%"></i></div>
-        <div>패턴: <b>깡총 뛰기</b> (뛰다가 잠깐 쉼)</div>
-        <div class="tip"><b>공략:</b> 뛰는 중엔 빠르니, <b>쉴 때</b>를 노려서 때려요!</div>
-        <div class="drop">드랍: 뿔조각 (30%)</div></div>
-
-      <div class="mon"><div class="top"><span class="face">🌰</span><h4>씨앗총사</h4></div>
-        <div class="stat"><span>❤️ HP <b>22</b></span><span>⚔️ 공격 <b>5</b></span><span>🏃 속도 <b>0</b> (고정)</span><span class="chip t1">1단계</span></div>
-        <div class="bar"><i style="width:11%"></i></div>
-        <div>패턴: <b>포탑</b> — 1.5초마다 멀리(330) 씨앗 발사</div>
-        <div class="tip"><b>공략:</b> 제자리에 있으니 <b>옆으로 지그재그</b> 피하며 다가가 근접!</div>
-        <div class="drop">드랍: 풀씨 뭉치 (40%)</div></div>
-
-      <div class="mon"><div class="top"><span class="face">🦔</span><h4>가시딱지</h4></div>
-        <div class="stat"><span>❤️ HP <b>60</b></span><span>⚔️ 공격 <b>7</b></span><span>🏃 속도 <b>70</b></span><span class="chip t1">1단계·튼튼</span></div>
-        <div class="bar"><i style="width:30%"></i></div>
-        <div>패턴: <b>쫓기 + 정면 방어</b> (앞쪽 120°는 피해 60% 감소!)</div>
-        <div class="tip"><b>공략:</b> 정면은 소용없어요. <b>옆이나 뒤</b>에서 공격! (기습 패시브가 큰 도움) 전직 시험에도 나와요.</div>
-        <div class="drop">드랍: 가시 껍질 (35%) — 볼트가 좋아해요</div></div>
-
-      <div class="mon"><div class="top"><span class="face">💨</span><h4>부슬이</h4></div>
-        <div class="stat"><span>❤️ HP <b>38</b></span><span>⚔️ 공격 <b>8</b></span><span>🏃 속도 <b>150</b></span><span class="chip t2">2단계</span></div>
-        <div class="bar"><i style="width:19%"></i></div>
-        <div>패턴: <b>돌진</b> — 0.7초 경고 후 빠르게(420) 돌진</div>
-        <div class="tip"><b>공략:</b> <b>경고 표시가 뜨면 옆으로!</b> 돌진이 빗나가면 반격 찬스. mq05 목표.</div>
-        <div class="drop">드랍: 별조각 가루 (30%)</div></div>
-
-      <div class="mon"><div class="top"><span class="face">🦉</span><h4>달빛 부엉이</h4></div>
-        <div class="stat"><span>❤️ HP <b>48</b></span><span>⚔️ 공격 <b>6</b></span><span>🏃 속도 <b>115</b></span><span class="chip t2">2단계</span></div>
-        <div class="bar"><i style="width:24%"></i></div>
-        <div>패턴: <b>유령 이동 + 부채 사격</b> (3발을 부채꼴로)</div>
-        <div class="tip"><b>공략:</b> 총알 <b>사이 틈</b>으로 파고들어 근접, 또는 부메랑으로 멀리서. mq06 목표.</div>
-        <div class="drop">드랍: 달빛 깃털 (25%)</div></div>
-
-      <div class="mon elite"><div class="top"><span class="face">🕳️</span><h4>그늘 조각</h4><span class="badge elite">정예 ELITE</span></div>
-        <div class="stat"><span>❤️ HP <b>110</b></span><span>⚔️ 공격 <b>8</b></span><span>🏃 속도 <b>130</b></span><span class="chip t2">2단계</span></div>
-        <div class="bar"><i style="width:55%"></i></div>
-        <div>패턴: <b>쫓기 + 순간이동</b> (3초마다 160칸 깜빡 이동)</div>
-        <div class="tip"><b>공략:</b> 강하지만 <b>드랍이 최고급!</b> 순간이동 직후를 노려요. 레벨·장비를 갖추고 도전.</div>
-        <div class="drop">드랍: 장난감 별활(15%) · 바람 깃털 브로치(20%)</div></div>
-
-      <div class="mon boss"><div class="top"><span class="face">☁️</span><h4>뭉게대왕</h4><span class="badge boss">BOSS 👑</span></div>
-        <div class="stat"><span>❤️ HP <b>900</b></span><span>⚔️ 공격 <b>12</b></span><span>🏃 속도 <b>95</b></span><span class="chip boss">3단계 요새</span></div>
-        <div class="bar"><i style="width:100%"></i></div>
-        <div>패턴: <b>3페이즈 변신</b> — 아래 <a href="#boss">보스 공략</a>에서 자세히!</div>
-        <div class="tip"><b>보상:</b> 경험치 150 · 골드 100 · 1장의 마지막 관문</div></div>
-    </div>
-  </section>
-
-  <!-- 보스 공략 -->
-  <section id="boss">
-    <h2><span class="n">7</span> 보스 공략 — 뭉게대왕 👑</h2>
-    <p class="sub">HP 900의 대장! 체력이 줄면 3단계로 변해요. 준비물: <b class="hl">반짝 부메랑</b> + <b class="hl">젤리 사탕</b> 몇 개 + <b class="hl">별방울 콩(원정 도시락)</b>.</p>
-    <div class="phase p1"><h4><span class="hp">1페이즈 · HP 66%↑</span> 부채 사격</h4>
-      부채꼴 5발(50°)을 쏘고, <b>12초마다 부슬이 2마리</b>를 불러요. → 소환된 부슬이부터 빠르게 정리하고 부채꼴 틈으로 접근!</div>
-    <div class="phase p2"><h4><span class="hp">2페이즈 · HP 33~66%</span> 부채 + 돌진</h4>
-      돌진 공격이 추가돼요. <b>15초마다 부슬이 2마리</b>. → 돌진 경고를 보고 옆으로 피하기.
-      <div class="ws-note" style="color:var(--dim)">💬 개그: 뭉게대왕이 부슬이를 부르다 "에, 에취!" 재채기 → 부슬이들이 흠뻑 젖어요 😆</div></div>
-    <div class="phase p3"><h4><span class="hp">3페이즈 · HP 33%↓</span> 부채 + 돌진 + 먹구름 장막</h4>
-      시야를 가리는 <b>먹구름 장막</b>까지! 소환은 없어요. → 여기서 반짝 질주(C·무적)로 파고들어 마무리! <i>"알을 지켜야 한다…!"</i></div>
-    <div class="callout"><b>🥚 결말:</b> 뭉게대왕은 작은 구름이 되어 떠나고, 요새 깊은 곳의 <b>알</b>이 희미하게 반짝여요. — 이 알이 <b>2장의 씨앗</b>이랍니다.</div>
-  </section>
-
-  <!-- 무기 -->
-  <section id="weapon">
-    <h2><span class="n">8</span> 무기 — 7종</h2>
-    <div class="tblwrap"><table>
-      <tr><th>무기</th><th>종류</th><th>공격력</th><th>필요Lv</th><th>구하는 법</th></tr>
-      <tr><td><b>맨손</b></td><td>근접</td><td>5</td><td>1</td><td class="muted">시작 무기</td></tr>
-      <tr><td><b>호미</b></td><td>근접</td><td>9</td><td>1</td><td>mq01 보상 (촌장 선물)</td></tr>
-      <tr><td><b>낡은 부메랑</b></td><td>부메랑</td><td>7 (+귀환 7)</td><td>3</td><td>mq03 보상 (창고에서 발견)</td></tr>
-      <tr><td><b>별조각 단검</b></td><td>근접·빠름</td><td>8 (0.35초!)</td><td>3</td><td>대장간 60G</td></tr>
-      <tr><td><b>무쇠 별검</b></td><td>근접·강함</td><td>16</td><td>5</td><td>mq04 보상 (대장간 개방)</td></tr>
-      <tr><td><b>장난감 별활</b></td><td>원거리</td><td>13</td><td>6</td><td>그늘 조각 드랍 · 대장간 200G</td></tr>
-      <tr><td><b>반짝 부메랑</b></td><td>부메랑</td><td>10 (+귀환 10)</td><td>9</td><td><b>제작</b>: 낡은 부메랑 + 별조각 ×3 (강화 승계!)</td></tr>
-    </table></div>
-    <div class="tipbox"><h4>⚔️ 무기 고르기</h4><b>빠른 손</b>이 좋으면 별조각 단검, <b>한 방</b>이 좋으면 무쇠 별검, <b>안전하게 멀리서</b>는 장난감 별활·부메랑! 보스전엔 반짝 부메랑 추천.</div>
-  </section>
-
-  <!-- 방어구 -->
-  <section id="armor">
-    <h2><span class="n">9</span> 방어구·장신구 — 6종</h2>
-    <div class="tblwrap"><table>
-      <tr><th>이름</th><th>부위</th><th>효과</th><th>구하는 법</th></tr>
-      <tr><td><b>천 조끼</b></td><td>몸</td><td>HP +12</td><td>잡화점 40G</td></tr>
-      <tr><td><b>별가죽 조끼</b></td><td>몸</td><td>HP +22 · 방어 +1</td><td>퀘스트 보상</td></tr>
-      <tr><td><b>반딧불 목걸이</b></td><td>장신구</td><td>체력 재생 +4</td><td>잡화점 90G</td></tr>
-      <tr><td><b>별빛 장화</b></td><td>장신구</td><td>이동속도 +5%</td><td>잡화점 150G</td></tr>
-      <tr><td><b>수호 목걸이</b></td><td>장신구</td><td>HP +15</td><td>잡화점 250G</td></tr>
-      <tr><td><b>바람 깃털 브로치</b></td><td>장신구</td><td>이동속도 +8%</td><td>그늘 조각(정예) 드랍</td></tr>
-    </table></div>
-  </section>
-
-  <!-- 아이템 -->
-  <section id="item">
-    <h2><span class="n">10</span> 아이템 — 재료·소모품</h2>
-    <div class="grid g2">
-      <div class="card"><h3 style="margin-top:0">🧪 소모품</h3>
-        <p><b>젤리 사탕</b> — 먹으면 체력 25 회복! (Q키, 최대 5개 소지) · 15G<br>
-        <b>별빛 거름</b> — 작물에 주면 성장이 하루 빨라져요 (칸당 1번) · 30G</p></div>
-      <div class="card"><h3 style="margin-top:0">📦 퀘스트품</h3>
-        <p><b>별조각</b> — 반짝 부메랑 재료 (팔 수 없어요)<br>
-        <b>빛나지 않는 별조각</b> — 빛을 잃은 이상한 별조각… <span class="muted">먼별: "버리지 마. 꼭이야."</span> 🤔</p></div>
-    </div>
-    <h3>🔨 재료 (몬스터 드랍 → 팔거나 퀘스트에)</h3>
-    <div class="tblwrap"><table>
-      <tr><th>재료</th><th>어디서</th><th>가격</th></tr>
-      <tr><td>젤리 조각</td><td>그림자 젤리</td><td>3G</td></tr>
-      <tr><td>뿔조각</td><td>뿔깡총</td><td>4G</td></tr>
-      <tr><td>풀씨 뭉치</td><td>씨앗총사</td><td>4G</td></tr>
-      <tr><td>가시 껍질</td><td>가시딱지 <span class="muted">(sq03에 필요)</span></td><td>5G</td></tr>
-      <tr><td>별조각 가루</td><td>부슬이 <span class="muted">(mq03·sq01에 필요)</span></td><td>7G</td></tr>
-      <tr><td>달빛 깃털</td><td>달빛 부엉이</td><td>9G</td></tr>
-    </table></div>
-  </section>
-
-  <!-- 스킬·전직 -->
-  <section id="skill">
-    <h2><span class="n">11</span> 스킬 & 전직</h2>
-    <h3>🌟 스킬</h3>
-    <div class="tblwrap"><table>
-      <tr><th>스킬</th><th>키</th><th>효과</th><th>배우는 법</th></tr>
-      <tr><td><b>기습</b> (패시브)</td><td>—</td><td>뒤에서 공격 시 피해 1.2배</td><td>레벨 1 (기본)</td></tr>
-      <tr><td><b>빙글 베기</b></td><td>X</td><td>주위 원형 공격 (1.2배)</td><td>레벨 3</td></tr>
-      <tr><td><b>별빛 회복</b> (패시브)</td><td>—</td><td>체력이 조금씩 회복 (12까지)</td><td>레벨 7</td></tr>
-      <tr><td><b>반짝 질주</b></td><td>C</td><td>빠르게 돌진 · <b>무적!</b> (0.8초)</td><td>mq05 완료</td></tr>
-      <tr><td><b>별똥별 내리치기</b></td><td>X</td><td>정면 강타 (2.0배) · 넉백</td><td>전직: 별빛 검사</td></tr>
-      <tr><td><b>세갈래 던지기</b></td><td>X</td><td>세 방향 투척 (0.7배 ×3)</td><td>전직: 바람 사냥꾼</td></tr>
-    </table></div>
-    <h3>⭐ 전직 — 레벨 5 + mq05 완료 후 선택!</h3>
-    <div class="grid g2">
-      <div class="card" style="border-color:rgba(110,160,255,.4)"><h4 style="margin:0 0 6px;color:var(--blue)">⚔️ 별빛 검사</h4>
-        <p style="margin:0">HP +15 · 근접 피해 1.15배 · <b>별똥별 내리치기</b> 습득<br>
-        <span class="muted">전직 시험: 가시딱지 3마리 처치</span></p></div>
-      <div class="card" style="border-color:rgba(95,211,154,.4)"><h4 style="margin:0 0 6px;color:var(--green)">🏹 바람 사냥꾼</h4>
-        <p style="margin:0">이동속도 +8% · 사거리 +15% · <b>세갈래 던지기</b> 습득<br>
-        <span class="muted">전직 시험: 씨앗총사 5마리 처치</span></p></div>
-    </div>
-  </section>
-
-  <!-- 농사 -->
-  <section id="farm">
-    <h2><span class="n">12</span> 농사 & 작물 — 6종</h2>
-    <p class="sub">심기 → 물주기 → 침대에서 자기(하루 넘김) → 수확! 골드 벌이의 핵심이에요.</p>
-    <div class="tblwrap"><table>
-      <tr><th>작물</th><th>씨앗값</th><th>자라는 날</th><th>판매가</th><th>메모</th></tr>
-      <tr><td><b>별무</b></td><td>10G</td><td>1일</td><td>18G</td><td>제일 빠름 · 첫 농사</td></tr>
-      <tr><td><b>은하밀</b></td><td>12G</td><td>2일</td><td>30G</td><td>mq04에 필요</td></tr>
-      <tr><td><b>반짝당근</b></td><td>15G</td><td>2일</td><td>34G</td><td>가성비 좋음</td></tr>
-      <tr><td><b>별딸기</b></td><td>35G</td><td>3일</td><td>28G</td><td>2일마다 다시 열림!</td></tr>
-      <tr><td><b>별방울 콩</b></td><td>40G</td><td>4일</td><td>95G</td><td>⭐ 최고가 · sq02·mq07 필수 (mq05 후)</td></tr>
-      <tr><td><b>빛나무 묘목</b></td><td>25G</td><td>1일</td><td class="muted">판매 X</td><td>mq06 방어전에서 밤 조명! (mq05 후)</td></tr>
-    </table></div>
-    <div class="tipbox"><h4>🌱 농사 꿀팁</h4><b>별빛 거름</b>을 주면 하루 빨리 자라요. 돈이 급하면 <b>반짝당근</b>, 크게 벌려면 <b>별방울 콩</b>! 침대에서 자면 <b>저장</b>도 돼요.</div>
-  </section>
-
-  <!-- 꿀팁·비밀 -->
-  <section id="secret">
-    <h2><span class="n">13</span> 꿀팁 & 숨겨진 이야기 🔮</h2>
-    <div class="grid g2">
-      <div class="tipbox"><h4>💡 초보 탈출 5계명</h4>
-        1. 매일 밭에 물 주고 자기 (돈 + 저장)<br>
-        2. 가시딱지·씨앗총사는 <b>옆/뒤</b>에서!<br>
-        3. 젤리 사탕 몇 개는 항상 챙기기<br>
-        4. 서브퀘도 꼭 하기 (sq02는 보스 필수!)<br>
-        5. 보스 전에 <b>반짝 부메랑</b> 제작하기</div>
-      <div class="callout"><h4 style="margin:0 0 6px;color:var(--purple)">🌙 숨겨진 떡밥 (2장 힌트)</h4>
-        • <b>먼별</b>은 왜 먹구름단을 그렇게 잘 알까?<br>
-        • <b>빛나지 않는 별조각</b> — 먼별이 "버리지 마"라고 했어요.<br>
-        • 뭉게대왕이 지키려던 <b>알</b>은 무엇일까?<br>
-        • 할머니는 <b>어디로</b>, 왜 사라졌을까?<br>
-        • 젤리 한 마리가 계속 시고니를 따라와요 🫧</div>
-    </div>
-  </section>
-
-  <!-- 2장 예고 -->
-  <section id="ch2">
-    <div class="ch2">
-      <div class="egg">🥚</div>
-      <h2 style="border:0"><span class="n">14</span> 2장 예고</h2>
-      <p style="color:var(--dim); max-width:600px; margin:6px auto 0">
-      "<i>알이 깨어나는 날, 다시 만나자.</i>" — 먼별<br><br>
-      1장의 축제가 끝나도 이야기는 끝나지 않았어요. 반짝이는 알, 사라진 할머니, 정체 모를 먼별…
-      그리고 <b class="hl">우리 반이 함께 채울 여백</b>이 2장을 기다립니다.
-      <br><br>👉 아래 <b>학습지</b>로 2장에 넣을 몬스터·아이템·퀘스트를 직접 만들어 보자!</p>
-    </div>
-  </section>
-
-  <!-- ── 학습지 ── -->
-  <section id="worksheet">
-    <h2><span class="n">15</span> 📝 나만의 공략 노트 (학습지)</h2>
-    <div class="ws-intro">
-      <p style="margin:0 0 8px"><b class="hl">피코의 관찰 노트</b>처럼, 게임을 하면서 알아낸 걸 직접 적어 보자! 잘 만든 노트는 진짜 <b>2장 콘텐츠</b>가 될 수 있어요. (선생님이 골라서 게임에 넣어줄 거예요 ✨)</p>
-      <button class="print-btn no-print" onclick="window.print()">🖨️ 학습지만 인쇄하기</button>
-      <p class="ws-note">화면에 바로 써도 되고, 인쇄해서 손으로 써도 돼요.</p>
-    </div>
-
-    <!-- 몬스터 관찰 카드 -->
-    <div class="sheet"><h4>👾 몬스터 관찰 카드</h4>
+    <!-- 등장인물 -->
+    <div class="panel" id="panel-npc">
+      <h2 class="title">👥 등장인물</h2>
+      <p class="sub">각자 <b style="color:var(--purple)">비밀</b>이 숨어 있어요. 잘 들어 두면 2장에서 도움이 될지도!</p>
       <div class="grid g2">
+        <div class="card"><div class="npc"><div class="ava">🧓</div><div><div class="role">촌장 · 퀘스트 허브</div><h4>온별 할아버지</h4>
+          <div class="say">"전설 말인데… 용이었나, 곰이었나?"</div><div class="sec">🔮 전설의 뒷부분을 사실은 기억할지도?</div></div></div></div>
+        <div class="card"><div class="npc"><div class="ava">🛍️</div><div><div class="role">잡화점</div><h4>모모</h4>
+          <div class="say">"반짝이는 거라면 뭐든! 나한테 팔래?"</div><div class="sec">🔮 창고에 정리 못 한 수집품 상자가.</div></div></div></div>
+        <div class="card"><div class="npc"><div class="ava">🔧</div><div><div class="role">대장장이 (mq04 후)</div><h4>볼트</h4>
+          <div class="say">"…볼일 없으면 가라. 삐빅, 수리 완료."</div><div class="sec">🔮 고친 도구마다 몰래 별 스티커를.</div></div></div></div>
+        <div class="card"><div class="npc"><div class="ava">🌱</div><div><div class="role">씨앗 상점</div><h4>리프</h4>
+          <div class="say">"쉿! 지금 별무가 얘기하는 중이야."</div><div class="sec">🔮 정말 작물과 대화하는 걸까?</div></div></div></div>
+        <div class="card"><div class="npc"><div class="ava">📓</div><div><div class="role">기록가</div><h4>피코</h4>
+          <div class="say">"그거 노트에 적어야 해! 관찰 포인트!"</div><div class="sec">🔮 피코의 노트 = 게임 속 '별의 도감'. (← 학습지와 연결!)</div></div></div></div>
+        <div class="card"><div class="npc"><div class="ava">🌙</div><div><div class="role">수수께끼 · 밤에만</div><h4>먼별</h4>
+          <div class="say">"후후… 별이 흐려진 진짜 이유, 알고 싶나?"</div><div class="sec">🔮 정체 미공개 — <b>우리 반이 채울 여백.</b> 먹구름단을 너무 잘 안다…</div></div></div></div>
+      </div>
+    </div>
+
+    <!-- 퀘스트 -->
+    <div class="panel" id="panel-quest">
+      <h2 class="title">📜 메인 퀘스트 흐름</h2>
+      <p class="sub">위에서 아래로 순서대로! <b class="hl">노란 보상</b>을 챙기면 다음이 쉬워져요.</p>
+      <div class="timeline">
+        <div class="q"><div class="dot">1</div><h4>별마중 마을 도착</h4><div class="meta">🎯 촌장 온별과 대화</div><div class="rw">🎁 경험치 15 · <b>호미</b> · 별무 씨앗 ×5</div><div class="quote">"이 호미를 받게. 내 40년 된 허리보다 튼튼하다네!"</div></div>
+        <div class="q"><div class="dot">2</div><h4>밤손님</h4><div class="meta">🎯 별무 3개 수확 (밤에 젤리가 습격!)</div><div class="rw">🎁 경험치 40 · 골드 30</div><div class="quote">"순한 젤리가 왜 내려왔을까? 별빛이 흐려져서…"</div></div>
+        <div class="q"><div class="dot">3</div><h4>별조각 도둑</h4><div class="meta">🎯 별조각 가루 3개 (가랑비 숲길)</div><div class="rw">🎁 경험치 60 · 골드 40 · <b>낡은 부메랑</b></div><div class="quote">"할머니 물건이군. 던지면 돌아온단다."</div></div>
+        <div class="q"><div class="dot">4</div><h4>마을의 부탁</h4><div class="meta">🎯 은하밀 3개 길러 모모에게 배달</div><div class="rw">🎁 경험치 80 · 골드 60 · <b>대장간 개방</b> · 무쇠 별검</div><div class="quote">"먼별은 먹구름단을 어찌 저리 잘 알까?"</div></div>
+        <div class="q"><div class="dot">5</div><h4>안개 간부 보슬보슬</h4><div class="meta">🎯 부슬이 5마리 처치</div><div class="rw">🎁 경험치 100 · 골드 80 · <b>빛나지 않는 별조각</b> · 전직 개방 · 반짝 질주(C)</div><div class="quote">"씨앗 돌려줄게… 그분이 기다리셔…"</div></div>
+        <div class="q"><div class="dot">6</div><h4>별광맥 방어전</h4><div class="meta">🎯 달빛 부엉이 4마리 · 낮에 빛나무 묘목 심기(밤 조명!)</div><div class="rw">🎁 경험치 130 · 골드 100 · <b>별조각 ×3</b>(부메랑 재료) · 밭 확장</div><div class="quote">"부수지도, 아프게도 안 하고 왜 훔치기만?"</div></div>
+        <div class="q"><div class="dot">7</div><h4>먹구름 요새 — 뭉게대왕 👑</h4><div class="meta">🎯 뭉게대왕 처치 · 준비물: 별방울 콩 3개(sq02) + 반짝 부메랑</div><div class="rw">🎁 경험치 175 · 골드 150 · 칭호 <b>「별빛 수호자」</b> · <b class="hl-b">1장 클리어!</b></div><div class="quote">"그 알은… 전설에서 봤는데… 까먹었다!"</div></div>
+      </div>
+      <h3>✨ 서브 퀘스트 (하면 이득!)</h3>
+      <div class="grid g3">
+        <div class="card"><h4 style="margin:0 0 4px">도망간 반딧별</h4><div class="meta muted">피코 · 별조각 가루 4개</div><div class="rw">🎁 경험치 30 · 골드 40</div></div>
+        <div class="card"><h4 style="margin:0 0 4px">콩 배달 대작전</h4><div class="meta muted">모모 · 별방울 콩 3개</div><div class="rw" style="color:var(--red)">⚠️ 보스전(mq07) 필수 선행!</div></div>
+        <div class="card"><h4 style="margin:0 0 4px">껍질 수집가</h4><div class="meta muted">볼트 · 가시 껍질 5개</div><div class="rw">🎁 <b>강화 20% 할인권</b></div></div>
+      </div>
+    </div>
+
+    <!-- 몬스터 -->
+    <div class="panel" id="panel-mon">
+      <h2 class="title">👾 몬스터 도감 — 8종</h2>
+      <p class="sub"><span class="chip g">1단계 들판</span> <span class="chip y">2단계 숲길</span> <span class="chip r">보스</span></p>
+      <div class="grid g2">
+        <div class="mon"><div class="top"><span class="face">🟣</span><h4>그림자 젤리</h4><span class="chip g">1단계</span></div>
+          <div class="stat"><span>❤️ HP <b>15</b></span><span>⚔️ <b>4</b></span><span>🏃 <b>100</b></span></div><div class="bar"><i style="width:8%"></i></div>
+          <div>패턴: <b>쫓아오기</b>. 제일 약해요!</div><div class="tip"><b>공략:</b> Z로 그냥 때려요. 밤손님!</div><div class="drop">드랍: 젤리 조각(50%)</div></div>
+        <div class="mon"><div class="top"><span class="face">🐗</span><h4>뿔깡총</h4><span class="chip g">1단계</span></div>
+          <div class="stat"><span>❤️ HP <b>26</b></span><span>⚔️ <b>6</b></span><span>🏃 <b>70</b></span></div><div class="bar"><i style="width:13%"></i></div>
+          <div>패턴: <b>깡총 뛰기</b>(뛰다 쉼)</div><div class="tip"><b>공략:</b> <b>쉴 때</b>를 노려서!</div><div class="drop">드랍: 뿔조각(30%)</div></div>
+        <div class="mon"><div class="top"><span class="face">🌰</span><h4>씨앗총사</h4><span class="chip g">1단계</span></div>
+          <div class="stat"><span>❤️ HP <b>22</b></span><span>⚔️ <b>5</b></span><span>🏃 <b>0</b></span></div><div class="bar"><i style="width:11%"></i></div>
+          <div>패턴: <b>포탑</b>(멀리 씨앗 발사)</div><div class="tip"><b>공략:</b> <b>지그재그</b>로 피하며 접근!</div><div class="drop">드랍: 풀씨 뭉치(40%)</div></div>
+        <div class="mon"><div class="top"><span class="face">🦔</span><h4>가시딱지</h4><span class="chip g">1단계·튼튼</span></div>
+          <div class="stat"><span>❤️ HP <b>60</b></span><span>⚔️ <b>7</b></span><span>🏃 <b>70</b></span></div><div class="bar"><i style="width:30%"></i></div>
+          <div>패턴: <b>정면 방어</b>(앞 120° 피해 60%↓)</div><div class="tip"><b>공략:</b> <b>옆·뒤</b>에서! 기습 스킬 필수. 전직 시험에도 등장.</div><div class="drop">드랍: 가시 껍질(35%)</div></div>
+        <div class="mon"><div class="top"><span class="face">💨</span><h4>부슬이</h4><span class="chip y">2단계</span></div>
+          <div class="stat"><span>❤️ HP <b>38</b></span><span>⚔️ <b>8</b></span><span>🏃 <b>150</b></span></div><div class="bar"><i style="width:19%"></i></div>
+          <div>패턴: <b>돌진</b>(0.7초 경고 후)</div><div class="tip"><b>공략:</b> <b>경고 뜨면 옆으로!</b> 빗나가면 반격. mq05.</div><div class="drop">드랍: 별조각 가루(30%)</div></div>
+        <div class="mon"><div class="top"><span class="face">🦉</span><h4>달빛 부엉이</h4><span class="chip y">2단계</span></div>
+          <div class="stat"><span>❤️ HP <b>48</b></span><span>⚔️ <b>6</b></span><span>🏃 <b>115</b></span></div><div class="bar"><i style="width:24%"></i></div>
+          <div>패턴: <b>유령 이동 + 부채 3발</b></div><div class="tip"><b>공략:</b> 총알 <b>틈</b>으로 접근, 또는 부메랑. mq06.</div><div class="drop">드랍: 달빛 깃털(25%)</div></div>
+        <div class="mon elite"><div class="top"><span class="face">🕳️</span><h4>그늘 조각</h4><span class="badge elite">정예</span></div>
+          <div class="stat"><span>❤️ HP <b>110</b></span><span>⚔️ <b>8</b></span><span>🏃 <b>130</b></span></div><div class="bar"><i style="width:55%"></i></div>
+          <div>패턴: <b>쫓기 + 순간이동</b>(3초마다)</div><div class="tip"><b>공략:</b> 강하지만 <b>드랍 최고급!</b> 순간이동 직후를 노려요.</div><div class="drop">드랍: 장난감 별활(15%) · 바람 브로치(20%)</div></div>
+        <div class="mon boss"><div class="top"><span class="face">☁️</span><h4>뭉게대왕</h4><span class="badge boss">BOSS 👑</span></div>
+          <div class="stat"><span>❤️ HP <b>900</b></span><span>⚔️ <b>12</b></span><span>🏃 <b>95</b></span></div><div class="bar"><i style="width:100%"></i></div>
+          <div>패턴: <b>3페이즈 변신</b> → 보스 공략 참고!</div><div class="tip"><b>보상:</b> 경험치 150 · 1장 최종 관문</div></div>
+      </div>
+    </div>
+
+    <!-- 보스 -->
+    <div class="panel" id="panel-boss">
+      <h2 class="title">👑 보스 공략 — 뭉게대왕</h2>
+      <p class="sub">HP 900! 체력이 줄면 3단계로 변해요. 준비물: <b class="hl">반짝 부메랑 · 젤리 사탕 · 별방울 콩(도시락)</b>.</p>
+      <div class="phase p1"><h4><span class="hp">1페이즈 · HP 66%↑</span> 부채 사격</h4>부채꼴 5발 + <b>12초마다 부슬이 2마리</b> 소환. → 부슬이부터 정리, 부채 틈으로 접근!</div>
+      <div class="phase p2"><h4><span class="hp">2페이즈 · 33~66%</span> 부채 + 돌진</h4>돌진 추가, <b>15초마다 부슬이 2마리</b>. → 돌진 경고 보고 옆으로. <span class="muted">(개그: "에취!" 재채기에 부슬이가 젖어요 😆)</span></div>
+      <div class="phase p3"><h4><span class="hp">3페이즈 · 33%↓</span> 부채 + 돌진 + 먹구름 장막</h4>시야 가림! 소환 없음. → <b>반짝 질주(C·무적)</b>로 파고들어 마무리! <i>"알을 지켜야 한다…!"</i></div>
+      <div class="callout"><b>🥚 결말:</b> 뭉게대왕은 작은 구름이 되어 떠나고, 요새 깊은 곳의 <b>알</b>이 반짝여요 — 2장의 씨앗!</div>
+    </div>
+
+    <!-- 무기·방어구 -->
+    <div class="panel" id="panel-gear">
+      <h2 class="title">⚔️ 무기 & 방어구</h2>
+      <h3 style="margin-top:6px">무기 7종</h3>
+      <div class="tblwrap"><table>
+        <tr><th>무기</th><th>종류</th><th>공격력</th><th>Lv</th><th>구하는 법</th></tr>
+        <tr><td><b>맨손</b></td><td>근접</td><td>5</td><td>1</td><td class="muted">시작</td></tr>
+        <tr><td><b>호미</b></td><td>근접</td><td>9</td><td>1</td><td>mq01(촌장 선물)</td></tr>
+        <tr><td><b>낡은 부메랑</b></td><td>부메랑</td><td>7(+7)</td><td>3</td><td>mq03(창고 발견)</td></tr>
+        <tr><td><b>별조각 단검</b></td><td>근접·빠름</td><td>8(0.35초!)</td><td>3</td><td>대장간 60G</td></tr>
+        <tr><td><b>무쇠 별검</b></td><td>근접·강함</td><td>16</td><td>5</td><td>mq04</td></tr>
+        <tr><td><b>장난감 별활</b></td><td>원거리</td><td>13</td><td>6</td><td>정예 드랍·상점 200G</td></tr>
+        <tr><td><b>반짝 부메랑</b></td><td>부메랑</td><td>10(+10)</td><td>9</td><td><b>제작</b>: 낡은 부메랑+별조각×3</td></tr>
+      </table></div>
+      <h3>방어구·장신구 6종</h3>
+      <div class="tblwrap"><table>
+        <tr><th>이름</th><th>부위</th><th>효과</th><th>구하는 법</th></tr>
+        <tr><td><b>천 조끼</b></td><td>몸</td><td>HP +12</td><td>잡화점 40G</td></tr>
+        <tr><td><b>별가죽 조끼</b></td><td>몸</td><td>HP +22 · 방어 +1</td><td>퀘스트</td></tr>
+        <tr><td><b>반딧불 목걸이</b></td><td>장신구</td><td>재생 +4</td><td>잡화점 90G</td></tr>
+        <tr><td><b>별빛 장화</b></td><td>장신구</td><td>이동속도 +5%</td><td>잡화점 150G</td></tr>
+        <tr><td><b>수호 목걸이</b></td><td>장신구</td><td>HP +15</td><td>잡화점 250G</td></tr>
+        <tr><td><b>바람 깃털 브로치</b></td><td>장신구</td><td>이동속도 +8%</td><td>그늘 조각 드랍</td></tr>
+      </table></div>
+    </div>
+
+    <!-- 아이템 -->
+    <div class="panel" id="panel-item">
+      <h2 class="title">🎒 아이템</h2>
+      <div class="grid g2">
+        <div class="card"><h3 style="margin-top:0">🧪 소모품</h3><p><b>젤리 사탕</b> — 체력 25 회복(Q키, 최대 5) · 15G<br><b>별빛 거름</b> — 작물 성장 하루 빨리 · 30G</p></div>
+        <div class="card"><h3 style="margin-top:0">📦 퀘스트품</h3><p><b>별조각</b> — 반짝 부메랑 재료(못 팜)<br><b>빛나지 않는 별조각</b> — 이상한 별조각… <span class="muted">먼별: "버리지 마. 꼭이야." 🤔</span></p></div>
+      </div>
+      <h3>🔨 재료 (몬스터 드랍)</h3>
+      <div class="tblwrap"><table>
+        <tr><th>재료</th><th>어디서</th><th>가격</th></tr>
+        <tr><td>젤리 조각</td><td>그림자 젤리</td><td>3G</td></tr>
+        <tr><td>뿔조각</td><td>뿔깡총</td><td>4G</td></tr>
+        <tr><td>풀씨 뭉치</td><td>씨앗총사</td><td>4G</td></tr>
+        <tr><td>가시 껍질</td><td>가시딱지 <span class="muted">(sq03)</span></td><td>5G</td></tr>
+        <tr><td>별조각 가루</td><td>부슬이 <span class="muted">(mq03·sq01)</span></td><td>7G</td></tr>
+        <tr><td>달빛 깃털</td><td>달빛 부엉이</td><td>9G</td></tr>
+      </table></div>
+    </div>
+
+    <!-- 스킬·전직 -->
+    <div class="panel" id="panel-skill">
+      <h2 class="title">🌟 스킬 & 전직</h2>
+      <div class="tblwrap"><table>
+        <tr><th>스킬</th><th>키</th><th>효과</th><th>배우는 법</th></tr>
+        <tr><td><b>기습</b>(패시브)</td><td>—</td><td>뒤 공격 피해 1.2배</td><td>레벨 1</td></tr>
+        <tr><td><b>빙글 베기</b></td><td>X</td><td>주위 원형 공격</td><td>레벨 3</td></tr>
+        <tr><td><b>별빛 회복</b>(패시브)</td><td>—</td><td>체력 조금씩 회복</td><td>레벨 7</td></tr>
+        <tr><td><b>반짝 질주</b></td><td>C</td><td>돌진 · <b>무적!</b></td><td>mq05</td></tr>
+        <tr><td><b>별똥별 내리치기</b></td><td>X</td><td>정면 강타 2.0배·넉백</td><td>전직: 검사</td></tr>
+        <tr><td><b>세갈래 던지기</b></td><td>X</td><td>세 방향 투척</td><td>전직: 사냥꾼</td></tr>
+      </table></div>
+      <h3>⭐ 전직 — 레벨 5 + mq05 후 선택</h3>
+      <div class="grid g2">
+        <div class="card" style="border-color:rgba(110,160,255,.4)"><h4 style="margin:0 0 6px;color:var(--blue)">⚔️ 별빛 검사</h4><p style="margin:0">HP+15 · 근접 1.15배 · 별똥별 내리치기<br><span class="muted">시험: 가시딱지 3마리</span></p></div>
+        <div class="card" style="border-color:rgba(95,211,154,.4)"><h4 style="margin:0 0 6px;color:var(--green)">🏹 바람 사냥꾼</h4><p style="margin:0">속도+8% · 사거리+15% · 세갈래 던지기<br><span class="muted">시험: 씨앗총사 5마리</span></p></div>
+      </div>
+    </div>
+
+    <!-- 농사 -->
+    <div class="panel" id="panel-farm">
+      <h2 class="title">🌱 농사 & 작물</h2>
+      <p class="sub">심기 → 물주기 → 침대에서 자기(하루 넘김) → 수확! 골드 벌이의 핵심.</p>
+      <div class="tblwrap"><table>
+        <tr><th>작물</th><th>씨앗값</th><th>자라는 날</th><th>판매가</th><th>메모</th></tr>
+        <tr><td><b>별무</b></td><td>10G</td><td>1일</td><td>18G</td><td>제일 빠름·첫 농사</td></tr>
+        <tr><td><b>은하밀</b></td><td>12G</td><td>2일</td><td>30G</td><td>mq04 필요</td></tr>
+        <tr><td><b>반짝당근</b></td><td>15G</td><td>2일</td><td>34G</td><td>가성비 좋음</td></tr>
+        <tr><td><b>별딸기</b></td><td>35G</td><td>3일</td><td>28G</td><td>2일마다 다시 열림</td></tr>
+        <tr><td><b>별방울 콩</b></td><td>40G</td><td>4일</td><td>95G</td><td>⭐ 최고가·sq02·mq07 필수</td></tr>
+        <tr><td><b>빛나무 묘목</b></td><td>25G</td><td>1일</td><td class="muted">판매 X</td><td>mq06 밤 조명!</td></tr>
+      </table></div>
+      <div class="tipbox"><h4>🌱 꿀팁</h4><b>별빛 거름</b>이면 하루 빨리. 돈 급하면 <b>반짝당근</b>, 크게 벌면 <b>별방울 콩</b>! 침대에서 자면 <b>저장</b>도 돼요.</div>
+    </div>
+
+    <!-- 비밀 -->
+    <div class="panel" id="panel-secret">
+      <h2 class="title">🔮 꿀팁 & 숨겨진 이야기</h2>
+      <div class="grid g2">
+        <div class="tipbox"><h4>💡 초보 탈출 5계명</h4>1. 매일 물 주고 자기(돈+저장)<br>2. 가시딱지·씨앗총사는 <b>옆/뒤</b>에서<br>3. 젤리 사탕 챙기기<br>4. 서브퀘도 하기(sq02는 보스 필수!)<br>5. 보스 전 <b>반짝 부메랑</b> 만들기</div>
+        <div class="callout"><h4 style="margin:0 0 6px;color:var(--purple)">🌙 숨겨진 떡밥 (2장 힌트)</h4>• <b>먼별</b>은 왜 먹구름단을 잘 알까?<br>• <b>빛나지 않는 별조각</b> — "버리지 마"<br>• 뭉게대왕이 지키던 <b>알</b>은?<br>• 할머니는 <b>어디로</b> 사라졌을까?<br>• 젤리 하나가 계속 따라와요 🫧</div>
+      </div>
+    </div>
+
+    <!-- 2장 만들기 -->
+    <div class="panel" id="panel-build">
+      <h2 class="title">🥚 2장 만들기 — 이야기 흐름을 짜 보자</h2>
+      <p class="sub">2장은 <b class="hl">여러분이 이야기를 이어가요!</b> 퀘스트를 처음부터 만들기 어렵죠? 걱정 마세요 — 모든 퀘스트는 아래 <b>똑같은 뼈대</b>로 되어 있어요. 빈칸만 채우면 퀘스트 완성!</p>
+
+      <h3>🧩 모든 퀘스트의 뼈대 (이대로 따라 해요)</h3>
+      <div class="flow">
+        <div class="step"><div class="ic">🧑</div><div class="t">① 누가 부탁</div><div class="d">어떤 NPC가<br>왜 부탁할까?</div></div>
+        <div class="arrow">→</div>
+        <div class="step"><div class="ic">🔍</div><div class="t">② 어디를 조사</div><div class="d">어느 지역/장소로<br>가야 할까?</div></div>
+        <div class="arrow">→</div>
+        <div class="step"><div class="ic">👾</div><div class="t">③ 무엇이 있나</div><div class="d">거기 어떤 몬스터<br>·장애물이?</div></div>
+        <div class="arrow">→</div>
+        <div class="step"><div class="ic">🔑</div><div class="t">④ 실마리 찾기</div><div class="d">무엇을 찾거나<br>해내야 할까?</div></div>
+        <div class="arrow">→</div>
+        <div class="step"><div class="ic">🏡</div><div class="t">⑤ 돌아가서</div><div class="d">보고 → 보상<br>→ 다음 이야기</div></div>
+      </div>
+      <div class="tipbox"><h4>예시로 이해하기 (1장 mq03 '별조각 도둑')</h4>
+        🧑 온별이 "도둑이야!" → 🔍 가랑비 숲길 조사 → 👾 부슬이가 별조각 가루를 흘림 → 🔑 가루 3개 모으기 → 🏡 돌아가니 창고에서 <b>낡은 부메랑</b> 발견! "훔친 별빛을 어디 쓰는 걸까?"(다음 떡밥)</div>
+
+      <h3>🌱 이야기 씨앗 (막히면 여기서 골라 시작!)</h3>
+      <div class="grid g3">
+        <div class="seed"><h4>🥚 흔들리는 알</h4><p>요새의 알이 흔들려요! 무엇이 알을 노릴까요? 알을 지키려면?</p></div>
+        <div class="seed"><h4>🌙 먼별의 뒤를 밟다</h4><p>먼별이 밤에 어디론가 가요. 따라가면 무엇이 나올까요?</p></div>
+        <div class="seed"><h4>🧓 할머니의 흔적</h4><p>할머니의 낡은 일기 한 조각을 발견! 어디로 이어질까요?</p></div>
+      </div>
+
+      <div class="callout" style="margin-top:18px"><b>✏️ 이제 직접 만들어요!</b> 아래 <span class="no-print"><b>📝 관찰 학습지</b> 메뉴</span>의 <b>'나만의 퀘스트 만들기'</b>와 <b>'새 지역/몬스터 만들기'</b> 카드를 채우면 — 잘 만든 건 선생님이 골라 <b>진짜 2장</b>에 넣어줄 거예요! ✨</div>
+      <button class="print-btn no-print" onclick="window.print()" style="margin-top:8px">🖨️ 이 페이지 인쇄</button>
+    </div>
+
+    <!-- 학습지 -->
+    <div class="panel" id="panel-sheet">
+      <h2 class="title">📝 관찰 학습지 (피코의 노트)</h2>
+      <p class="sub"><b class="hl">피코의 관찰 노트</b>처럼 알아낸 걸 적어 보자! 화면에 써도 되고 인쇄해서 손으로 써도 돼요. 잘 만든 건 <b>2장 콘텐츠</b>가 될 수 있어요!</p>
+      <button class="print-btn no-print" onclick="window.print()">🖨️ 학습지 인쇄하기</button>
+
+      <div class="sheet"><h4>👾 몬스터 관찰 카드</h4><div class="grid g2">
         <div>
           <div class="field"><div class="lab">몬스터 이름</div><div class="lines"></div></div>
-          <div class="field"><div class="lab">사는 곳</div><div class="lines"></div></div>
+          <div class="field"><div class="lab">사는 곳 (어느 지역?)</div><div class="lines"></div></div>
           <div class="field"><div class="lab">공격 방법 / 패턴</div><div class="lines"></div><div class="lines"></div></div>
           <div class="field"><div class="lab">나만의 공략 팁</div><div class="lines"></div><div class="lines"></div></div>
           <div class="field"><div class="lab">위험도</div><div class="starrate">☆ ☆ ☆ ☆ ☆</div></div>
         </div>
-        <div class="field"><div class="lab">몬스터 그림</div><div class="drawbox">여기에 그려 보세요 ✏️</div></div>
-      </div>
-    </div>
+        <div class="field"><div class="lab">몬스터 그림</div><div class="drawbox">여기에 그려요 ✏️</div></div>
+      </div></div>
 
-    <!-- 아이템/무기 카드 -->
-    <div class="sheet"><h4>⚔️ 아이템 / 무기 카드</h4>
-      <div class="grid g2">
-        <div>
-          <div class="field"><div class="lab">이름</div><div class="lines"></div></div>
-          <div class="field"><div class="lab">어떤 효과가 있나요?</div><div class="lines"></div><div class="lines"></div></div>
-          <div class="field"><div class="lab">어떻게 구하나요?</div><div class="lines"></div></div>
+      <div class="sheet"><h4>📜 나만의 퀘스트 만들기 (2장용!)</h4>
+        <div class="flow sheetflow">
+          <div class="step"><div class="ic">🧑</div><div class="t">누가·왜</div></div><div class="arrow">→</div>
+          <div class="step"><div class="ic">🔍</div><div class="t">어디 조사</div></div><div class="arrow">→</div>
+          <div class="step"><div class="ic">👾</div><div class="t">무엇이</div></div><div class="arrow">→</div>
+          <div class="step"><div class="ic">🔑</div><div class="t">실마리</div></div><div class="arrow">→</div>
+          <div class="step"><div class="ic">🏡</div><div class="t">돌아가서</div></div>
         </div>
-        <div class="field"><div class="lab">아이템 그림</div><div class="drawbox">여기에 그려 보세요 ✏️</div></div>
+        <div class="field"><div class="lab">① 누가 부탁하나요? 그리고 왜? (이야기)</div><div class="lines"></div><div class="lines"></div></div>
+        <div class="field"><div class="lab">② 어디를 조사하나요? (장소)</div><div class="lines"></div></div>
+        <div class="field"><div class="lab">③ 거기에 무엇이 있나요? (몬스터·장애물)</div><div class="lines"></div></div>
+        <div class="field"><div class="lab">④ 무엇을 찾거나 해내나요? (실마리·목표)</div><div class="lines"></div></div>
+        <div class="field"><div class="lab">⑤ 돌아가면? (보상 + 다음에 벌어질 일)</div><div class="lines"></div><div class="lines"></div></div>
       </div>
-    </div>
 
-    <!-- 나만의 퀘스트 만들기 -->
-    <div class="sheet"><h4>📜 나만의 퀘스트 만들기 (2장용!)</h4>
-      <div class="field"><div class="lab">퀘스트 이름</div><div class="lines"></div></div>
-      <div class="grid g2">
-        <div class="field"><div class="lab">누가 부탁하나요? (NPC)</div><div class="lines"></div></div>
-        <div class="field"><div class="lab">무엇을 해야 하나요? (목표)</div><div class="lines"></div></div>
+      <div class="sheet"><h4>🗺️ 새 지역 만들기 (지도에 이어붙이기)</h4>
+        <div class="grid g2"><div>
+          <div class="field"><div class="lab">지역 이름</div><div class="lines"></div></div>
+          <div class="field"><div class="lab">마을·요새에서 어느 방향? (왼/오/위/아래)</div><div class="lines"></div></div>
+          <div class="field"><div class="lab">어떤 곳인가요? (분위기)</div><div class="lines"></div></div>
+          <div class="field"><div class="lab">여기 사는 몬스터는?</div><div class="lines"></div></div>
+        </div>
+        <div class="field"><div class="lab">지역 지도 그리기</div><div class="drawbox" style="height:170px">여기에 그려요 ✏️</div></div></div>
       </div>
-      <div class="field"><div class="lab">이야기 (왜 이 부탁을 할까요?)</div><div class="lines"></div><div class="lines"></div></div>
-      <div class="grid g2">
-        <div class="field"><div class="lab">보상은?</div><div class="lines"></div></div>
-        <div class="field"><div class="lab">다음에 무슨 일이 생기나요?</div><div class="lines"></div></div>
-      </div>
-    </div>
 
-    <!-- 나만의 몬스터 디자인 -->
-    <div class="sheet"><h4>🎨 나만의 몬스터 디자인 (2장 보스가 될지도?)</h4>
-      <div class="grid g2">
-        <div>
+      <div class="sheet"><h4>🎨 새 몬스터 디자인 (2장 보스가 될지도?)</h4>
+        <div class="grid g2"><div>
           <div class="field"><div class="lab">이름</div><div class="lines"></div></div>
-          <div class="field"><div class="lab">체력(HP) / 공격력은 얼마쯤?</div><div class="lines"></div></div>
+          <div class="field"><div class="lab">체력(HP)·공격력은 얼마쯤?</div><div class="lines"></div></div>
           <div class="field"><div class="lab">특별한 능력 (예: 순간이동, 방어)</div><div class="lines"></div><div class="lines"></div></div>
-          <div class="field"><div class="lab">무엇을 떨어뜨리나요? (드랍)</div><div class="lines"></div></div>
+          <div class="field"><div class="lab">무엇을 떨어뜨리나요?</div><div class="lines"></div></div>
         </div>
-        <div class="field"><div class="lab">몬스터 그림</div><div class="drawbox" style="height:180px">여기에 그려 보세요 ✏️</div></div>
+        <div class="field"><div class="lab">몬스터 그림</div><div class="drawbox" style="height:180px">여기에 그려요 ✏️</div></div></div>
       </div>
     </div>
-  </section>
 
-  <footer>
-    별빛 마을 RPG · 1장 완전 공략집 · 별마중 마을 편 🌟<br>
-    <span class="no-print">우리 반이 함께 만드는 이야기 · 2장에서 계속</span>
-  </footer>
-</div>
+  </main>
+
+<script>
+  const items = document.querySelectorAll('.nav-item');
+  const panels = document.querySelectorAll('.panel');
+  const main = document.querySelector('.main');
+  function show(id){
+    panels.forEach(p=> p.classList.toggle('active', p.id === 'panel-'+id));
+    items.forEach(n=>{ const on = n.dataset.p===id; n.classList.toggle('on', on);
+      n.classList.toggle('gold', on && (id==='sheet'||id==='map'));
+      n.classList.toggle('purple', on && id==='build'); });
+    if(main) main.scrollTop = 0;
+  }
+  items.forEach(n=> n.addEventListener('click', ()=> show(n.dataset.p)));
+  document.querySelectorAll('[data-go]').forEach(b=> b.addEventListener('click', ()=> show(b.dataset.go)));
+</script>
 </body>
 </html>
