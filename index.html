@@ -5053,6 +5053,14 @@ function rpgBuildLayer(){   // 정적 타일 오프스크린 1회 합성(§11-4)
         if(!has(c+1,r)){ g.save(); g.translate(x+56,y+28); g.rotate(Math.PI/2); g.drawImage(sheetImg,SX,SY,16,16,-28,-10,56,19); g.restore(); }   // 오른
       }
     }
+    if(sheetImg){   // ASSET: 마을 소품(통·자루·상자) — 건물 옆 알레이에 생활감(장식·비충돌, 베이크)
+      const CR=[22,0], SK=[25,2], BR=[53,18];   // 나무궤·밀자루·통(가로)
+      const VP=[[8,3,CR,30,34],[8,4,SK,30,30],[12,3,SK,30,30],[18,4,CR,30,34],[22,3,BR,38,26],[22,4,CR,30,34],[28,3,SK,30,30],[28,4,CR,30,34],[2,3,BR,38,26]];
+      for(const p of VP){ const px=p[0]*56, py=p[1]*56, sp=p[2], w=p[3], h=p[4];
+        if(RPG.grid[p[1]]&&RPG.grid[p[1]][p[0]]!=="."&&RPG.grid[p[1]][p[0]]!==" "&&RPG.grid[p[1]][p[0]]!=="*") continue;   // 개방 타일만
+        g.fillStyle="rgba(0,0,0,0.17)"; g.beginPath(); g.ellipse(px+28,py+48,w*0.45,5,0,0,Math.PI*2); g.fill();
+        g.drawImage(sheetImg, sp[0]*17,sp[1]*17,16,16, px+28-w/2, py+48-h, w, h); }
+    }
   }
   if(theme==="village_meadow"){ g.fillStyle="rgba(255,214,120,0.055)"; g.fillRect(0,0,cvs.width,cvs.height); }   // QUALITY-2: 마을=따뜻한 햇살 톤(세 초록맵 차별화)
   if(theme==="field_dew"){ g.fillStyle="rgba(150,255,205,0.05)"; g.fillRect(0,0,cvs.width,cvs.height); }   // 들판=상큼한 이슬 톤
