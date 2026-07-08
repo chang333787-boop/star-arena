@@ -5010,10 +5010,17 @@ function rpgBuildLayer(){   // 정적 타일 오프스크린 1회 합성(§11-4)
         if(!drew){ if(bushImg) g.drawImage(bushImg,x-3,y-9,62,64); else { g.fillStyle="#3d2c1e"; g.fillRect(x+24,y+34,8,16); g.fillStyle="#1f6b34"; g.beginPath(); g.arc(x+28,y+22,20,0,Math.PI*2); g.fill(); } }
       }
       else if(grassy&&bushImg){   // QUALITY-2: 수풀 타일별 스케일/반전/오프셋 변주 + 열매 악센트(반복패턴 해소)
-        const bh=((r*374761393)^(c*668265263))>>>0, bf=(bh&8)?1:-1, bs=0.9+((bh>>4)&7)/16, byo=((bh>>8)&3)-1;
-        g.save(); g.translate(x+28,y+24+byo); g.scale(bf*bs,bs); g.drawImage(bushImg,-31,-33,62,64); g.restore();
-        if(((bh>>12)&15)>10){ g.fillStyle=(theme==="forest_rain")?["#c98a4a","#9c6636"][(bh>>3)&1]:["#e5484d","#ff8f3f"][(bh>>3)&1];
-          for(let bi=0;bi<3;bi++){ g.beginPath(); g.arc(x+18+((bh>>(bi*2))&7)*4, y+16+((bh>>(bi*2+1))&7)*3, 2, 0, Math.PI*2); g.fill(); } }
+        const bh=((r*374761393)^(c*668265263))>>>0;
+        if(theme==="village_meadow" && (bh&7)<2){   // ASSET: 마을 수풀 일부 → 나무(사과·초록) 변주로 정원 느낌(수풀보다 크게)
+          const vt=(bh&16)?[23,10]:[15,10], vsz=60+((bh>>5)&3)*4, vf=(bh&8)?1:-1;
+          g.fillStyle="rgba(10,20,14,0.24)"; g.beginPath(); g.ellipse(x+28,y+51,18,6,0,0,Math.PI*2); g.fill();
+          g.save(); g.translate(x+28,y+55); g.scale(vf,1); rpgSheetDraw(g, vt, -vsz/2, -vsz+2, vsz); g.restore();
+        } else {
+          const bf=(bh&8)?1:-1, bs=0.9+((bh>>4)&7)/16, byo=((bh>>8)&3)-1;
+          g.save(); g.translate(x+28,y+24+byo); g.scale(bf*bs,bs); g.drawImage(bushImg,-31,-33,62,64); g.restore();
+          if(((bh>>12)&15)>10){ g.fillStyle=(theme==="forest_rain")?["#c98a4a","#9c6636"][(bh>>3)&1]:["#e5484d","#ff8f3f"][(bh>>3)&1];
+            for(let bi=0;bi<3;bi++){ g.beginPath(); g.arc(x+18+((bh>>(bi*2))&7)*4, y+16+((bh>>(bi*2+1))&7)*3, 2, 0, Math.PI*2); g.fill(); } }
+        }
       }
       else if(!grassy&&wallImg) g.drawImage(wallImg,x,y,56,56);
       else { g.fillStyle="#3d2c1e"; g.fillRect(x+24,y+34,8,16); g.fillStyle="#1f6b34"; g.beginPath(); g.arc(x+28,y+22,20,0,Math.PI*2); g.fill(); }
