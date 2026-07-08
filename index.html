@@ -4998,6 +4998,9 @@ function rpgBuildLayer(){   // 정적 타일 오프스크린 1회 합성(§11-4)
       if(r<RPG.rows-1&&gr[r+1][c]!=="~") g.fillRect(x+2,y+50,52,4);
       if(c>0&&gr[r][c-1]!=="~") g.fillRect(x+2,y+2,4,52);
       if(c<RPG.cols-1&&gr[r][c+1]!=="~") g.fillRect(x+50,y+2,4,52);
+      const wh=((r*374761393)^(c*668265263))>>>0;   // ASSET: 연못 수련(연꽃) — 물줄기 안쪽(세로 또는 가로로 물이 이어진) 타일에 가끔
+      const wUD=r>0&&r<RPG.rows-1&&gr[r-1][c]==="~"&&gr[r+1][c]==="~", wLR=c>0&&c<RPG.cols-1&&gr[r][c-1]==="~"&&gr[r][c+1]==="~";
+      if((wh&7)===0 && (wUD||wLR)){ rpgSheetDraw(g,[25,11], x+13+((wh>>4)&3)*3, y+13+((wh>>7)&3)*3, 28); }
     }
     else if(ch==="f"){ g.fillStyle="#5a4023"; g.fillRect(x+3,y+3,50,50); g.strokeStyle="rgba(0,0,0,0.3)"; g.strokeRect(x+3.5,y+3.5,49,49);   // QUALITY-2: 흙덩이 입자
       const fh=((r*374761393)^(c*668265263))>>>0, fq=function(k){ return ((fh>>(k*4))&15)/15; };
@@ -5085,7 +5088,8 @@ function rpgBuildLayer(){   // 정적 타일 오프스크린 1회 합성(§11-4)
     const iv=g.createRadialGradient(cx2,cy2,Math.min(cvs.width,cvs.height)*0.3,cx2,cy2,mx*0.72); iv.addColorStop(0,"rgba(10,6,20,0)"); iv.addColorStop(1,"rgba(10,6,20,0.35)"); g.fillStyle=iv; g.fillRect(0,0,cvs.width,cvs.height);
   }
   const _signSeen={};
-  const BPAL={rpg_home:{roof:"#b0623a",sign:"🏠"},rpg_store:{roof:"#2f8f6e",sign:"🛒"},rpg_smith:{roof:"#4a4652",sign:"⚒️"},rpg_chief:{roof:"#5a5a92",sign:"🏛️"}};
+  const BPAL={rpg_home:{roof:"#b0623a",sign:"🏠",ic:[25,2]},rpg_store:{roof:"#2f8f6e",sign:"🛒",ic:[41,11]},rpg_smith:{roof:"#4a4652",sign:"⚒️",ic:[15,0]},rpg_chief:{roof:"#5a5a92",sign:"🏛️",ic:[12,3]}};   // ASSET: 간판 아이콘=자루·금화·모루·현수막(이모지 대체)
+  const _bpImg=(typeof worldImage==="function")?worldImage("rpg_sheet"):null;
   for(const w of (RPG.map.portals||[])){ const x=w.at[0]*56, y=w.at[1]*56;
     const bp=BPAL[w.to];
     if(bp){   // QUALITY-2: 건물 4채 지붕색 재도색(실제 B/# 타일만)+처마 음영+간판 — 획일 창고블록 구분
@@ -5099,7 +5103,12 @@ function rpgBuildLayer(){   // 정적 타일 오프스크린 1회 합성(§11-4)
         g.fillStyle="rgba(0,0,0,0.2)"; g.fillRect(bx,by+49,56,7);          // 처마 그늘
       }
       g.fillStyle="rgba(0,0,0,0.22)"; g.fillRect(ax*56-2,(ay-1)*56+40,60,10);   // 건물 접지 그림자
-      g.font="26px sans-serif"; g.textAlign="center"; g.fillText(bp.sign, ax*56+28, (ay-1)*56-2); g.textAlign="left";   // 간판
+      if(_bpImg&&bp.ic){   // ASSET: 간판 = 나무 판 + 건물 아이콘 스프라이트(이모지 🏠🛒⚒️🏛️ 대체)
+        const sx=ax*56+28, sy=(ay-1)*56-16;
+        g.fillStyle="#3a2614"; g.fillRect(sx-18,sy-3,36,6); g.fillStyle="#6b4a2b"; g.fillRect(sx-2,sy-14,4,12);   // 걸이 막대
+        g.fillStyle="#5a3d22"; g.fillRect(sx-16,sy,32,26); g.fillStyle="#7a5334"; g.fillRect(sx-14,sy+2,28,22);   // 나무 판
+        g.drawImage(_bpImg, bp.ic[0]*17,bp.ic[1]*17,16,16, sx-11,sy+3,22,20);   // 아이콘
+      } else { g.font="26px sans-serif"; g.textAlign="center"; g.fillText(bp.sign, ax*56+28, (ay-1)*56-2); g.textAlign="left"; }
     }
     if(w.to&&w.to.indexOf("rpg_den")===0&&gateImg) g.drawImage(gateImg,x-6,y-24,68,80);   // 요새 입구=몬스터 게이트
     g.fillStyle="rgba(255,224,102,0.22)"; g.fillRect(x+6,y+6,44,44);
