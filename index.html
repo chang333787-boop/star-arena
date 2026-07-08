@@ -1879,7 +1879,7 @@ let MATCH = null;
 let menuIndex = 0;
 // 로비 메뉴(v1.26 · 3층 IA): ③플레이 = 혼자[0캠페인 1└난이도 2빠른대전 3└규칙 4└팀 5└맵 6└난이도] · 함께[7온라인센터]
 //                            ②섹션 = 8상점 9수집 10맵공방(OVERNIGHT-1) · ①껍데기 = 11설정
-const MENU_ROWS = 13;   /* GENRE-EXPAND-1: 7=🦘 별빛 점프 삽입(온라인 이하 +1) */
+const MENU_ROWS = 14;   /* 7=🦘 별빛 점프 · 8=🌙 별빛 마을 삽입 → 온라인9 · 상단칩 10~13 */
 const VALUE_ROWS = { "1":1, "3":1, "4":1, "5":1, "6":1 }; // ←→로 값 바꾸는 행
 let settingsOpen = false, settingsIndex = 0;   // ⚙ 설정 오버레이(START 위에 그림 — 새 STATE 아님)
 let shopIndex = 0;
@@ -6662,19 +6662,20 @@ function changeMenuValue(row, dir){
   else if(row===3) cycleRule(dir);              // 빠른 대전 규칙(지금은 섬멸전 1종)
   else if(row===4) cycleMode(dir);              // 빠른 대전 팀(1대1·3대3)
   else if(row===5) cycleMap(dir);               // 빠른 대전 맵
-  else if(row>=9&&row<=12){                     // ②섹션 스트립·⚙설정: ←→로 가로 이동
-    menuIndex=row+dir; if(menuIndex<9)menuIndex=12; if(menuIndex>12)menuIndex=9;
+  else if(row>=10&&row<=13){                     // ②섹션 스트립·⚙설정: ←→로 가로 이동
+    menuIndex=row+dir; if(menuIndex<10)menuIndex=13; if(menuIndex>13)menuIndex=10;
   }
 }
 function activateMenuRow(row){
   if(row===0) startSoloCampaign();          // ⭐ 캠페인 도전(20스테이지)
   else if(row===2) startGame();             // ▶ 빠른 대전(단판)
   else if(row===7) pfOpenSelect();          // 🦘 별빛 점프(GENRE-EXPAND-1 §3)
-  else if(row===8) openOnlineMenu();        // 🌐 온라인 센터
-  else if(row===9) openShop();              // 🛒 상점(기존 STATE)
-  else if(row===10){ collectionIndex=0; gameState=STATE.COLLECTION; }  // 📖 수집(기존 STATE)
-  else if(row===11) openEditor();           // 🛠 맵공방(OVERNIGHT-1)
-  else if(row===12) openSettings();         // ⚙ 설정(로그아웃·교사용·별명)
+  else if(row===8) rpgEnter();              // 🌙 별빛 마을(RPG · 학생 로비 진입 · 계정별 저장)
+  else if(row===9) openOnlineMenu();        // 🌐 온라인 센터
+  else if(row===10) openShop();             // 🛒 상점(기존 STATE)
+  else if(row===11){ collectionIndex=0; gameState=STATE.COLLECTION; }  // 📖 수집(기존 STATE)
+  else if(row===12) openEditor();           // 🛠 맵공방(OVERNIGHT-1)
+  else if(row===13) openSettings();         // ⚙ 설정(로그아웃·교사용·별명)
   else if(VALUE_ROWS[row]) changeMenuValue(row, +1);        // 값 행 Enter → 다음 값
 }
 function doLogout(){ logout(); gameState=STATE.LOGIN; loginIndex=0; loginMsg=""; showToast("로그아웃 되었습니다"); }
@@ -9956,7 +9957,7 @@ function drawLobbyTopBar(){
   ctx.save(); ctx.font="bold 14px 'Malgun Gothic',sans-serif";
   const setTxt="⚙ 설정", setW=ctx.measureText(setTxt).width+26, setX=LOGW-64-setW;
   ctx.restore();
-  drawTopChip(setTxt, setX, y, h, menuIndex===12||settingsOpen, function(){ openSettings(); });
+  drawTopChip(setTxt, setX, y, h, menuIndex===13||settingsOpen, function(){ openSettings(); });
   const on=OnlineManager.available;
   const status=on?"● 온라인 준비됨":(FIREBASE_CONFIG?"○ 온라인 연결 중…":"○ 오프라인(로컬)");
   ctx.save(); ctx.textAlign="right"; ctx.textBaseline="middle";
@@ -9972,9 +9973,9 @@ function drawLobbySections(){
   ctx.save(); ctx.strokeStyle="#9fe0ff"; ctx.lineWidth=3;
   ctx.beginPath(); ctx.moveTo(276, y+h+5); ctx.lineTo(x-14, y+h+5); ctx.stroke(); ctx.restore();
   // 상점 비활성(SHOP_ENABLED=false) 동안엔 "준비 중"을 미리 표기 — 눌러도 토스트 안내(빈 화면 없음)
-  x=drawTopChip(SHOP_ENABLED?"🛒 상점":"🛒 상점 (준비 중)", x, y, h, menuIndex===9, function(){ menuIndex=9; openShop(); })+8;
-  x=drawTopChip("📖 수집", x, y, h, menuIndex===10, function(){ menuIndex=10; collectionIndex=0; gameState=STATE.COLLECTION; })+8;
-  x=drawTopChip("🛠 맵공방", x, y, h, menuIndex===11, function(){ menuIndex=11; openEditor(); })+8;   /* OVERNIGHT-1 Phase 4 */
+  x=drawTopChip(SHOP_ENABLED?"🛒 상점":"🛒 상점 (준비 중)", x, y, h, menuIndex===10, function(){ menuIndex=10; openShop(); })+8;
+  x=drawTopChip("📖 수집", x, y, h, menuIndex===11, function(){ menuIndex=11; collectionIndex=0; gameState=STATE.COLLECTION; })+8;
+  x=drawTopChip("🛠 맵공방", x, y, h, menuIndex===12, function(){ menuIndex=12; openEditor(); })+8;   /* OVERNIGHT-1 Phase 4 */
 }
 // ③ 플레이 메뉴: 혼자(캠페인 └난이도 · 빠른대전 └규칙·팀·맵·난이도) / 친구와(온라인 센터)
 function drawLobbyMenu(ch, w){
@@ -9989,12 +9990,13 @@ function drawLobbyMenu(ch, w){
     {type:"v", i:5, label:"맵", val:getMap(selectedMapId).name},
     {type:"v", i:6, label:"난이도", val:getDifficulty(selectedDifficultyId).name},
     {type:"i", i:7, label:"🦘 별빛 점프", note:"점프 맵 · 기록 도전", color:"#7dffb0"},
+    {type:"i", i:8, label:"🌙 별빛 마을", note:"혼자 하는 RPG 모험", color:"#ffce6b"},
     {type:"h", t:"친구와"},
-    {type:"i", i:8, label:"🌐 온라인 센터", note:"방 만들기 · 참가", color:"#c79bff"}
+    {type:"i", i:9, label:"🌐 온라인 센터", note:"방 만들기 · 참가", color:"#c79bff"}
   ];
   // 별밤 위 가독성을 위한 반투명 패널
-  ctx.save(); ctx.fillStyle="rgba(10,14,36,0.55)"; roundRect(x-28,166,W+56,408,16); ctx.fill();
-  ctx.strokeStyle="rgba(90,123,176,0.35)"; ctx.lineWidth=1.5; roundRect(x-28,166,W+56,408,16); ctx.stroke(); ctx.restore();
+  ctx.save(); ctx.fillStyle="rgba(10,14,36,0.55)"; roundRect(x-28,166,W+56,456,16); ctx.fill();
+  ctx.strokeStyle="rgba(90,123,176,0.35)"; ctx.lineWidth=1.5; roundRect(x-28,166,W+56,456,16); ctx.stroke(); ctx.restore();
   let y=186;
   for(const e of entries){
     if(e.type==="h"){
