@@ -4970,7 +4970,13 @@ function rpgBuildLayer(){   // 정적 타일 오프스크린 1회 합성(§11-4)
     // QUALITY-2: 절차적 바닥 디테일(grass 테마·걷는 바닥만·베이크 1회, 결정적 해시로 안정 배치). 야외맵 단조로움 해소.
     if(grassy && "~fTB#CV".indexOf(ch)<0){
       const hsh=((r*374761393)^(c*668265263))>>>0, q=function(k){ return ((hsh>>(k*4))&15)/15; };
-      if(theme==="forest_rain" && q(0)>0.86){ g.fillStyle="rgba(18,30,20,0.16)"; g.beginPath(); g.ellipse(x+28,y+26,34,26,0,0,Math.PI*2); g.fill(); }   // 나무 캐노피 그늘(숲 분위기)
+      if(theme==="forest_rain" && q(0)>0.9){ g.fillStyle="rgba(18,30,20,0.11)"; g.beginPath(); g.ellipse(x+28,y+26,30,22,0,0,Math.PI*2); g.fill(); }   // 나무 캐노피 그늘(숲 분위기, 나무 스프라이트 도입 후 완화)
+      if(theme==="forest_rain" && q(7)>0.62){   // ASSET: 숲 바닥 양치/버섯/새싹(통행 가능·작게) — 나무 사이 채우기
+        const fx=x+10+q(2)*36, fy=y+22+q(3)*26, fk=(hsh>>9)&3;
+        if(fk===0){ g.strokeStyle="rgba(80,140,80,0.7)"; g.lineWidth=1.6; for(let ff=-1;ff<=1;ff++){ g.beginPath(); g.moveTo(fx,fy); g.lineTo(fx+ff*5,fy-9); g.stroke(); } g.lineWidth=1; }   // 양치
+        else if(fk===1){ g.fillStyle="#c96b5a"; g.beginPath(); g.ellipse(fx,fy-3,3.2,2.2,0,Math.PI,0); g.fill(); g.fillStyle="#e8d8c0"; g.fillRect(fx-1,fy-3,2,4); }   // 버섯
+        else if(fk===2){ rpgSheetDraw(g,[44,23],fx-8,fy-10,16); }   // 작은 클로버
+      }
       g.fillStyle="rgba(255,255,255,"+(0.015+q(1)*0.045).toFixed(3)+")"; g.fillRect(x+q(2)*40,y+q(3)*40,9+q(4)*13,9+q(5)*13);   // 잔디 명암 얼룩
       if(q(3)>0.48){ g.strokeStyle=(theme==="forest_rain")?"rgba(110,160,105,0.5)":"rgba(150,210,130,0.55)"; g.lineWidth=1.4;   // 잔디 포기
         const gx=x+8+q(4)*40, gy=y+40+q(5)*10; g.beginPath(); g.moveTo(gx,gy); g.lineTo(gx-3,gy-7); g.moveTo(gx,gy); g.lineTo(gx+3,gy-7); g.stroke(); g.lineWidth=1; }
@@ -4995,7 +5001,15 @@ function rpgBuildLayer(){   // 정적 타일 오프스크린 1회 합성(§11-4)
       const fh=((r*374761393)^(c*668265263))>>>0, fq=function(k){ return ((fh>>(k*4))&15)/15; };
       for(let fi=0;fi<5;fi++){ g.fillStyle=(fi&1)?"rgba(107,77,40,0.6)":"rgba(58,40,20,0.6)"; g.beginPath(); g.ellipse(x+8+fq(fi)*40,y+8+fq(fi+1)*40,3+fq(fi+2)*2,2+fq(fi+3)*2,0,0,Math.PI*2); g.fill(); } }
     else if(ch==="T"){
-      if(grassy&&bushImg){   // QUALITY-2: 수풀 타일별 스케일/반전/오프셋 변주 + 열매 악센트(반복패턴 해소)
+      const TR=[[15,10],[13,10],[15,10],[17,10],[13,10],[15,10],[27,10],[13,10]];   // 밝은 초록·둥근·단풍·고사목(어두운 숲에서 잘 보이게)
+      if(theme==="forest_rain"){   // ASSET: 숲 벽 = 실제 나무 스프라이트(해시로 종류·크기·반전 변주 — 울창한 숲)
+        const th=((r*374761393)^(c*668265263))>>>0, sz=56+((th>>4)&7)*3, flip=(th&8)?1:-1;
+        g.fillStyle="rgba(8,18,12,0.32)"; g.beginPath(); g.ellipse(x+28,y+50,20,7,0,0,Math.PI*2); g.fill();   // 나무 밑동 그림자
+        g.save(); g.translate(x+28,y+55); g.scale(flip,1);
+        const drew=rpgSheetDraw(g, TR[th&7], -sz/2, -sz+2, sz); g.restore();
+        if(!drew){ if(bushImg) g.drawImage(bushImg,x-3,y-9,62,64); else { g.fillStyle="#3d2c1e"; g.fillRect(x+24,y+34,8,16); g.fillStyle="#1f6b34"; g.beginPath(); g.arc(x+28,y+22,20,0,Math.PI*2); g.fill(); } }
+      }
+      else if(grassy&&bushImg){   // QUALITY-2: 수풀 타일별 스케일/반전/오프셋 변주 + 열매 악센트(반복패턴 해소)
         const bh=((r*374761393)^(c*668265263))>>>0, bf=(bh&8)?1:-1, bs=0.9+((bh>>4)&7)/16, byo=((bh>>8)&3)-1;
         g.save(); g.translate(x+28,y+24+byo); g.scale(bf*bs,bs); g.drawImage(bushImg,-31,-33,62,64); g.restore();
         if(((bh>>12)&15)>10){ g.fillStyle=(theme==="forest_rain")?["#c98a4a","#9c6636"][(bh>>3)&1]:["#e5484d","#ff8f3f"][(bh>>3)&1];
