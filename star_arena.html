@@ -4985,6 +4985,8 @@ function rpgBuildLayer(){   // 정적 타일 오프스크린 1회 합성(§11-4)
       else if(theme==="forest_rain" && q(6)>0.78){ g.fillStyle=["#c98a4a","#9c6636"][(hsh>>5)&1]; const lx=x+10+q(2)*36, ly=y+10+q(3)*36;   // 낙엽
         g.save(); g.translate(lx,ly); g.rotate(q(4)*6); g.beginPath(); g.ellipse(0,0,4,2,0,0,Math.PI*2); g.fill(); g.restore(); }
       else if(theme==="field_dew" && q(6)>0.83){ g.fillStyle="rgba(205,240,255,0.7)"; g.beginPath(); g.arc(x+10+q(2)*36,y+10+q(3)*36,1.6,0,Math.PI*2); g.fill(); }   // 이슬
+      if((theme==="village_meadow"||theme==="field_dew") && q(5)>0.85){   // ASSET: 바닥 실제 꽃 스프라이트 악센트(보라·노랑·주황)
+        const FL=[[41,23],[42,23],[43,23]]; rpgSheetDraw(g, FL[(hsh>>7)%3], x+8+q(2)*30, y+14+q(3)*24, 15); }
       if(q(7)>0.9){ g.fillStyle="rgba(110,112,130,0.5)"; g.beginPath(); g.ellipse(x+q(2)*44,y+q(3)*44,3,2,0,0,Math.PI*2); g.fill(); }   // 돌멩이
     }
     if(ch==="~"){   // QUALITY-2: 물 깊이 그라데이션 + 기슭 거품(이웃이 물 아닌 변)
