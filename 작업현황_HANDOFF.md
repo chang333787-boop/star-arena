@@ -2,7 +2,19 @@
 
 > 다른 컴퓨터에서 이어받기: `git pull` → 이 파일부터. 세션 끝날 때 갱신 후 commit+push.
 
-## 최신 상태 (2026-07-09, HUD 방어픽스+온라인RPG 리디자인 배포)
+## 최신 상태 (2026-07-09, 미니맵 토글·안개 + 동시접속 레벨 롤백 수정 배포)
+
+### 🔄 동시접속 레벨 불일치/롤백 수정 — 진행도 보호 병합 동기화 (v1.39-p3, 커밋 4359f0f)
+- **원인**(재현·확정): 계정 클라우드 동기화가 ①각 기기 벽시계(Date.now()) 기준 last-write-wins ②학생 본인 레코드 실시간 구독 부재 ③transaction abort를 성공으로 오보. → 두 기기 발산, stale 기기 저장이 클라우드 진행도 롤백, 시계편차로 순서 역전, abort 시 새 진행 조용히 유실.
+- **수정(전략C, `mergeStudentRecord`@~1070)**: 필드타입별 병합 — (level,exp) 사전식 **단조(롤백 금지)**·카운터 max·해금/스킬/퀘스트done **합집합**·rpg는 `mergeRpg`(레벨 롤백금지·day/playSec max·done/skills/tut union·나머지 LWW)·**gold/설정/선택은 최신값(LWW, 소비 정상)**. 순서축=**ServerValue.TIMESTAMP**(시계편차 제거). **epoch**(교사 리셋 세대)=큰 쪽 값째 승리(의도적 리셋을 단조가드와 분리). saveCloudStudent는 abort 없이 항상 병합 커밋(진짜 오류만 pending). `watchStudent`/`onRemoteStudent`가 본인 레코드 `.on` 구독으로 **두 기기 실시간 수렴**. H1 `resetCloudStudent`(cloud epoch+1 원자증가로 교사리셋 확실반영), H2 visibilitychange 복귀 재풀.
+- **검증 3중**: 노드 병합 15케이스 + 전체 하네스(harness_accounts 12항목) + **라이브 Firebase 종단**(lv8 저장·stale lv3 롤백방지·서버시각 number·테스트계정 삭제). ⚠ 로컬서버도 실 Firebase(classCode="star-class")에 연결되니 in-browser 테스트 시 테스트계정은 반드시 deleteCloudStudent로 정리.
+- **잔여 위험**(설계상): 같은 계정 두 기기가 '동시에 RPG를 적극 플레이'하면 리스너가 서로의 RPG.save를 덮어 순간 튈 수 있음(교실=학생별 계정이라 드묾). gold 동시 벌기vs쓰기는 진짜 충돌이라 LWW로 한쪽 델타 유실 가능. 완전 해결은 서버 델타 트랜잭션(범위 밖).
+- 근거: 워크플로 wf_68d86ff0(6에이전트, 진단2+설계3+종합). ⚠ **주의: 워크플로 설계 에이전트가 index.html을 직접 편집**했었음 — 검토 없이 배포 금지, 반드시 하네스+로직+라이브로 재검증 후 채택(이번엔 검증 통과해 채택).
+
+### 🗺️ 미니맵 온/오프 토글 + 전장의 안개 (v1.39-p2, 커밋 a0695cd)
+- N키·우상단 탭으로 미니맵 on/off(localStorage 저장). OFF 시 "🗺 지도 N" 작은 버튼만. 안개: `rpgReveal()`이 필드에서 플레이어 반경5 타일을 '봄'으로 기록(세션별 `RPG._seen`), 안 본 곳 어둡게(마커도 가림). 이동 시 확장. 재접속 시 리셋(로컬/세션 한정 — 클라우드 세이브 미접촉으로 동기화 부담 없음).
+
+### 🛡️🖥️ RPG HUD 소실 버그 방어 + 온라인RPG HUD 재설계 (2026-07-09, v1.39-p0/p1 배포)
 
 ### 🛡️🖥️ RPG HUD 소실 버그 방어 + 온라인RPG HUD 재설계 (2026-07-09, v1.39-p0/p1 배포)
 - **버그(상태창 사라짐) 근본원인**(라이브 재현으로 확정 · 사용자 스크린샷과 픽셀 일치): `gameLoop`(~13681)이 `requestAnimationFrame`을 **먼저** 예약 후 `update();render()`를 try 없이 호출 → `rpgRender`는 월드를 앞부분, HUD를 최후(`rpgDrawHUD`)에 그림 → 월드~HUD 사이 어디서든 **매 프레임 결정적 예외**가 나면 월드는 계속 갱신되는데 HUD만 영구 소멸(루프는 안 죽음). **"3발 스킬(sk_triple_throw)"은 직접 원인 아님** — 렌더가 스킬을 안 읽음. 어떤 예외든 HUD를 날리는 **구조적 에러격리 부재**가 실질 원인.
