@@ -4367,6 +4367,7 @@ function handleRpgKey(code){
   if(code==="KeyI"||code==="Tab"){ RPG.ui="inven"; RPG.inven={idx:0}; return; }
   if(code==="KeyB"){ RPG.ui="codex"; RPG.codex={ tab:0 }; return; }   // 📖 별의 도감(§8.1)
   if(code==="KeyM"){ RPG.ui="map"; return; }   // 🗺️ 전체지도(EXPLORE-1)
+  if(code==="KeyN"){ rpgSetMini(!rpgMiniOn); showToast(rpgMiniOn?"🗺 미니맵 켜짐":"🗺 미니맵 꺼짐"); return; }   // 미니맵 온/오프
   if(code==="KeyQ"){ rpgUseCandy(); return; }
   if(code==="Escape"){ RPG.ui="confirm"; return; }
 }
@@ -4438,6 +4439,7 @@ function rpgTouchStart(id,p){
     return;
   }
   if(p.x>1176&&p.x<1268&&p.y>178&&p.y<212){ RPG.ui="inven"; RPG.inven={idx:0}; return; }   // 🎒 가방(미니맵 아래로 이동 — v1.39 HUD)
+  if(p.x>1156&&p.x<1268&&p.y>40&&p.y<78){ rpgSetMini(!rpgMiniOn); return; }   // 🗺 미니맵 온/오프(우상단 탭 — 켜짐 시 닫기, 꺼짐 시 켜기)
   // v1.39 HUD: 하단중앙 스킬 핫바 탭(X/C/Q/M) — 시각 슬롯과 히트영역 일치
   if(p.y>630&&p.y<694){
     if(p.x>506&&p.x<570){ rpgCastX(); return; }                                  // X 기술
@@ -4504,6 +4506,7 @@ function rpgUpdate(dt){
   }
   if(RPG.ui!=="field"){ RPG.p.moving=false; return; }
   sv.playSec=(sv.playSec||0)+dt;   // POLISH-1: 리스폰 시계 — 필드에서만 누적(교실 공정성)
+  rpgReveal();   // 전장의 안개: 필드에서 플레이어 주변 노출
   RPG.p.candyCd=Math.max(0,(RPG.p.candyCd||0)-dt);
   RPG.p.squashT=Math.max(0,(RPG.p.squashT||0)-dt);
   RPG.vignT=Math.max(0,(RPG.vignT||0)-dt); RPG.shakeT=Math.max(0,(RPG.shakeT||0)-dt);   // 비네트·흔들림 감쇠(POLISH-2)
@@ -5337,18 +5340,36 @@ function rpgHotSlot(x,y,S,key,icon,accent,o){   // 스킬 슬롯: 아이콘·키
   if(o.label){ ctx.fillStyle="#cfc7e8"; ctx.font="11px 'Malgun Gothic',sans-serif"; ctx.fillText(o.label, x+S/2, y+S+13); }
   ctx.textAlign="left";
 }
-function rpgDrawMiniMap(bx,by,bw,bh){   // 라이브 미니맵(rpgDrawMapView 축소 로직 재사용)
-  ctx.save(); ctx.fillStyle="rgba(6,4,18,0.78)"; roundRect(bx,by,bw,bh,8); ctx.fill(); roundRect(bx,by,bw,bh,8); ctx.clip();
+// 미니맵 온/오프(UI 선호 — 로컬 저장) + 전장의 안개(세션별 탐험 기록)
+let rpgMiniOn = (function(){ try{ return window.localStorage.getItem("starArena.rpgMini")!=="0"; }catch(e){ return true; } })();
+function rpgSetMini(on){ rpgMiniOn=!!on; try{ window.localStorage.setItem("starArena.rpgMini", rpgMiniOn?"1":"0"); }catch(e){} }
+function rpgReveal(){   // 전장의 안개: 플레이어 주변 타일을 '봄'으로 기록(세션 — rpgEnter마다 리셋)
+  if(!RPG||!RPG.map||!RPG.rows) return;
+  const id=RPG.map.id; if(!RPG._seen) RPG._seen={};
+  let g=RPG._seen[id];
+  if(!g||g.length!==RPG.rows){ g=[]; for(let r=0;r<RPG.rows;r++) g.push(new Uint8Array(RPG.cols)); RPG._seen[id]=g; }
+  const pc=Math.floor(RPG.p.x/56), pr=Math.floor(RPG.p.y/56), R=5, R2=R*R;
+  for(let r=Math.max(0,pr-R);r<=Math.min(RPG.rows-1,pr+R);r++){ const row=g[r];
+    for(let c=Math.max(0,pc-R);c<=Math.min(RPG.cols-1,pc+R);c++){ const dr=r-pr,dc=c-pc; if(dr*dr+dc*dc<=R2) row[c]=1; } }
+}
+function rpgDrawMiniMap(bx,by,bw,bh){   // 라이브 미니맵 + 전장의 안개(안 가본 곳 어둡게)
+  ctx.save(); ctx.fillStyle="rgba(6,4,18,0.85)"; roundRect(bx,by,bw,bh,8); ctx.fill(); roundRect(bx,by,bw,bh,8); ctx.clip();
   const w=RPG.cols*56, h=RPG.rows*56, s=Math.min(bw/w,bh/h), dw=w*s, dh=h*s, ox=bx+(bw-dw)/2, oy=by+(bh-dh)/2;
   if(RPG.layer){ ctx.imageSmoothingEnabled=true; ctx.drawImage(RPG.layer,0,0,w,h,ox,oy,dw,dh); }
   for(const p of (RPG.map.portals||[])){ if(!p||!p.at||p.at.length<2) continue;
     ctx.fillStyle="#ffe066"; ctx.beginPath(); ctx.arc(ox+(p.at[0]+0.5)*56*s,oy+(p.at[1]+0.5)*56*s,3,0,Math.PI*2); ctx.fill(); }
   for(const n of RPG.npcsOnMap){ ctx.fillStyle="#8fdba0"; ctx.beginPath(); ctx.arc(ox+n.x*s,oy+n.y*s,2.5,0,Math.PI*2); ctx.fill(); }
   for(const m of RPG.mobs){ if(m.dead) continue; ctx.fillStyle="#ff6b6b"; ctx.beginPath(); ctx.arc(ox+m.x*s,oy+m.y*s,2.2,0,Math.PI*2); ctx.fill(); }
-  ctx.fillStyle="#ffec8f"; ctx.beginPath(); ctx.arc(ox+RPG.p.x*s,oy+RPG.p.y*s,4+Math.sin(uiTime*5),0,Math.PI*2); ctx.fill();
+  const seen=RPG._seen&&RPG._seen[RPG.map.id];   // 안개: 안 본 타일 어둡게(마커도 가림) — 가로 런렝스로 저비용
+  if(seen){ ctx.fillStyle="rgba(6,4,18,0.80)"; const cs=56*s;
+    for(let r=0;r<RPG.rows;r++){ const row=seen[r]; if(!row) continue; let c=0;
+      while(c<RPG.cols){ if(row[c]){ c++; continue; } let c2=c; while(c2<RPG.cols&&!row[c2]) c2++;
+        ctx.fillRect(ox+c*cs, oy+r*cs, (c2-c)*cs+0.6, cs+0.6); c=c2; } } }
+  ctx.fillStyle="#ffec8f"; ctx.beginPath(); ctx.arc(ox+RPG.p.x*s,oy+RPG.p.y*s,4+Math.sin(uiTime*5),0,Math.PI*2); ctx.fill();   // 플레이어(안개 위)
   ctx.strokeStyle="#fff"; ctx.lineWidth=1.5; ctx.stroke(); ctx.lineWidth=1;
   ctx.restore();
   ctx.strokeStyle="rgba(255,224,102,0.55)"; ctx.lineWidth=2; roundRect(bx,by,bw,bh,8); ctx.stroke(); ctx.lineWidth=1;
+  ctx.fillStyle="rgba(255,255,255,0.5)"; ctx.font="10px 'Malgun Gothic',sans-serif"; ctx.textAlign="right"; ctx.fillText("N 닫기", bx+bw-6, by-4); ctx.textAlign="left";
 }
 function rpgDrawHUD(){
   const sv=RPG.save, mh=rpgMaxHpFor(sv);
@@ -5395,10 +5416,16 @@ function rpgDrawHUD(){
     for(const _ph of (_boss.def.phases||[])){ if(_ph.hpAbove>0&&_ph.hpAbove<1){ const gx=bx+bw*_ph.hpAbove; ctx.beginPath(); ctx.moveTo(gx,by-2); ctx.lineTo(gx,by+18); ctx.stroke(); } }
     ctx.lineWidth=1; ctx.textAlign="left";
   }
-  // ── 우상단 미니맵 + 골드 + 가방 ────────────────────
+  // ── 우상단 골드 + 미니맵(온/오프) + 가방 ────────────────────
   ctx.textAlign="right"; ctx.fillStyle="#ffd93d"; ctx.font="bold 16px 'Malgun Gothic',sans-serif";
   ctx.fillText("💰 "+sv.gold+"G", 1256, 34); ctx.textAlign="left";
-  rpgDrawMiniMap(1088,44,176,132);
+  if(rpgMiniOn){
+    rpgDrawMiniMap(1088,44,176,132);
+  } else {   // 접힌 상태: 작은 '지도 켜기(N)' 버튼(부담 최소화)
+    ctx.fillStyle="rgba(20,16,44,0.80)"; roundRect(1160,44,104,30,10); ctx.fill();
+    ctx.strokeStyle="rgba(198,178,255,0.5)"; ctx.lineWidth=1.5; roundRect(1160.75,44.75,102.5,28.5,10); ctx.stroke(); ctx.lineWidth=1;
+    ctx.fillStyle="#cfc7e8"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.textAlign="center"; ctx.fillText("🗺 지도 N", 1212, 63); ctx.textAlign="left";
+  }
   ctx.fillStyle="rgba(255,255,255,0.12)"; roundRect(1180,182,84,26,8); ctx.fill();
   ctx.fillStyle="#fff"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.textAlign="center"; ctx.fillText("🎒 가방", 1222, 200); ctx.textAlign="left";
   // ── 하단중앙 스킬 핫바 ─────────────────────────────
