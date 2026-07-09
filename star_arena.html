@@ -5322,7 +5322,7 @@ function rpgDrawHUD(){
   ctx.fillText((RPG.map?RPG.map.name:"")+" · "+sv.day+"일차", LOGW/2, 26);
   ctx.fillStyle="#cfc7e8"; ctx.font="14px 'Malgun Gothic',sans-serif"; ctx.fillText(rpgTrackText(), LOGW/2, 50);
   // QUALITY-1: 보스 전용 큰 체력바 + 페이즈 눈금(진행감·긴장감)
-  const _boss=RPG.mobs.find(function(m){ return !m.dead && m.def.isBoss; });
+  const _boss=RPG.mobs.find(function(m){ return !m.dead && m.def && m.def.isBoss; });
   if(_boss){
     const bw=560, bx=(LOGW-bw)/2, by=86, r=clamp(_boss.hp/_boss.maxHp,0,1);
     ctx.fillStyle="rgba(10,8,22,0.82)"; roundRect(bx-10,by-24,bw+20,52,12); ctx.fill();
@@ -5714,6 +5714,7 @@ function rpgRender(){
   ctx.fillStyle="#0d0a1d"; ctx.fillRect(0,0,LOGW,LOGH);
   if(!RPG||!RPG.map) return;
   if(RPG.layerMapId!==RPG.map.id) rpgBuildLayer();
+  try{   // v1.39: 월드/오버레이 렌더 격리 — 어떤 예외도 HUD 소실로 전파되지 않게(gameLoop이 rAF 선예약이라 매프레임 결정적 throw면 HUD가 영구 소멸하던 버그 방어)
   rpgWorldBegin();
   if(RPG.layer){   // EXPLORE-1: 보이는 소스 사각형만 블릿(대형 맵 오프스크린 낭비 제거)
     const sx=Math.max(0,Math.round(RPG.cam.x)-56), sy=Math.max(0,Math.round(RPG.cam.y)-56);
@@ -5817,7 +5818,7 @@ function rpgRender(){
       ctx.restore();
     }
   }
-  if(RPG.ui==="field"&&RPG.ctxTarget){   // 대상 부착형 말풍선(§2.1)
+  if(RPG.ui==="field"&&RPG.ctxTarget&&!((RPG.ctxTarget.kind==="npc"&&!RPG.ctxTarget.npc)||(RPG.ctxTarget.kind==="obj"&&!RPG.ctxTarget.obj))){   // 대상 부착형 말풍선(§2.1) — 스테일/널 가드
     const t=RPG.ctxTarget;
     const x=(t.kind==="npc")?t.npc.x:(t.kind==="farm"?t.x:((t.obj.tx+0.5)*56));
     const y=(t.kind==="npc")?t.npc.y:(t.kind==="farm"?t.y:((t.obj.ty+0.5)*56));
@@ -5834,7 +5835,7 @@ function rpgRender(){
   if(RPG.ui==="field"&&(RPG.cam.maxX>0||RPG.cam.maxY>0)){   // EXPLORE-1: 화면 밖 포탈 → 가장자리 "▶ 맵이름" 라벨
     const _lbSeen={};
     for(const w of (RPG.map.portals||[])){
-      if(_lbSeen[w.to]) continue; _lbSeen[w.to]=1;
+      if(!w||!w.at||w.at.length<2||_lbSeen[w.to]) continue; _lbSeen[w.to]=1;
       const wx=(w.at[0]+0.5)*56, wy=(w.at[1]+0.5)*56;
       const sx=24+RPG.cam.offX-Math.round(RPG.cam.x)+wx, sy=70+RPG.cam.offY-Math.round(RPG.cam.y)+wy;
       if(sx>=24&&sx<=1256&&sy>=70&&sy<=646) continue;   // 화면 안이면 생략
@@ -5859,14 +5860,22 @@ function rpgRender(){
   }
   if(RPG.veil){ ctx.fillStyle="rgba(6,4,18,0.5)"; ctx.fillRect(0,64,LOGW,LOGH-92); }   // 보스 3페이즈: 먹구름 장막
   if((RPG.flashT||0)>0){ ctx.fillStyle="rgba(255,255,255,"+((RPG.flashT/0.2)*0.22).toFixed(3)+")"; ctx.fillRect(24,70,1232,576); }   // QUALITY-1: 축하/전환 전신 플래시
-  if(RPG.festival){ const F=RPG.festival;   // QUALITY-1: 엔딩 불꽃 축제(화면공간 오버레이)
+  if(RPG.festival){ const F=RPG.festival; if(!Array.isArray(F.parts)) F.parts=[];   // QUALITY-1: 엔딩 불꽃 축제(화면공간 오버레이)
     ctx.fillStyle="rgba(28,14,54,"+(0.28*Math.min(1,F.t)).toFixed(3)+")"; ctx.fillRect(24,70,1232,576);
     for(const q of F.parts){ ctx.globalAlpha=Math.min(1,q.t); ctx.fillStyle=q.col; ctx.fillRect(q.x-2,q.y-2,4,4); }
     ctx.globalAlpha=Math.min(1,F.t*1.3); ctx.textAlign="center";
     ctx.fillStyle="#ffe066"; ctx.font="bold 38px 'Malgun Gothic',sans-serif"; ctx.fillText("🎆 챕터 1 완결! 🎆", LOGW/2, 210);
     ctx.fillStyle="#ffffff"; ctx.font="bold 18px 'Malgun Gothic',sans-serif"; ctx.fillText("별빛이 돌아왔어요 — 별빛 수호자 시고니 🐾", LOGW/2, 246);
     ctx.textAlign="left"; ctx.globalAlpha=1; }
-  rpgDrawHUD();
+  }catch(_werr){   // v1.39: 월드/오버레이 예외 → 상태 복구 후 HUD는 반드시 그림
+    for(var _ri=0;_ri<8;_ri++) ctx.restore();   // 누수된 save/clip 전부 해제(초과 restore는 무해)
+    ctx.setTransform(canvas.width/LOGW,0,0,canvas.height/LOGH,0,0); ctx.globalAlpha=1; ctx.textAlign="left"; ctx.lineWidth=1;
+    if(!rpgRender._werr){ rpgRender._werr=1; if(window.console&&console.error) console.error("rpgRender 월드/오버레이 예외:",_werr); }
+  }
+  try{ rpgDrawHUD(); }catch(_herr){
+    ctx.setTransform(canvas.width/LOGW,0,0,canvas.height/LOGH,0,0); ctx.globalAlpha=1; ctx.textAlign="left"; ctx.lineWidth=1;
+    if(!rpgRender._herr){ rpgRender._herr=1; if(window.console&&console.error) console.error("rpgDrawHUD 예외:",_herr); }
+  }
   if(RPG.ui==="dialog") rpgDrawDialog();
   else if(RPG.ui==="shop") rpgDrawShop();
   else if(RPG.ui==="inven") rpgDrawInven();
@@ -13678,7 +13687,8 @@ function gameLoop(ts){
   if(lastTime===0) lastTime=ts;
   let dt=(ts-lastTime)/1000; lastTime=ts;
   if(dt>0.05) dt=0.05;          // 탭 복귀 시 큰 점프 방지
-  update(dt); render();
+  try{ update(dt); }catch(e){ if(!window._updErr){ window._updErr=1; if(window.console&&console.error) console.error("update() 예외:",e); } }
+  try{ render(); }catch(e){ if(!window._rndErr){ window._rndErr=1; if(window.console&&console.error) console.error("render() 예외:",e); } }
 }
 /* 온라인긴급 P1b: 호스트 탭 숨김 = rAF 완전 정지 → 방 전체가 멈추고(state 쓰기 중단) 게스트는
    '동기화 대기/고무줄'에 갇힘 — 교실에서 방장이 탭만 바꿔도 발생. 숨김 중에만 Web Worker 타이머
