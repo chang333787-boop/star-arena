@@ -4437,9 +4437,14 @@ function rpgTouchStart(id,p){
     if(i>=0&&i<ls.length){ if(RPG.dailyUi.idx===i) rpgDailyClaim(i); else RPG.dailyUi.idx=i; }
     return;
   }
-  if(p.y<64&&p.x>LOGW-140){ RPG.ui="inven"; RPG.inven={idx:0}; return; }          // 🎒 칩
-  if(p.x>636&&p.x<740&&p.y>LOGH-66&&p.y<LOGH-24){ RPG.ui="map"; return; }         // 🗺️ 지도 칩(터치 타깃 상향 — POLISH-3)
-  if(p.x>744&&p.x<862&&p.y>LOGH-66&&p.y<LOGH-24){ rpgUseCandy(); return; }        // 🍬 사탕 칩(POLISH-1)
+  if(p.x>1176&&p.x<1268&&p.y>178&&p.y<212){ RPG.ui="inven"; RPG.inven={idx:0}; return; }   // 🎒 가방(미니맵 아래로 이동 — v1.39 HUD)
+  // v1.39 HUD: 하단중앙 스킬 핫바 탭(X/C/Q/M) — 시각 슬롯과 히트영역 일치
+  if(p.y>630&&p.y<694){
+    if(p.x>506&&p.x<570){ rpgCastX(); return; }                                  // X 기술
+    if(p.x>574&&p.x<638){ rpgCastC(); return; }                                  // C 질주
+    if(p.x>642&&p.x<706){ rpgUseCandy(); return; }                               // Q 사탕
+    if(p.x>710&&p.x<774){ RPG.ui="map"; return; }                                // M 지도
+  }
   if(p.y>LOGH-28&&p.x>LOGW-130){ RPG.ui="confirm"; return; }                      // 🚪 나가기(POLISH-1)
   if(dist(p.x,p.y,LOGW-92,LOGH-96)<50){ RPG.touch.atkId=id; RPG.touch.atkHold=true; rpgAttack(); return; }   // ⚔(홀드=연속공격 §4.7)
   if(dist(p.x,p.y,LOGW-198,LOGH-76)<36){ rpgCastX(); return; }                    // ✨ X 스킬
@@ -5307,24 +5312,80 @@ function rpgTrackText(){   // §6: 활성 퀘스트 1개만 추적 — '무엇�
   const where=rpgQuestWhere(q);
   return "📜 "+rpgQuestTodo(q)+pr+(where?"  🧭 "+where:"");
 }
+// ── HUD 재설계 공용 헬퍼 (v1.39 Starlight Overlay — 온라인RPG 스타일) ──────────
+function rpgPanel(x,y,w,h,r){   // 둥근 유리 패널 + 상단 하이라이트 + 라벤더 테두리
+  ctx.fillStyle="rgba(20,16,44,0.80)"; roundRect(x,y,w,h,r); ctx.fill();
+  ctx.fillStyle="rgba(255,255,255,0.06)"; roundRect(x+2,y+2,w-4,Math.min(10,h*0.3),r-2); ctx.fill();
+  ctx.strokeStyle="rgba(198,178,255,0.5)"; ctx.lineWidth=1.5; roundRect(x+0.75,y+0.75,w-1.5,h-1.5,r); ctx.stroke(); ctx.lineWidth=1;
+}
+function rpgHotSlot(x,y,S,key,icon,accent,o){   // 스킬 슬롯: 아이콘·키캡·방사형쿨다운·하단게이지·수량배지·잠금
+  o=o||{};
+  ctx.fillStyle="rgba(14,12,34,0.85)"; roundRect(x,y,S,S,10); ctx.fill();
+  if(o.gauge!=null){ ctx.save(); roundRect(x,y,S,S,10); ctx.clip();
+    const gh=S*clamp(o.gauge,0,1); ctx.fillStyle="rgba(255,217,61,0.28)"; ctx.fillRect(x,y+S-gh,S,gh); ctx.restore(); }
+  ctx.globalAlpha=o.dim?0.4:1; ctx.textAlign="center"; ctx.font="26px sans-serif";
+  ctx.fillText(icon, x+S/2, y+S/2+9); ctx.globalAlpha=1;
+  if(o.cd>0&&o.cdMax>0){ const f=clamp(o.cd/o.cdMax,0,1); ctx.save(); roundRect(x,y,S,S,10); ctx.clip();
+    ctx.fillStyle="rgba(6,4,18,0.62)"; ctx.beginPath(); ctx.moveTo(x+S/2,y+S/2);
+    ctx.arc(x+S/2,y+S/2,S,-Math.PI/2,-Math.PI/2+Math.PI*2*f); ctx.closePath(); ctx.fill(); ctx.restore();
+    ctx.fillStyle="#fff"; ctx.font="bold 14px 'Malgun Gothic',sans-serif"; ctx.fillText(o.cd.toFixed(1), x+S/2, y+S/2+5); }
+  ctx.strokeStyle=accent; ctx.lineWidth=2; roundRect(x+0.5,y+0.5,S-1,S-1,10); ctx.stroke(); ctx.lineWidth=1;
+  ctx.fillStyle=accent; roundRect(x+4,y+4,18,15,4); ctx.fill();          // 키캡
+  ctx.fillStyle="#0d0a1d"; ctx.font="bold 11px 'Malgun Gothic',sans-serif"; ctx.textAlign="center"; ctx.fillText(key, x+13, y+15);
+  if(o.count!=null){ ctx.fillStyle="#ffb3c7"; roundRect(x+S-24,y+S-17,22,15,5); ctx.fill();
+    ctx.fillStyle="#2a0a18"; ctx.font="bold 11px 'Malgun Gothic',sans-serif"; ctx.fillText("×"+o.count, x+S-13, y+S-6); }
+  if(o.label){ ctx.fillStyle="#cfc7e8"; ctx.font="11px 'Malgun Gothic',sans-serif"; ctx.fillText(o.label, x+S/2, y+S+13); }
+  ctx.textAlign="left";
+}
+function rpgDrawMiniMap(bx,by,bw,bh){   // 라이브 미니맵(rpgDrawMapView 축소 로직 재사용)
+  ctx.save(); ctx.fillStyle="rgba(6,4,18,0.78)"; roundRect(bx,by,bw,bh,8); ctx.fill(); roundRect(bx,by,bw,bh,8); ctx.clip();
+  const w=RPG.cols*56, h=RPG.rows*56, s=Math.min(bw/w,bh/h), dw=w*s, dh=h*s, ox=bx+(bw-dw)/2, oy=by+(bh-dh)/2;
+  if(RPG.layer){ ctx.imageSmoothingEnabled=true; ctx.drawImage(RPG.layer,0,0,w,h,ox,oy,dw,dh); }
+  for(const p of (RPG.map.portals||[])){ if(!p||!p.at||p.at.length<2) continue;
+    ctx.fillStyle="#ffe066"; ctx.beginPath(); ctx.arc(ox+(p.at[0]+0.5)*56*s,oy+(p.at[1]+0.5)*56*s,3,0,Math.PI*2); ctx.fill(); }
+  for(const n of RPG.npcsOnMap){ ctx.fillStyle="#8fdba0"; ctx.beginPath(); ctx.arc(ox+n.x*s,oy+n.y*s,2.5,0,Math.PI*2); ctx.fill(); }
+  for(const m of RPG.mobs){ if(m.dead) continue; ctx.fillStyle="#ff6b6b"; ctx.beginPath(); ctx.arc(ox+m.x*s,oy+m.y*s,2.2,0,Math.PI*2); ctx.fill(); }
+  ctx.fillStyle="#ffec8f"; ctx.beginPath(); ctx.arc(ox+RPG.p.x*s,oy+RPG.p.y*s,4+Math.sin(uiTime*5),0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle="#fff"; ctx.lineWidth=1.5; ctx.stroke(); ctx.lineWidth=1;
+  ctx.restore();
+  ctx.strokeStyle="rgba(255,224,102,0.55)"; ctx.lineWidth=2; roundRect(bx,by,bw,bh,8); ctx.stroke(); ctx.lineWidth=1;
+}
 function rpgDrawHUD(){
   const sv=RPG.save, mh=rpgMaxHpFor(sv);
-  ctx.fillStyle="rgba(10,12,32,0.72)"; ctx.fillRect(0,0,LOGW,64);
-  ctx.fillStyle="#ffffff"; ctx.font="bold 16px 'Malgun Gothic',sans-serif"; ctx.fillText("Lv."+sv.level, 24, 26);
-  ctx.fillStyle="#3a3050"; ctx.fillRect(80,14,180,16);
-  ctx.fillStyle="#63e06b"; ctx.fillRect(80,14,180*clamp(sv.hp/mh,0,1),16);
-  ctx.strokeStyle="rgba(255,255,255,0.4)"; ctx.strokeRect(80.5,14.5,180,16);
-  ctx.fillStyle="#cfc7e8"; ctx.font="12px 'Malgun Gothic',sans-serif"; ctx.fillText(Math.ceil(sv.hp)+" / "+mh, 84, 44);
-  ctx.fillStyle="#3a3050"; ctx.fillRect(80,48,180,5);
-  ctx.fillStyle="#8fd0ff"; ctx.fillRect(80,48,180*clamp(sv.exp/rpgExpNeed(sv.level),0,1),5);
+  // ── 좌상단 캐릭터 패널 ──────────────────────────────
+  rpgPanel(16,14,290,92,16);
+  { const cx=64, cy=60, R=34;
+    ctx.save(); ctx.beginPath(); ctx.arc(cx,cy,R,0,Math.PI*2); ctx.clip();
+    ctx.fillStyle="#241d3e"; ctx.fillRect(cx-R,cy-R,R*2,R*2);
+    ctx.save(); ctx.translate(cx, cy+R*0.62);
+    if(!drawCharacterSprite("student_03", R*0.62, Math.PI/2, {})){
+      ctx.font="34px sans-serif"; ctx.textAlign="center"; ctx.fillText("🐱",0,-R*0.35); ctx.textAlign="left"; }
+    ctx.restore(); ctx.restore();
+    ctx.strokeStyle="#ffe066"; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(cx,cy,R,0,Math.PI*2); ctx.stroke(); ctx.lineWidth=1;
+    ctx.fillStyle="#1a1430"; ctx.beginPath(); ctx.arc(cx+25,cy+25,13,0,Math.PI*2); ctx.fill();   // Lv 달배지
+    ctx.strokeStyle="#8fd0ff"; ctx.stroke();
+    ctx.fillStyle="#8fd0ff"; ctx.font="bold 11px 'Malgun Gothic',sans-serif"; ctx.textAlign="center"; ctx.fillText("Lv"+sv.level, cx+25, cy+29); ctx.textAlign="left";
+  }
+  { const j=rpgFind("jobs",sv.jobId), hx=110, hw=182;
+    ctx.fillStyle="#ffe066"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.fillText(j?j.name:"별빛 견습생", hx, 36);
+    ctx.fillStyle="#3a1f28"; roundRect(hx,44,hw,18,6); ctx.fill();                                       // 하트 HP 바
+    const hg=ctx.createLinearGradient(hx,44,hx,62); hg.addColorStop(0,"#ff8fb0"); hg.addColorStop(1,"#c0304a");
+    ctx.fillStyle=hg; roundRect(hx,44,Math.max(0,hw*clamp(sv.hp/mh,0,1)),18,6); ctx.fill();
+    ctx.fillStyle="#fff"; ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.textAlign="center";
+    ctx.fillText("♥ "+Math.ceil(sv.hp)+" / "+mh, hx+hw/2, 57); ctx.textAlign="left";
+    ctx.fillStyle="#241d3e"; roundRect(hx,68,hw,6,3); ctx.fill();                                        // 별가루 EXP 바
+    ctx.fillStyle="#8fd0ff"; roundRect(hx,68,Math.max(0,hw*clamp(sv.exp/rpgExpNeed(sv.level),0,1)),6,3); ctx.fill();
+  }
+  // ── 상단중앙 맵 리본 + 퀘스트 1줄 ──────────────────
   ctx.textAlign="center";
   ctx.fillStyle="#ffe066"; ctx.font="bold 18px 'Malgun Gothic',sans-serif";
-  ctx.fillText((RPG.map?RPG.map.name:"")+" · "+sv.day+"일차", LOGW/2, 26);
-  ctx.fillStyle="#cfc7e8"; ctx.font="14px 'Malgun Gothic',sans-serif"; ctx.fillText(rpgTrackText(), LOGW/2, 50);
-  // QUALITY-1: 보스 전용 큰 체력바 + 페이즈 눈금(진행감·긴장감)
+  ctx.fillText("🌙 "+(RPG.map?RPG.map.name:"")+" · "+sv.day+"일차", LOGW/2, 30);
+  ctx.fillStyle="#cfc7e8"; ctx.font="14px 'Malgun Gothic',sans-serif"; ctx.fillText(rpgTrackText(), LOGW/2, 52);
+  ctx.textAlign="left";
+  // QUALITY-1: 보스 전용 큰 체력바 + 페이즈 눈금(상단 패널 비충돌 위해 y=120으로 하향)
   const _boss=RPG.mobs.find(function(m){ return !m.dead && m.def && m.def.isBoss; });
   if(_boss){
-    const bw=560, bx=(LOGW-bw)/2, by=86, r=clamp(_boss.hp/_boss.maxHp,0,1);
+    const bw=560, bx=(LOGW-bw)/2, by=120, r=clamp(_boss.hp/_boss.maxHp,0,1);
     ctx.fillStyle="rgba(10,8,22,0.82)"; roundRect(bx-10,by-24,bw+20,52,12); ctx.fill();
     ctx.textAlign="center"; ctx.fillStyle="#ffe066"; ctx.font="bold 15px 'Malgun Gothic',sans-serif"; ctx.fillText("👑 "+_boss.def.name, LOGW/2, by-6);
     ctx.fillStyle="#3a2436"; ctx.fillRect(bx,by,bw,16);
@@ -5334,36 +5395,35 @@ function rpgDrawHUD(){
     for(const _ph of (_boss.def.phases||[])){ if(_ph.hpAbove>0&&_ph.hpAbove<1){ const gx=bx+bw*_ph.hpAbove; ctx.beginPath(); ctx.moveTo(gx,by-2); ctx.lineTo(gx,by+18); ctx.stroke(); } }
     ctx.lineWidth=1; ctx.textAlign="left";
   }
-  ctx.textAlign="right";
-  ctx.fillStyle="#ffd93d"; ctx.font="bold 17px 'Malgun Gothic',sans-serif"; ctx.fillText("💰 "+sv.gold+"G", LOGW-152, 30);
-  ctx.textAlign="left";
-  ctx.fillStyle="rgba(255,255,255,0.12)"; roundRect(LOGW-136,10,116,42,10); ctx.fill();
-  ctx.font="bold 15px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#ffffff"; ctx.fillText("🎒 가방", LOGW-118, 37);
-  const _tc=controlMode()==="touch";   // QUALITY-1: 터치 모드면 화면 버튼에 맞는 안내로 분기(초등·태블릿)
-  const hint=RPG.ctxTarget?((RPG.ctxTarget.kind==="npc")?(_tc?"💬 버튼: 대화하기":"Space: 대화하기"):(RPG.ctxTarget.kind==="farm"?((_tc?"👆 ":"Space: ")+RPG.ctxTarget.farm.label):(_tc?"👀 버튼: 살펴보기":"Space: 살펴보기")))
-    :(_tc?"왼쪽 눌러 이동 · ⚔️ 공격 · 💬 상호작용 · 🎒 가방 · 🗺 지도 · 🍬 사탕":"방향키 이동 · Z 공격 · X 기술 · Space 상호작용 · I 가방 · B 도감 · M 지도 · Q 사탕 · Esc 나가기");
-  ctx.fillStyle="rgba(10,12,32,0.6)"; ctx.fillRect(0,LOGH-28,LOGW,28);
-  ctx.fillStyle="#bfb6dd"; ctx.font="13px 'Malgun Gothic',sans-serif"; ctx.fillText(hint, 24, LOGH-9);
-  ctx.textAlign="right"; ctx.fillStyle="#e8a0a0"; ctx.font="bold 13px 'Malgun Gothic',sans-serif";
-  ctx.fillText("🚪 나가기", LOGW-20, LOGH-9); ctx.textAlign="left";   // 터치 나가기(POLISH-1 §7 — 터치로 종료 불가 해결)
-  // 스킬 칩(키보드·터치 공통 표시): X 쿨다운 · C 게이지
+  // ── 우상단 미니맵 + 골드 + 가방 ────────────────────
+  ctx.textAlign="right"; ctx.fillStyle="#ffd93d"; ctx.font="bold 16px 'Malgun Gothic',sans-serif";
+  ctx.fillText("💰 "+sv.gold+"G", 1256, 34); ctx.textAlign="left";
+  rpgDrawMiniMap(1088,44,176,132);
+  ctx.fillStyle="rgba(255,255,255,0.12)"; roundRect(1180,182,84,26,8); ctx.fill();
+  ctx.fillStyle="#fff"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.textAlign="center"; ctx.fillText("🎒 가방", 1222, 200); ctx.textAlign="left";
+  // ── 하단중앙 스킬 핫바 ─────────────────────────────
+  const _tc=controlMode()==="touch";
   const skx=rpgSkillX?rpgSkillX():null;
-  ctx.fillStyle="rgba(255,255,255,0.10)"; roundRect(280,LOGH-60,170,26,8); ctx.fill();
-  ctx.font="bold 13px 'Malgun Gothic',sans-serif";
-  ctx.fillStyle=skx?(((RPG.p.skillCd||0)>0)?"#8f86ad":"#8fd0ff"):"#655d80";
-  ctx.fillText("X "+(skx?(skx.name+(((RPG.p.skillCd||0)>0)?" "+(RPG.p.skillCd).toFixed(1)+"s":"")):"기술 없음(Lv.3)"), 292, LOGH-42);
-  if(RPG.save.skills.indexOf("sk_sparkle_dash")>=0){
-    ctx.fillStyle="rgba(255,255,255,0.10)"; roundRect(460,LOGH-60,168,26,8); ctx.fill();
-    ctx.fillStyle="#3a3050"; ctx.fillRect(472,LOGH-48,84,8);
-    ctx.fillStyle="#ffd93d"; ctx.fillRect(472,LOGH-48,84*clamp((RPG.gauge||0)/100,0,1),8);
-    ctx.fillStyle="#cfc7e8"; ctx.fillText("C 질주", 566, LOGH-42);
+  { const S=56, gap=12, n=4, tot=n*S+(n-1)*gap, x0=(LOGW-tot)/2, y0=LOGH-S-30;
+    const ic={around:"🌀",front:"💥",throw:"🎯"};
+    rpgHotSlot(x0, y0, S, "X", skx?(ic[skx.form]||"✨"):"🔒", "#8fd0ff",
+      { cd:RPG.p.skillCd||0, cdMax:skx?(skx.cd||5):0, dim:!skx, label:skx?"기술":"Lv.3" });
+    const hasDash=RPG.save.skills.indexOf("sk_sparkle_dash")>=0;
+    rpgHotSlot(x0+(S+gap), y0, S, "C", hasDash?"💨":"🔒", "#ffd93d",
+      { gauge:hasDash?(RPG.gauge||0)/100:null, dim:hasDash?((RPG.gauge||0)<100):true, label:"질주" });
+    const cn=rpgInvCount("it_jelly_candy");
+    rpgHotSlot(x0+2*(S+gap), y0, S, "Q", "🍬", "#ffb3c7",
+      { cd:RPG.p.candyCd||0, cdMax:(RPG.p.candyCd||0)>0?RPG_CONST.CANDY_CD:0, count:cn, dim:cn<1, label:"사탕" });
+    rpgHotSlot(x0+3*(S+gap), y0, S, "M", "🗺️", "#8fdba0", { label:"지도" });
   }
-  ctx.fillStyle="rgba(255,255,255,0.10)"; roundRect(640,LOGH-60,96,26,8); ctx.fill();   // 🗺️ 지도 칩(EXPLORE-1 — 터치 대응)
-  ctx.fillStyle="#cfc7e8"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.fillText("M 🗺️ 지도", 652, LOGH-42);
-  const _cn=rpgInvCount("it_jelly_candy");   // 🍬 사탕 칩(POLISH-1 §8 — 잔량·쿨·터치 사용)
-  ctx.fillStyle="rgba(255,255,255,0.10)"; roundRect(748,LOGH-60,110,26,8); ctx.fill();
-  ctx.fillStyle=((RPG.p.candyCd||0)>0||_cn<1)?"#8f86ad":"#ffb3c7";
-  ctx.fillText("Q 🍬 ×"+_cn+(((RPG.p.candyCd||0)>0)?" …":""), 760, LOGH-42);
+  // ── 하단 힌트 + 나가기(슬림 스트립) ────────────────
+  const bgg=ctx.createLinearGradient(0,LOGH-24,0,LOGH); bgg.addColorStop(0,"rgba(10,12,32,0)"); bgg.addColorStop(1,"rgba(10,12,32,0.55)");
+  ctx.fillStyle=bgg; ctx.fillRect(0,LOGH-24,LOGW,24);
+  const hint=RPG.ctxTarget?((RPG.ctxTarget.kind==="npc")?(_tc?"💬 버튼: 대화하기":"Space: 대화하기"):(RPG.ctxTarget.kind==="farm"?((_tc?"👆 ":"Space: ")+RPG.ctxTarget.farm.label):(_tc?"👀 버튼: 살펴보기":"Space: 살펴보기")))
+    :(_tc?"왼쪽 눌러 이동 · ⚔️ 공격 · 💬 상호작용":"방향키 이동 · Z 공격 · Space 상호작용 · I 가방 · B 도감 · Esc 나가기");
+  ctx.fillStyle="#bfb6dd"; ctx.font="13px 'Malgun Gothic',sans-serif"; ctx.fillText(hint, 24, LOGH-8);
+  ctx.textAlign="right"; ctx.fillStyle="#e8a0a0"; ctx.font="bold 13px 'Malgun Gothic',sans-serif";
+  ctx.fillText("🚪 나가기", LOGW-20, LOGH-8); ctx.textAlign="left";   // 터치 나가기(POLISH-1 §7)
   if(RPG.banner){   // 보상 배너(POLISH-1 §6 — 합산 1장·슬라이드)
     const b=RPG.banner, ein=Math.min(1,(3.4-b.t)/0.25), a=Math.min(ein,Math.min(1,b.t/0.3));
     const bh=14+b.lines.length*24, by=70-(1-ein)*46;
