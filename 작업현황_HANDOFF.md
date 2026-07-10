@@ -2,7 +2,13 @@
 
 > 다른 컴퓨터에서 이어받기: `git pull` → 이 파일부터. 세션 끝날 때 갱신 후 commit+push.
 
-## 최신 상태 (2026-07-10, 별빛점프 메이커 기믹10+클리어조건 배포)
+## 최신 상태 (2026-07-10, 별빛점프 캠페인 30스테이지 확장 + 맵 선택 탭 배포)
+
+### 🦘 별빛 점프 신규 기믹 학습 캠페인 10스테이지 + 맵 선택 2탭 (커밋 fe73e13)
+- **Part1 캠페인 20→30**(PF_LEVELS, pfc_21~30, MAKER-1 기믹 학습): zone4 톱니 고원(21~25)=`=`움직이는발판·`c`컨베이어·`^`상승바람+용암·`x`톱날·`v`낙하블록 / zone5 용암 공방(26~30)=`T`포탑·`<`화살발사기·`A`날벌레·`~`용암호수·**종합 피날레(66폭)**. PF_ZONE_BG/TINT 6존 확장(#0b2622 톱니·#2a1410 용암). camp24·29가 구역끝(+30G).
+- **봇 클리어 설계원칙**(중요): 봇은 한 시도(90s) 내 체크포인트 리스폰으로 여러 번 죽어도 됨 → "봇이 못 하는 필수 기믹"만 피하면 됨. 모든 구덩이 ≤3~4칸(풀홀드 점프 수평 ~4.3칸), 상승기류는 3칸 용암 위 보조(점프로도 넘음), 톱날/포탑/발사기 구간엔 `F` 체크포인트. harness_pfcamp 봇 solid()엔 `c` 미포함이라 컨베이어를 절벽처럼 점프하지만 무해.
+- **Part2 선택 2탭**(drawPfSelect/handlePfSelectKey): `pfSelTab`(0=🗺캠페인/1=🛠친구들이 만든 맵)·`pfSelIdxTab`(탭별 커서)·`pfSwitchTab`·`pfSelTabList`·`pfCommunityList`(승인 학생 플랫포머만). ←→ 탭·↑↓ 선택·Enter 시작, 탭버튼 터치, 친구탭 빈목록 안내, 캠페인탭만 진행도 N/30. `pfLevelList()`는 호환용(캠페인+커뮤니티 concat) 유지. 학생 맵은 camp undefined라 항상 열림.
+- **검증**: harness_pfcamp 30 ALL PASS(결정론 시드)·harness_platformer 그래프 도달성 30 PASS(카운트 20→30 갱신)·문법 OK. 라이브(8899): 양 탭 렌더/전환/커뮤니티12개, s23 용암+상승기류 플레이 렌더 확인. ⚠ 주입한 테스트 맵은 saveEditorStore=localStorage전용(클라우드 무오염), 검증 후 제거함. flaky harness_campaign·checkpoint(확률 PvE, 무관).
 
 ### 🧩 별빛 점프 메이커 신규 기믹 10종 + 클리어 조건 (MAKER-1, 커밋 f85ac82)
 - **기믹 10종**(ED_PAL_PF·pfUpdate·pfRender): T쏘는몬스터(조준발사)·A날개몬스터(사인파비행)·=움직이는발판(태우기)·v낙하블록(쿵)·x톱날(왕복즉사)·>< 화살발사기·~용암(즉사)·^상승바람(중력보다강함)·c컨베이어(솔리드+밀림). 동적=PF.saws/plats/thwomps/shooters/eshots(pfStartLevel 파싱·pfDie 리셋), 정적타일=~/^/c/>/<는 그리드 유지. pfSolid에 c 추가, 몬스터 루프 type 분기(patrol/turret/flyer).
