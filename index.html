@@ -2351,7 +2351,10 @@ const PF_CONST={ GRAVITY:2200, HOLD_MUL:0.6, JUMP_V:-820, JUMP_CUT:0.45, MOVE_SP
   LOOK:80, LOOK_SPD:240, LOOK_HOLD:0.3,   // 카메라 선행(멀미 방지: 방향 0.3s 유지 후에만 반전, 240px/s로 이동)
   /* BIG-BATCH-2 P1.5: 신규 기믹·파워업 — 얼음 바닥(미끄럼)·부서지는 블록·⭐총·🌟무적·🪶깃털·🧲자석 */
   ICE_ACC:900, ICE_FRIC:280, GUN_CD:0.35, GUN_SPD:620, GUN_RANGE:520,
-  STAR_T:5, FEATHER_MUL:1.18, MAGNET_R:150, HURT_INV:1.5 };
+  STAR_T:5, FEATHER_MUL:1.18, MAGNET_R:150, HURT_INV:1.5,
+  /* MAKER-1 신규 기믹 튜닝 */
+  SAW_SPD:78, PLAT_SPD:66, THWOMP_V:1500, THWOMP_REST:0.7, ESHOT_SPD:300, ESHOT_RANGE:640,
+  TURRET_CD:2.1, UPDRAFT:3200, UPDRAFT_MAX:340, CONVEYOR:170 };
 const PF_SIZES=[ {cols:33, rows:12, name:"연습 33×12 (1.5화면)"},
                  {cols:66, rows:12, name:"스탠다드 66×12 (3화면)"},
                  {cols:110, rows:14, name:"롱 110×14 (5화면)"} ];
@@ -2665,16 +2668,23 @@ function pfTileAt(c,r){
   if(r>=PF.rows) return ".";                      // 아래는 낙사 판정이 처리
   return PF.grid[r][c];
 }
-function pfSolid(ch){ return ch==="#"||ch==="i"||ch==="b"; }   // P1.5: 얼음(i)·부서지는 블록(b)도 솔리드
+function pfSolid(ch){ return ch==="#"||ch==="i"||ch==="b"||ch==="c"; }   // P1.5: 얼음(i)·부서지는 블록(b)·MAKER-1 컨베이어(c)도 솔리드
 function pfStartLevel(level, opts){
   opts=opts||{};
   const rows=level.rows.map(s=>s.split(""));
   const cols=rows[0].length;
-  let sx=1.5, sy=1, monsters=[], starsTotal=0;
+  let sx=1.5, sy=1, monsters=[], starsTotal=0, saws=[], plats=[], thwomps=[], shooters=[];
   for(let r=0;r<rows.length;r++) for(let c=0;c<rows[r].length;c++){
-    const ch=rows[r][c];
+    const ch=rows[r][c], X=(c+0.5)*56;
     if(ch==="*"){ sx=c+0.5; sy=r; rows[r][c]="."; }
-    else if(ch==="M"){ monsters.push({x:(c+0.5)*56, y:(r+1)*56, dir:-1, dead:false, w:40, h:40}); rows[r][c]="."; }
+    else if(ch==="M"){ monsters.push({type:"patrol", x:X, y:(r+1)*56, dir:-1, dead:false, w:40, h:40}); rows[r][c]="."; }
+    else if(ch==="T"){ monsters.push({type:"turret", x:X, y:(r+1)*56, dir:-1, dead:false, w:40, h:44, shootCd:0.6+((c*7+r*13)%10)/8}); rows[r][c]="."; }   // MAKER-1 쏘는 몬스터
+    else if(ch==="A"){ const by=(r+0.6)*56; monsters.push({type:"flyer", x:X, y:by, baseY:by, dead:false, w:40, h:36, phase:((c*11+r*7)%628)/100, dir:(c%2?1:-1)}); rows[r][c]="."; }   // MAKER-1 날개 몬스터
+    else if(ch==="x"){ saws.push({x:X, y:(r+0.5)*56, x0:X, dir:1, span:120, w:46, h:46}); rows[r][c]="."; }   // MAKER-1 톱날(왕복 즉사)
+    else if(ch==="="){ plats.push({x:X, y:(r+0.5)*56, x0:X, dir:1, span:132, w:84, h:18}); rows[r][c]="."; }   // MAKER-1 움직이는 발판
+    else if(ch==="v"){ const y0=(r+0.5)*56; thwomps.push({x:X, y:y0, y0:y0, state:"idle", vy:0, w:48, h:48, restT:0}); rows[r][c]="."; }   // MAKER-1 낙하 블록
+    else if(ch===">"){ shooters.push({x:X, y:(r+0.5)*56, dir:1, cd:0.4+((c+r)%8)/6}); }   // MAKER-1 화살 발사기(→) — 그리드 유지(렌더)
+    else if(ch==="<"){ shooters.push({x:X, y:(r+0.5)*56, dir:-1, cd:0.4+((c+r)%8)/6}); }
     else if(ch==="o") starsTotal++;
   }
   PF={ level:level, test:!!opts.test, grid:rows, cols:cols, rows:rows.length,
@@ -2682,6 +2692,7 @@ function pfStartLevel(level, opts){
            jumpHeld:false, cutDone:false, dropT:0,
            gun:false, gunCd:0, starT:0, featherT:0, magnetT:0, inv:0 },   // P1.5 파워업 슬롯
        shots:[], crumble:{},                                              // P1.5 ⭐총 발사체 · 부서지는 블록 타이머
+       saws:saws, plats:plats, thwomps:thwomps, shooters:shooters, eshots:[],   // MAKER-1 신규 기믹
        monsters:monsters, checkpoint:{x:sx*56, y:sy*56+56-0.01},
        time:0, deaths:0, stars:0, starsTotal:starsTotal, cleared:false, clearT:0,
        camX:0, camY:0, camGY:sy*56+56, touch:{l:false,r:false,j:false},
@@ -2696,6 +2707,8 @@ function pfDie(){
   const p=PF.p;
   p.x=PF.checkpoint.x; p.y=PF.checkpoint.y; p.vx=0; p.vy=0; p.onGround=false; p.dropT=0;
   p.gun=false; p.starT=0; p.featherT=0; p.magnetT=0; p.inv=0; PF.shots.length=0;   // P1.5: 죽으면 파워업 소실
+  if(PF.eshots) PF.eshots.length=0;   // MAKER-1: 적 발사체 정리
+  if(PF.thwomps) for(const t of PF.thwomps){ t.y=t.y0; t.state="idle"; t.vy=0; t.restT=0; }   // 낙하블록 원위치
   PF.camGY=p.y; pfCamSnap();
 }
 /* P1.5: 피해 단계(마리오식) — 무적/별 중엔 무시, 파워업이 있으면 죽는 대신 전부 상실+짧은 무적 */
@@ -2834,7 +2847,14 @@ function pfUpdate(dt){
       else if(ch==="!"){ PF.grid[r][c]="."; p.starT=C.STAR_T; playSfx("powerup"); showToast("🌟 무적! ("+C.STAR_T+"초)"); }
       else if(ch==="w"){ PF.grid[r][c]="."; p.featherT=8; playSfx("powerup"); showToast("🪶 깃털! 점프력 UP (8초)"); }
       else if(ch==="m"){ PF.grid[r][c]="."; p.magnetT=8; playSfx("powerup"); showToast("🧲 자석! 별조각이 모여요 (8초)"); }
+      else if(ch==="~"){ if(p.starT>0){} else { pfDie(); return; } }   // MAKER-1 용암: 즉사(무적 별 중엔 무시)
+      else if(ch==="^"){ p.vy=Math.max(p.vy-C.UPDRAFT*dt, -C.UPDRAFT_MAX); p.cutDone=true; p.onGround=false; }   // MAKER-1 상승 바람: 위로 띄움(중력보다 강함)
     }
+    // MAKER-1 컨베이어(c): 밟고 있으면 오른쪽으로 밀림(벽이면 정지)
+    if(p.onGround){ const rC=Math.floor((p.y+2)/56), cC=Math.floor(p.x/56);
+      if(pfTileAt(cC,rC)==="c"){ const hw=C.PW/2, nx=p.x+C.CONVEYOR*dt, cCol=Math.floor((nx+hw)/56);
+        let blocked=false; for(let rr=Math.floor((p.y-C.PH+2)/56); rr<=Math.floor((p.y-2)/56); rr++) if(pfSolid(pfTileAt(cCol,rr))) blocked=true;
+        if(!blocked) p.x=clamp(nx, hw+0.01, PF.cols*56-hw-0.01); } }
     // P1.5 자석: 주변 별조각 자동 수집
     if(p.magnetT>0){
       const rad=Math.ceil(C.MAGNET_R/56);
@@ -2877,24 +2897,86 @@ function pfUpdate(dt){
     }
   }
   if(PF.shots.length>24) PF.shots=PF.shots.filter(s=>s.alive);
-  // ── 몬스터 ──
+  // ── 몬스터(순찰·MAKER-1 터렛·비행) ──
   for(const m of PF.monsters){
     if(m.dead) continue;
-    const nx=m.x+m.dir*C.MON_SPD*dt;
-    const fc=Math.floor((nx+m.dir*m.w/2)/56), fr=Math.floor((m.y-2)/56), br=Math.floor((m.y+2)/56);
-    const wallAhead=pfSolid(pfTileAt(fc, fr));
-    const groundAhead=pfSolid(pfTileAt(fc, br)) || pfTileAt(fc,br)==="-";
-    if(wallAhead || !groundAhead) m.dir*=-1; else m.x=nx;
-    // 플레이어 접촉
+    if(m.type==="turret"){   // 쏘는 몬스터: 제자리·플레이어 조준·주기 발사(밟기 처치)
+      m.dir=(p.x<m.x)?-1:1; m.shootCd-=dt;
+      if(m.shootCd<=0 && Math.abs(p.x-m.x)<600 && Math.abs((p.y-C.PH/2)-(m.y-m.h*0.6))<120){
+        m.shootCd=C.TURRET_CD; PF.eshots.push({x:m.x+m.dir*22, y:m.y-m.h*0.6, vx:m.dir*C.ESHOT_SPD, trav:0, alive:true}); playSfx("shoot"); }
+    } else if(m.type==="flyer"){   // 날개 몬스터: 사인파 비행(바닥 무시·벽 반전)
+      m.phase=(m.phase||0)+dt*2.3;
+      const nx=m.x+m.dir*C.MON_SPD*0.9*dt, fc=Math.floor((nx+m.dir*m.w/2)/56), mr=Math.floor((m.baseY-m.h/2)/56);
+      if(pfSolid(pfTileAt(fc,mr))) m.dir*=-1; else m.x=nx;
+      m.y=m.baseY+Math.sin(m.phase)*24;
+    } else {   // 순찰(patrol): 바닥 따라 왕복
+      const nx=m.x+m.dir*C.MON_SPD*dt;
+      const fc=Math.floor((nx+m.dir*m.w/2)/56), fr=Math.floor((m.y-2)/56), br=Math.floor((m.y+2)/56);
+      const wallAhead=pfSolid(pfTileAt(fc, fr));
+      const groundAhead=pfSolid(pfTileAt(fc, br)) || pfTileAt(fc,br)==="-";
+      if(wallAhead || !groundAhead) m.dir*=-1; else m.x=nx;
+    }
+    // 플레이어 접촉(공통) — 밟기 처치 / 피격
     const px0=p.x-C.PW/2, px1=p.x+C.PW/2, py0=p.y-C.PH, py1=p.y;
     const mx0=m.x-m.w/2, mx1=m.x+m.w/2, my0=m.y-m.h, my1=m.y;
     if(px1>mx0 && px0<mx1 && py1>my0 && py0<my1){
       if(p.starT>0){ m.dead=true; playSfx("kill"); }                                                          // P1.5 🌟무적: 접촉 처치
-      else if(p.vy>0 && (py1-my0) < m.h*0.25+8){ m.dead=true; p.vy=C.STOMP_V; p.cutDone=true; playSfx("stomp"); }   // 밟기
+      else if(p.vy>0 && (py1-my0) < m.h*0.35+8){ m.dead=true; p.vy=C.STOMP_V; p.cutDone=true; playSfx("stomp"); }   // 밟기
       else if(p.inv>0){}                                                                                      // 피격 무적 중
       else { pfHurt(); if(PF.p.inv<=0) return; }                                                              // P1.5: 파워업 있으면 상실로 대체
     }
   }
+  // ── MAKER-1 신규 기믹: 톱날·움직이는 발판·낙하 블록·발사기·적 발사체 ──
+  const _hitPlayer=function(x0,x1,y0,y1){ return p.x+C.PW/2>x0 && p.x-C.PW/2<x1 && p.y>y0 && p.y-C.PH<y1; };
+  // 톱날(x): 좌우 왕복 · 닿으면 즉사(무적 별 예외)
+  for(const s of (PF.saws||[])){
+    s.x+=s.dir*C.SAW_SPD*dt;
+    if(s.x>s.x0+s.span){ s.x=s.x0+s.span; s.dir=-1; } else if(s.x<s.x0-s.span){ s.x=s.x0-s.span; s.dir=1; }
+    const c=Math.floor((s.x+s.dir*s.w/2)/56), r=Math.floor(s.y/56); if(pfSolid(pfTileAt(c,r))) s.dir*=-1;   // 벽 반전
+    if(_hitPlayer(s.x-s.w/2+6,s.x+s.w/2-6,s.y-s.h/2+6,s.y+s.h/2-6)){ if(p.starT<=0){ pfDie(); return; } }
+  }
+  // 움직이는 발판(=): 좌우 이동 솔리드 + 태우기
+  for(const pl of (PF.plats||[])){
+    const ox=pl.x; pl.x+=pl.dir*C.PLAT_SPD*dt;
+    if(pl.x>pl.x0+pl.span){ pl.x=pl.x0+pl.span; pl.dir=-1; } else if(pl.x<pl.x0-pl.span){ pl.x=pl.x0-pl.span; pl.dir=1; }
+    pl.dx=pl.x-ox;
+    const topY=pl.y-pl.h/2, overlapX=(p.x+C.PW/2>pl.x-pl.w/2 && p.x-C.PW/2<pl.x+pl.w/2);
+    if(overlapX && p.vy>=0 && p.y>=topY-10 && p.y<=topY+18){   // 발판 위 착지/탑승
+      p.y=topY-0.01; p.vy=0; p.onGround=true; p.coyote=C.COYOTE; p.cutDone=false; PF.camGY=p.y;
+      p.x=clamp(p.x+pl.dx, C.PW/2+0.01, PF.cols*56-C.PW/2-0.01);   // 발판이 실어 나름
+    }
+  }
+  // 낙하 블록(v): 아래를 지나가면 쿵 낙하 → 잠시 후 복귀 · 낙하 중 닿으면 피해
+  for(const t of (PF.thwomps||[])){
+    if(t.state==="idle"){
+      if(Math.abs(p.x-t.x)<t.w*0.5+6 && p.y-C.PH>t.y+t.h/2 && p.y-C.PH<t.y+t.h/2+240){ t.state="fall"; t.vy=0; }
+    } else if(t.state==="fall"){
+      t.vy=Math.min(C.TERM_VY, t.vy+C.THWOMP_V*dt); t.y+=t.vy*dt;
+      const r=Math.floor((t.y+t.h/2)/56), c0=Math.floor((t.x-t.w/2+4)/56), c1=Math.floor((t.x+t.w/2-4)/56);
+      let land=false; for(let c=c0;c<=c1;c++) if(pfSolid(pfTileAt(c,r))){ t.y=r*56-t.h/2-0.01; land=true; break; }
+      if(t.y>t.y0+ (PF.rows*56)) land=true;
+      if(land){ t.state="rest"; t.restT=C.THWOMP_REST; t.vy=0; playSfx("hit"); }
+    } else if(t.state==="rest"){
+      t.restT-=dt; if(t.restT<=0){ t.state="rise"; }
+    } else if(t.state==="rise"){
+      t.y-=180*dt; if(t.y<=t.y0){ t.y=t.y0; t.state="idle"; }
+    }
+    if(t.state==="fall" && _hitPlayer(t.x-t.w/2+4,t.x+t.w/2-4,t.y-t.h/2,t.y+t.h/2)){ if(p.starT<=0){ pfHurt(); if(PF.p.inv<=0) return; } }
+  }
+  // 화살 발사기(> <): 주기적으로 적 발사체 생성
+  for(const sh of (PF.shooters||[])){
+    sh.cd-=dt;
+    if(sh.cd<=0){ sh.cd=1.5; PF.eshots.push({x:sh.x+sh.dir*20, y:sh.y, vx:sh.dir*C.ESHOT_SPD, trav:0, alive:true}); }
+  }
+  // 적 발사체(eshots): 이동·벽/사거리 소멸·플레이어 피해
+  for(const e of (PF.eshots||[])){
+    if(!e.alive) continue;
+    const step=Math.abs(e.vx)*dt; e.x+=e.vx*dt; e.trav+=step;
+    if(e.trav>C.ESHOT_RANGE){ e.alive=false; continue; }
+    if(pfSolid(pfTileAt(Math.floor(e.x/56),Math.floor(e.y/56)))){ e.alive=false; continue; }
+    if(_hitPlayer(e.x-5,e.x+5,e.y-5,e.y+5)){ e.alive=false; if(p.starT<=0){ pfHurt(); if(PF.p.inv<=0) return; } }
+  }
+  if(PF.eshots && PF.eshots.length>40) PF.eshots=PF.eshots.filter(e=>e.alive);
   // ── 낙사 ──
   if(p.y > (PF.rows+2)*56){ pfDie(); return; }
   pfCamUpdate(dt);
@@ -2985,21 +3067,73 @@ function pfRender(){
       ctx.fillStyle="rgba(255,225,80,0.25)"; roundRect(x+4,y+4,48,48,10); ctx.fill();
       const p3=0.5+0.5*Math.sin(uiTime*5);
       drawStar(x+28, y+28, 5, 16+p3*3, 7, "#ffe14d");
+    } else if(ch==="~"){   // MAKER-1 용암
+      const wv=Math.sin(uiTime*3+c)*2, lg=ctx.createLinearGradient(0,y,0,y+56); lg.addColorStop(0,"#ff8a3a"); lg.addColorStop(1,"#b8301a");
+      ctx.fillStyle=lg; ctx.fillRect(x,y+6,56,50);
+      ctx.fillStyle="#ffd08a"; ctx.fillRect(x,y+8+wv,56,4);
+      ctx.fillStyle="rgba(255,225,130,0.6)"; ctx.beginPath(); ctx.arc(x+14+((c*13)%18),y+24,3,0,Math.PI*2); ctx.arc(x+42,y+34,2,0,Math.PI*2); ctx.fill();
+    } else if(ch==="^"){   // MAKER-1 상승 바람
+      ctx.strokeStyle="rgba(159,230,255,0.55)"; ctx.lineWidth=3;
+      for(let k=0;k<3;k++){ const ax=x+13+k*16, off=(uiTime*90+k*22)%56, ay=y+56-off; ctx.beginPath(); ctx.moveTo(ax,ay); ctx.lineTo(ax-4,ay+8); ctx.moveTo(ax,ay); ctx.lineTo(ax+4,ay+8); ctx.stroke(); }
+      ctx.lineWidth=1;
+    } else if(ch==="c"){   // MAKER-1 컨베이어(→)
+      ctx.fillStyle="#5a4a2a"; ctx.fillRect(x,y+40,56,16);
+      ctx.fillStyle="#caa24a"; ctx.fillRect(x,y+40,56,10);
+      ctx.fillStyle="#8a6a2a"; const off=(uiTime*120)%16; for(let ax=x-16+off;ax<x+56;ax+=16){ ctx.beginPath(); ctx.moveTo(ax,y+42); ctx.lineTo(ax+7,y+42); ctx.lineTo(ax+3,y+48); ctx.closePath(); ctx.fill(); }
+    } else if(ch===">"||ch==="<"){   // MAKER-1 화살 발사기
+      const d=(ch===">")?1:-1;
+      ctx.fillStyle="#6b4a2b"; roundRect(x+8,y+14,40,28,6); ctx.fill();
+      ctx.strokeStyle="#3a2614"; ctx.lineWidth=2; roundRect(x+8,y+14,40,28,6); ctx.stroke(); ctx.lineWidth=1;
+      ctx.fillStyle="#2a1a10"; ctx.fillRect(x+28+d*8,y+24,d>0?10:-10,8);
     }
   }
-  // 몬스터
+  // 몬스터(순찰·MAKER-1 터렛·비행)
   for(const m of PF.monsters){
     if(m.dead) continue;
     if(m.x+m.w<PF.camX-112 || m.x-m.w>PF.camX+LOGW+112) continue;
-    const img=getMonsterImage("soft_jelly");
     ctx.save(); ctx.translate(m.x, m.y);
-    if(img){ const k=Math.min(m.w/(img.naturalWidth||1), m.h/(img.naturalHeight||1))*1.4;
-      if(m.dir>0){ ctx.scale(-1,1); }
-      ctx.drawImage(img, -(img.naturalWidth*k)/2, -img.naturalHeight*k, img.naturalWidth*k, img.naturalHeight*k); }
-    else { ctx.fillStyle="#c58bff"; ctx.beginPath(); ctx.arc(0,-m.h/2,m.w/2,0,Math.PI*2); ctx.fill();
-      ctx.fillStyle="#3a2a55"; ctx.fillRect(-8,-m.h/2-4,4,6); ctx.fillRect(4,-m.h/2-4,4,6); }
+    if(m.type==="turret"){
+      if(m.dir>0) ctx.scale(-1,1);
+      ctx.fillStyle="#3a1a10"; ctx.fillRect(-m.w/2-8,-m.h*0.62-4,14,9);   // 포신
+      ctx.fillStyle="#ff8f6a"; ctx.beginPath(); ctx.arc(0,-m.h/2,m.w/2,0,Math.PI*2); ctx.fill();   // 몸
+      ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(-6,-m.h/2-2,4,0,Math.PI*2); ctx.arc(6,-m.h/2-2,4,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle="#2a1010"; ctx.beginPath(); ctx.arc(-6,-m.h/2-2,2,0,Math.PI*2); ctx.arc(6,-m.h/2-2,2,0,Math.PI*2); ctx.fill();
+    } else if(m.type==="flyer"){
+      const fl=Math.sin(uiTime*14)*5;
+      ctx.fillStyle="rgba(120,150,220,0.9)";   // 날개(퍼덕)
+      ctx.beginPath(); ctx.ellipse(-m.w*0.42,-m.h/2, m.w*0.34, 7+fl, 0.5,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(m.w*0.42,-m.h/2, m.w*0.34, 7+fl, -0.5,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle="#a6c4ff"; ctx.beginPath(); ctx.arc(0,-m.h/2,m.w*0.34,0,Math.PI*2); ctx.fill();   // 몸
+      ctx.fillStyle="#2a3a6a"; ctx.fillRect(-5,-m.h/2-2,3,4); ctx.fillRect(3,-m.h/2-2,3,4);
+    } else {
+      const img=getMonsterImage("soft_jelly");
+      if(img){ const k=Math.min(m.w/(img.naturalWidth||1), m.h/(img.naturalHeight||1))*1.4;
+        if(m.dir>0){ ctx.scale(-1,1); }
+        ctx.drawImage(img, -(img.naturalWidth*k)/2, -img.naturalHeight*k, img.naturalWidth*k, img.naturalHeight*k); }
+      else { ctx.fillStyle="#c58bff"; ctx.beginPath(); ctx.arc(0,-m.h/2,m.w/2,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle="#3a2a55"; ctx.fillRect(-8,-m.h/2-4,4,6); ctx.fillRect(4,-m.h/2-4,4,6); }
+    }
     ctx.restore();
   }
+  // MAKER-1 톱날(회전) · 움직이는 발판 · 낙하 블록 · 적 발사체
+  for(const s of (PF.saws||[])){ if(s.x<PF.camX-80||s.x>PF.camX+LOGW+80) continue;
+    ctx.save(); ctx.translate(s.x,s.y); ctx.rotate(uiTime*11*s.dir);
+    ctx.fillStyle="#d0d6e0"; ctx.beginPath(); for(let k=0;k<16;k++){ const a=k/16*Math.PI*2, rr=(k%2?s.w/2:s.w/2-9); ctx.lineTo(Math.cos(a)*rr,Math.sin(a)*rr); } ctx.closePath(); ctx.fill();
+    ctx.fillStyle="#8a94a8"; ctx.beginPath(); ctx.arc(0,0,9,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle="#5a6478"; ctx.beginPath(); ctx.arc(0,0,3,0,Math.PI*2); ctx.fill(); ctx.restore(); }
+  for(const pl of (PF.plats||[])){ if(pl.x+pl.w<PF.camX-80||pl.x-pl.w>PF.camX+LOGW+80) continue;
+    ctx.fillStyle="#7a5230"; roundRect(pl.x-pl.w/2,pl.y-pl.h/2,pl.w,pl.h,5); ctx.fill();
+    ctx.fillStyle="#b0824a"; roundRect(pl.x-pl.w/2,pl.y-pl.h/2,pl.w,pl.h*0.55,5); ctx.fill();
+    ctx.strokeStyle="rgba(0,0,0,0.25)"; ctx.strokeRect(pl.x-pl.w/2+2,pl.y-pl.h/2+2,pl.w-4,pl.h-4); }
+  for(const t of (PF.thwomps||[])){ if(t.x+t.w<PF.camX-80||t.x-t.w>PF.camX+LOGW+80) continue;
+    const sh=(t.state==="fall")?Math.sin(uiTime*50)*1.5:0;
+    ctx.save(); ctx.translate(t.x+sh,t.y);
+    ctx.fillStyle="#9aa4c8"; roundRect(-t.w/2,-t.h/2,t.w,t.h,6); ctx.fill();
+    ctx.strokeStyle="#5a6488"; ctx.lineWidth=2; roundRect(-t.w/2+2,-t.h/2+2,t.w-4,t.h-4,5); ctx.stroke(); ctx.lineWidth=1;
+    ctx.fillStyle="#2a3050"; ctx.fillRect(-11,3,7,5); ctx.fillRect(4,3,7,5); ctx.restore(); }
+  for(const e of (PF.eshots||[])){ if(!e.alive) continue;
+    ctx.save(); ctx.fillStyle="#ff6a6a"; ctx.beginPath(); ctx.ellipse(e.x,e.y,8,4,0,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle="rgba(255,130,90,0.4)"; ctx.beginPath(); ctx.ellipse(e.x-(e.vx>0?9:-9),e.y,5,3,0,0,Math.PI*2); ctx.fill(); ctx.restore(); }
   // P1.5 ⭐총 발사체
   for(const s of PF.shots){
     if(!s.alive) continue;
@@ -6490,6 +6624,17 @@ const ED_PAL_PF=[
   { ch:"!", name:"🌟 별 무적",     color:"#fff06a" },
   { ch:"w", name:"🪶 깃털(점프↑)", color:"#cfe0ff" },
   { ch:"m", name:"🧲 자석",        color:"#ff9ec2" },
+  /* MAKER-1: 신규 기믹 10종(쏘는 몬스터·움직이는 장애물 등) */
+  { ch:"T", name:"👹 쏘는 몬스터",  color:"#ff8f6a" },
+  { ch:"A", name:"🦇 날개 몬스터",  color:"#a6c4ff" },
+  { ch:"=", name:"↔️ 움직이는 발판", color:"#b0824a" },
+  { ch:"v", name:"⬇️ 낙하 블록",    color:"#9aa4c8" },
+  { ch:"x", name:"⚙️ 톱날",         color:"#d0d6e0" },
+  { ch:">", name:"➡️ 화살 발사기",   color:"#8a6238" },
+  { ch:"<", name:"⬅️ 화살 발사기",   color:"#8a6238" },
+  { ch:"~", name:"🔥 용암",         color:"#ff6a3a" },
+  { ch:"^", name:"🌬️ 상승 바람",    color:"#9fe6ff" },
+  { ch:"c", name:"⏩ 컨베이어",      color:"#caa24a" },
   { ch:"G", name:"골",            color:"#ffd166" },
   { ch:"*", name:"시작점",        color:"#9fe0ff" }
 ];
@@ -6500,11 +6645,13 @@ const ED_PAL_MODE={ tdm:[], siege:[{ch:"X",name:"팀 수정탑(메인)",color:"#
 const ED_PAL_EXCLUDE={ tag:{S:1,L:1,C:1,"*":1} };
 const ED_CELL_COLOR={ ".":null, W:"#878da8", B:"#5ad36b", S:"#ff6a6a", L:"#7fd88a", I:"#8fd9ff", C:"#ff9ec2", "*":"#ffe14d", "@":"#ffe14d", Y:"#7fbfff", O:"#ffd23f", X:"#5aa0ff", G:"#ffcf4d",
   "#":"#5a6aa8", "-":"#8fd0a0", J:"#ffd23f", M:"#c58bff", o:"#ffe875", F:"#7dffb0",
-  i:"#8fd9ff", b:"#a97a4a", P:"#ffb347", "!":"#fff06a", w:"#cfe0ff", m:"#ff9ec2" };   /* GENRE-EXPAND-1 + P1.5 플랫포머 legend */
+  i:"#8fd9ff", b:"#a97a4a", P:"#ffb347", "!":"#fff06a", w:"#cfe0ff", m:"#ff9ec2",
+  T:"#ff8f6a", A:"#a6c4ff", "=":"#b0824a", v:"#9aa4c8", x:"#d0d6e0", ">":"#8a6238", "<":"#8a6238", "~":"#ff6a3a", "^":"#9fe6ff", c:"#caa24a" };   /* MAKER-1 신규 기믹 */
 /* EDIT-WYSIWYG-1: 에디터 칸을 색+글자 대신 게임 그래픽으로 — 바닥=테마 스프라이트, 벽/수풀=실제 스프라이트, 나머지=이모지 아이콘 */
 const ED_FLOOR_TINT={ basic:"#2b3358", grass:"#22402c", snow:"#39414f", sand:"#4a4230", wood:"#3a2c1e", void_:"#161228" };
 function edCellEmoji(ch, pf){
-  if(pf){ const p={ "#":"", "-":"➖", S:"🔺", J:"⏫", M:"👾", o:"⭐", F:"🚩", i:"🧊", b:"📦", P:"🔫", "!":"🌟", w:"🪶", m:"🧲", G:"🏁", "*":"🟢" }; return p[ch]!==undefined?p[ch]:""; }
+  if(pf){ const p={ "#":"", "-":"➖", S:"🔺", J:"⏫", M:"👾", o:"⭐", F:"🚩", i:"🧊", b:"📦", P:"🔫", "!":"🌟", w:"🪶", m:"🧲", G:"🏁", "*":"🟢",
+    T:"👹", A:"🦇", "=":"↔️", v:"⬇️", x:"⚙️", ">":"➡️", "<":"⬅️", "~":"🔥", "^":"🌬️", c:"⏩" }; return p[ch]!==undefined?p[ch]:""; }
   const a={ W:"", B:"", S:"🔺", L:"🫧", I:"🧊", C:"🧩", "*":"🟢", "@":"🏃", Y:"🏯", O:"🎯", X:"🗼", G:"💎" }; return a[ch]!==undefined?a[ch]:"";   // Y=보조 수정탑(🏯, 인게임 탑 그래픽과 일치)
 }
 // 한 칸을 게임 그래픽으로: 벽/수풀은 스프라이트, 그 외는 아이콘(+옅은 틴트)
@@ -6729,8 +6876,9 @@ function edMouseDown(e){
   const pal=edPalette();
   if(ED.slot){ edSlotHit(p); return; }                      // TOUCH: 슬롯 오버레이 열림 중엔 슬롯만
   if(edTestBtnHit(p)) return;                                // EDIT-TEST-1: 미리하기·편집 도구 버튼
-  if(p.x>=24 && p.x<=250){   // 팔레트 클릭으로 선택
-    for(let i=0;i<pal.length;i++){ const py=134+i*34; if(p.y>=py-14 && p.y<=py+16){ ED.palIdx=i; return; } }
+  if(p.x>=24 && p.x<=250){   // 팔레트 클릭으로 선택(MAKER-1: 적응형 행 높이와 동일 계산)
+    const rowH=Math.min(34, Math.floor((LOGH-158)/pal.length));
+    for(let i=0;i<pal.length;i++){ const py=128+i*rowH+rowH/2; if(p.y>=py-rowH/2 && p.y<=py+rowH/2){ ED.palIdx=i; return; } }
   }
   ED.mbtn=(e.button===2)?2:1;
   edPaintAt(p);
@@ -10656,19 +10804,20 @@ function drawEditorGrid(){
     ctx.fillStyle="#ffffff"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.fillText(b.label, b.x+b.w/2, b.y+b.h/2);
     bx=b.x; }
   ctx.textAlign="left"; ctx.textBaseline="alphabetic";
-  // 좌: 팔레트
+  // 좌: 팔레트 (MAKER-1: 항목 많으면 행 높이 자동 축소로 전부 표시)
   const pal=edPalette();
-  ctx.fillStyle="rgba(16,22,52,0.9)"; roundRect(24, 88, panelW-24, pal.length*34+52, 12); ctx.fill();
-  ctx.strokeStyle="#44507e"; ctx.lineWidth=1.5; roundRect(24, 88, panelW-24, pal.length*34+52, 12); ctx.stroke();
-  ctx.fillStyle="#8fa2d6"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.fillText("팔레트 (Q/E 변경 · Z 배치 · X 지우기)", 40, 112);
+  const rowH=Math.min(34, Math.floor((LOGH-158)/pal.length)), icoS=Math.max(14,Math.min(18, rowH-4)), fSz=Math.max(11,Math.min(14, rowH-8));
+  ctx.fillStyle="rgba(16,22,52,0.9)"; roundRect(24, 88, panelW-24, pal.length*rowH+50, 12); ctx.fill();
+  ctx.strokeStyle="#44507e"; ctx.lineWidth=1.5; roundRect(24, 88, panelW-24, pal.length*rowH+50, 12); ctx.stroke();
+  ctx.fillStyle="#8fa2d6"; ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.fillText("팔레트 (Q/E · Z 배치 · X 지우기)", 40, 112);
   for(let i=0;i<pal.length;i++){
-    const py=134+i*34, sel=(i===ED.palIdx);
-    if(sel){ ctx.fillStyle="rgba(95,160,255,0.25)"; roundRect(34, py-14, panelW-44, 28, 6); ctx.fill(); }
+    const py=128+i*rowH+rowH/2, sel=(i===ED.palIdx);
+    if(sel){ ctx.fillStyle="rgba(95,160,255,0.25)"; roundRect(34, py-rowH/2+1, panelW-44, rowH-2, 6); ctx.fill(); }
     // EDIT-WYSIWYG-1: 스와치도 게임 그래픽으로(칸과 동일한 렌더)
-    if(pal[i].ch==="."){ ctx.strokeStyle="#8fa2d6"; ctx.lineWidth=1.5; roundRect(42,py-9,18,18,4); ctx.stroke(); ctx.strokeStyle="#8fa2d6"; ctx.beginPath(); ctx.moveTo(45,py-6); ctx.lineTo(57,py+6); ctx.moveTo(57,py-6); ctx.lineTo(45,py+6); ctx.stroke(); }
-    else edCellArt(ctx, pal[i].ch, 42, py-9, 18, ED.pf);
-    ctx.fillStyle=sel?"#ffe066":"#dfe6ff"; ctx.font="bold 14px 'Malgun Gothic',sans-serif"; ctx.textAlign="left"; ctx.textBaseline="alphabetic";
-    ctx.fillText(pal[i].name, 68, py);
+    if(pal[i].ch==="."){ ctx.strokeStyle="#8fa2d6"; ctx.lineWidth=1.5; roundRect(42,py-icoS/2,icoS,icoS,4); ctx.stroke(); ctx.strokeStyle="#8fa2d6"; ctx.beginPath(); ctx.moveTo(45,py-icoS/2+3); ctx.lineTo(42+icoS-3,py+icoS/2-3); ctx.moveTo(42+icoS-3,py-icoS/2+3); ctx.lineTo(45,py+icoS/2-3); ctx.stroke(); }
+    else edCellArt(ctx, pal[i].ch, 42, py-icoS/2, icoS, ED.pf);
+    ctx.fillStyle=sel?"#ffe066":"#dfe6ff"; ctx.font="bold "+fSz+"px 'Malgun Gothic',sans-serif"; ctx.textAlign="left"; ctx.textBaseline="middle";
+    ctx.fillText(pal[i].name, 66, py+1); ctx.textBaseline="alphabetic";
   }
   // 그리드(플랫포머는 viewC부터 창 렌더 — §3.8 스크롤 편집)
   const grid=edFullGrid();
