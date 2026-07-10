@@ -2,7 +2,12 @@
 
 > 다른 컴퓨터에서 이어받기: `git pull` → 이 파일부터. 세션 끝날 때 갱신 후 commit+push.
 
-## 최신 상태 (2026-07-10, 캠페인 s19 별수호전 완화 + 보스 멀미·렉 완화 배포)
+## 최신 상태 (2026-07-10, 별빛점프 메이커 기믹10+클리어조건 배포)
+
+### 🧩 별빛 점프 메이커 신규 기믹 10종 + 클리어 조건 (MAKER-1, 커밋 f85ac82)
+- **기믹 10종**(ED_PAL_PF·pfUpdate·pfRender): T쏘는몬스터(조준발사)·A날개몬스터(사인파비행)·=움직이는발판(태우기)·v낙하블록(쿵)·x톱날(왕복즉사)·>< 화살발사기·~용암(즉사)·^상승바람(중력보다강함)·c컨베이어(솔리드+밀림). 동적=PF.saws/plats/thwomps/shooters/eshots(pfStartLevel 파싱·pfDie 리셋), 정적타일=~/^/c/>/<는 그리드 유지. pfSolid에 c 추가, 몬스터 루프 type 분기(patrol/turret/flyer).
+- **클리어 조건**(플랫포머): 에디터 상단 스테퍼 "⏱시간·⭐별"(ED.limitTime/minStars, ED._condHits 클릭). 저장=edSubmit rec+MapStore.toRecord+pf레벨목록(@~2658)+초안. pfStartLevel→PF. 강제: 시간초과=pfDie+time0 재시작, 별부족=pfClear 차단(needToast 스로틀). HUD: ⏱남은초(10s미만점멸)·⭐N/M필요. 팔레트 26종=행높이 자동축소+클릭히트 일치.
+- 검증: 파싱/렌더/동작 스크린샷+시뮬, 스테퍼클릭·조건강제(별0차단/별3클리어/시간초과리셋)·HUD. harness platformer/pfcamp/edtest/cloud_maps PASS. ⚠ 별수호전(tCampTick, PvE)과 무관한 별빛점프(PF) 시스템.
 
 ### ⭐ 캠페인 s19 '별 수호전' 못 깨는 문제 해결 (v1.41/1.41b, 커밋 1c57f79·c36b0a7)
 - 사용자: 캠페인 마지막(별 수호전) 못 깸 → "**별이 안 먹어진다**"(별이 안 주워짐). **진짜 원인=별 수호전에 플레이어 픽업이 아예 없었음**(적만 별과 상호작용, 아레나 별모으기와 달리 플레이어가 별 위를 지나도 무반응). + harness 시뮬로도 s19 클리어율 50%(난이도도 과함).
