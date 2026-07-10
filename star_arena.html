@@ -12545,7 +12545,7 @@ function tHostWriteState(){
     st.structs=tPackStructs();                                       // v1.22 구조물(숫자만, ≤6개)
     st.pve={ stageIndex:tPve.stageIndex, waveIndex:tPve.waveIndex, teamLives:tPve.teamLives, status:tPve.status, phase:tPve.phase, enemiesRemaining:Object.keys(tEnemies).length, mapId:tMapId,
       dfT:Math.max(0,Math.ceil(tPve.defendT||0)), gates:tGatesAlive(),
-      hg:Math.round(tPve.holdG||0), sgT:Math.max(0,Math.ceil(tPve.sgT||0)), sgL:tPve.sgLost||0,
+      hg:Math.round(tPve.holdG||0), sgT:Math.max(0,Math.ceil(tPve.sgT||0)), sgL:tPve.sgLost||0, sgSv:tPve.sgSaved||0,
       sgS:(tPve.sgStars||[]).map(s=>({x:Math.round(s.x),y:Math.round(s.y)})), it:Math.max(0,Math.round((tPve.introT||0)*10)/10) };
     if(tPve.upg){ const ug={}; for(const s in tPve.upg){ const o=tPve.upg[s]; ug[s]={c:o.c, r:o.r, p:o.picked?1:0, pi:o.pi}; } st.pve.upg=ug; }   // 강화 후보(문자 id 3개·숫자만)
   }
@@ -12975,7 +12975,7 @@ function tPveSetupStructures(){
   // CAMPAIGN-2: 변형 스테이지 상태 + 구역 인트로 배너 + 구역 테마 함정
   tPve.holdG = 0;                                                             // §2-1 거점 사수 게이지
   tPve.sgT = stage.objective==="starguard" ? CAMP_CONFIG.sgTime : 0;          // §2-2 별 수호 남은 시간
-  tPve.sgLost = 0; tPve.sgStars = []; tPve.sgSpawnAcc = CAMP_CONFIG.sgSpawnEvery-2;
+  tPve.sgLost = 0; tPve.sgSaved = 0; tPve.sgStars = []; tPve.sgSpawnAcc = CAMP_CONFIG.sgSpawnEvery-2;   // v1.41 sgSaved: 플레이어가 확보한 별
   if(tPve.stageIndex%5===0) tPve.introT=2.5;                                  // §1 구역 첫 스테이지 인트로
   tCampTraps = (campZoneIdx(tPve.stageIndex)===1)                             // §1 2구역: 얼음 함정 칸 소량(테마 체감)
     ? [ {x:ARENA.x+5*56, y:ARENA.y+2*56, w:112, h:56, type:"ice"},
@@ -13106,6 +13106,17 @@ function tCampTick(dt){
         continue;
       }
     } else {
+      // v1.41: 플레이어(파티)가 별 위를 지나면 '확보'(안전) — 아레나 별모으기처럼 주울 수 있게('별이 안 먹어진다' 해결·직관·난이도 완화)
+      let secured=false;
+      for(const sid in tFighters){ const f=tFighters[sid];
+        if(!f||f.dead||f.inactive) continue;
+        if(dist(f.x,f.y,s.x,s.y) < (f.r||16)+18){
+          tPve.sgSaved=(tPve.sgSaved||0)+1; tPve.sgStars.splice(i,1); secured=true;
+          try{ showToast("⭐ 별 확보! ("+tPve.sgSaved+")"); }catch(e){}
+          break;
+        }
+      }
+      if(secured) continue;
       // 미운반 별: 근접 몬스터가 탈취(보스 제외)
       for(const id in tEnemies){ const e=tEnemies[id];
         if(e.dead || e.isBoss || e.flee) continue;
@@ -13610,7 +13621,7 @@ function tPveGetDrawData(){
     out.structs=tPackStructs();                                      // v1.22
     out.pve={ stageIndex:tPve.stageIndex, waveIndex:tPve.waveIndex, teamLives:tPve.teamLives, status:tPve.status, phase:tPve.phase, enemiesRemaining:Object.keys(tEnemies).length,
       dfT:Math.max(0,Math.ceil(tPve.defendT||0)), gates:tGatesAlive(),
-      hg:Math.round(tPve.holdG||0), sgT:Math.max(0,Math.ceil(tPve.sgT||0)), sgL:tPve.sgLost||0,
+      hg:Math.round(tPve.holdG||0), sgT:Math.max(0,Math.ceil(tPve.sgT||0)), sgL:tPve.sgLost||0, sgSv:tPve.sgSaved||0,
       sgS:(tPve.sgStars||[]).map(s=>({x:Math.round(s.x),y:Math.round(s.y)})), it:Math.max(0,Math.round((tPve.introT||0)*10)/10),
       rt:Math.round(tPve.runTime||0) };
     if(tPve.upg){ const ug={}; for(const s in tPve.upg){ const o=tPve.upg[s]; ug[s]={c:o.c, r:o.r, p:o.picked?1:0, pi:o.pi}; } out.pve.upg=ug; }
@@ -13718,7 +13729,7 @@ function tPveRender(){
   if(stage.objective==="defend" && pve.dfT>0) objTxt="🛡 수정 지키기 "+pve.dfT+"초 · 남은 적 "+pve.enemiesRemaining;
   else if(stage.objective==="blockade" && pve.gates>0) objTxt="🚪 몬스터 문 "+pve.gates+"개 파괴!";
   else if(stage.objective==="hold") objTxt="✨ 거점을 지켜라! 게이지 "+(pve.hg||0)+"/"+CAMP_CONFIG.holdGoal+" (거점 안에 있어야 참)";
-  else if(stage.objective==="starguard") objTxt="⭐ 별 수호! 뺏긴 별 "+(pve.sgL||0)+"/"+CAMP_CONFIG.sgFail+" · 남은 시간 "+(pve.sgT||0)+"초";
+  else if(stage.objective==="starguard") objTxt="⭐ 별을 주워서 지켜라! 확보 "+(pve.sgSv||0)+" · 뺏김 "+(pve.sgL||0)+"/"+CAMP_CONFIG.sgFail+" · 남은 "+(pve.sgT||0)+"초";
   ctx.fillStyle="#aab4e0"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.fillText(objTxt,24,46);
   ctx.textAlign="right"; ctx.fillStyle="#ff8f8f"; ctx.font="bold 20px 'Malgun Gothic',sans-serif"; ctx.fillText("팀 목숨 합계 ♥ "+pve.teamLives,LOGW-24,32);
   ctx.fillStyle="rgba(10,12,32,0.72)"; ctx.fillRect(0,656,LOGW,64);
