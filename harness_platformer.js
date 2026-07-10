@@ -141,7 +141,7 @@ run("밟기=처치·바운스 / 옆 접촉=사망", ()=>{
   check("옆 접촉 → 사망", api.PF.deaths>d0);
 });
 
-console.log("=== 4) 내장 캠페인 20레벨: 파스 + 도달성(그래프) — 실물리 클리어 검증은 harness_pfcamp.js ===");
+console.log("=== 4) 내장 캠페인 30레벨: 파스 + 도달성(그래프) — 실물리 클리어 검증은 harness_pfcamp.js ===");
 function reachable(level){
   const rows=level.rows, R=rows.length, C=rows[0].length;
   const SOLID="#ib";   // P1.5: 얼음·부서지는 블록도 솔리드
@@ -167,8 +167,8 @@ function reachable(level){
   }
   return false;
 }
-run("내장 레벨 무결성 + 골 도달 가능 (20스테이지)", ()=>{
-  check("캠페인 20스테이지", api.PF_LEVELS.length===20);
+run("내장 레벨 무결성 + 골 도달 가능 (30스테이지)", ()=>{
+  check("캠페인 30스테이지", api.PF_LEVELS.length===30);
   for(const lv of api.PF_LEVELS){
     const C0=lv.rows[0].length, uni=lv.rows.every(s=>s.length===C0);
     const st=lv.rows.join("").split("*").length-1, gl=lv.rows.join("").split("G").length-1;

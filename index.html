@@ -2646,12 +2646,152 @@ const PF_LEVELS=[
     "......o.........o.....o............o.............bbbb.............b..............#....o........o.......o......",
     ".*....#...............SS...M...F...........S..........M..P.....F..b...M...M...J..#.......!..SSSSSS..M.....G...",
     "################..#################..###iiiiiii############..######################..#########################"
+  ] },
+  { id:"pfc_21", name:"21. 움직이는 발판", author:"별빛", camp:20, zone:4, rows:[
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    "........o.........o.........o....",
+    ".*......=.........=.........=..G.",
+    "#######...#######...#######...###"
+  ] },
+  { id:"pfc_22", name:"22. 컨베이어 벨트", author:"별빛", camp:21, zone:4, rows:[
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    "............o......o......o......",
+    ".*....M........................G.",
+    "##########ccccc..cccccc##########"
+  ] },
+  { id:"pfc_23", name:"23. 솟는 바람", author:"별빛", camp:22, zone:4, rows:[
+    ".................................",
+    ".................................",
+    ".................................",
+    "................o................",
+    "................o................",
+    ".................................",
+    ".................................",
+    "...............^^^...............",
+    "...............^^^...............",
+    "...............^^^...............",
+    ".*.............^^^.............G.",
+    "###############~~~###############"
+  ] },
+  { id:"pfc_24", name:"24. 톱니 회랑", author:"별빛", camp:23, zone:4, rows:[
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".............o.......o.......o...",
+    ".*........x...F...x...F...x....G.",
+    "#################################"
+  ] },
+  { id:"pfc_25", name:"25. 쿵쿵 낙하 블록", author:"별빛", camp:24, zone:4, rows:[
+    ".................................",
+    ".................................",
+    ".................................",
+    "........v.....v.....v.....v......",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    "..........o...........o..........",
+    ".*..............M..............G.",
+    "#################################"
+  ] },
+  { id:"pfc_26", name:"26. 포탑 지대", author:"별빛", camp:25, zone:5, rows:[
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".............o.......o.......o...",
+    ".*.P......T...F...T...F...T....G.",
+    "#################################"
+  ] },
+  { id:"pfc_27", name:"27. 화살 발사기", author:"별빛", camp:26, zone:5, rows:[
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    "........o...................o....",
+    ".*.P........F...<...F...<......G.",
+    "#################################"
+  ] },
+  { id:"pfc_28", name:"28. 날벌레 소굴", author:"별빛", camp:27, zone:5, rows:[
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    "........A.....A.....A.....A......",
+    ".................................",
+    ".................................",
+    "............o...........o........",
+    ".*..............M..............G.",
+    "#################################"
+  ] },
+  { id:"pfc_29", name:"29. 용암 호수", author:"별빛", camp:28, zone:5, rows:[
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    ".................................",
+    "........o.........o..........o...",
+    ".*..!..........................G.",
+    "#######~~~#######~~~########~~~##"
+  ] },
+  { id:"pfc_30", name:"30. 공방 대탈출 🏆", author:"별빛", camp:29, zone:5, rows:[
+    "..................................................................",
+    "..................................................................",
+    "..................................................................",
+    "..............................v..v................................",
+    "..................................................................",
+    "..................................................................",
+    "......................................................A...........",
+    "..................................................................",
+    "..................................................................",
+    "........o.........o.............o.............o.......o...........",
+    ".*.P....=...........F...x...F.......F...T...F..............F...G..",
+    "#######...ccccccc...##########################~~~#################"
   ] }
 ];
 let PF=null;   // 플랫포머 런타임 상태
-let pfSelIdx=0;
-function pfLevelList(){   // 내장 3 + 승인된 플랫포머 레벨(비활성 제외)
-  const out=PF_LEVELS.slice();
+let pfSelIdx=0, pfSelTab=0, pfSelIdxTab=[0,0];   // 탭: 0=캠페인 맵 · 1=친구들이 만든 맵 (탭별 커서 유지)
+function pfCommunityList(){   // 승인된 플랫포머 학생 맵(비활성 제외)
+  const out=[];
   try{ const st=loadEditorStore();
     for(const rec of st.approved){
       if(rec.mode!=="platformer" || rec.disabled) continue;
@@ -2659,10 +2799,12 @@ function pfLevelList(){   // 내장 3 + 승인된 플랫포머 레벨(비활성 
     } }catch(e){}
   return out;
 }
+function pfLevelList(){ return PF_LEVELS.slice().concat(pfCommunityList()); }   // 호환용(캠페인+커뮤니티 평면 목록)
 /* PERF-2: 선택 화면 데이터 캐시 — 프레임마다 localStorage JSON.parse(레벨 목록·베스트·해금) 하던 것 제거 */
 let _pfSel=null;
-function pfSelRefresh(){ _pfSel={ list:pfLevelList(), best:pfLoadBest(), unlocked:pfUnlockedCount() }; }
-function pfOpenSelect(){ pfSelRefresh(); pfSelIdx=Math.min(_pfSel.unlocked-1, PF_LEVELS.length-1); gameState=STATE.PF_SELECT; }   // P1.5: 커서=이어할 스테이지
+function pfSelRefresh(){ _pfSel={ camp:PF_LEVELS.slice(), comm:pfCommunityList(), best:pfLoadBest(), unlocked:pfUnlockedCount() }; }
+function pfSelTabList(){ if(!_pfSel) pfSelRefresh(); return pfSelTab===0 ? _pfSel.camp : _pfSel.comm; }   // 현재 탭의 목록
+function pfOpenSelect(){ pfSelRefresh(); pfSelTab=0; pfSelIdxTab=[Math.min(_pfSel.unlocked-1, PF_LEVELS.length-1), 0]; pfSelIdx=pfSelIdxTab[0]; gameState=STATE.PF_SELECT; }   // P1.5: 캠페인 탭·커서=이어할 스테이지
 function pfTileAt(c,r){
   if(c<0||c>=PF.cols) return "#";                 // 좌우 경계 = 벽
   if(r<0) return ".";
@@ -3010,8 +3152,8 @@ function pfCamUpdate(dt){
   const wy=clamp(PF.camGY-LOGH*0.62, Math.min(0,mh-LOGH), Math.max(0,mh-LOGH));
   PF.camY+=(wy-PF.camY)*Math.min(1,dt*8);
 }
-const PF_ZONE_BG=["#1a2352","#101430","#241a30","#0a0d20"];   // P1.5 구역 테마: 초원·동굴·요새·심연
-const PF_ZONE_TINT=[null,"rgba(90,120,255,0.16)","rgba(255,140,90,0.14)","rgba(150,90,255,0.18)"];
+const PF_ZONE_BG=["#1a2352","#101430","#241a30","#0a0d20","#0b2622","#2a1410"];   // P1.5 구역 테마: 초원·동굴·요새·심연 · MAKER-1: 톱니 고원·용암 공방
+const PF_ZONE_TINT=[null,"rgba(90,120,255,0.16)","rgba(255,140,90,0.14)","rgba(150,90,255,0.18)","rgba(80,255,205,0.12)","rgba(255,110,55,0.15)"];
 function pfRender(){
   const C=PF_CONST;
   const zone=(PF.level && PF.level.zone)||0;
@@ -3230,19 +3372,42 @@ function pfLevelLocked(lv){
   if(lv.camp===undefined) return false;                    // 학생 맵은 항상 열림
   return lv.camp >= pfUnlockedCount();
 }
+function pfSwitchTab(t){   // 탭 전환(탭별 커서 위치 기억)
+  if(!_pfSel) pfSelRefresh();
+  if(t===pfSelTab) return;
+  pfSelIdxTab[pfSelTab]=pfSelIdx;
+  pfSelTab=t;
+  const list=pfSelTabList();
+  pfSelIdx=clamp(pfSelIdxTab[t]||0, 0, Math.max(0,list.length-1));
+}
 function drawPfSelect(){
   dimScreen(0.7);
   ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
-  ctx.fillStyle="#7dffb0"; ctx.font="bold 36px 'Malgun Gothic',sans-serif"; ctx.fillText("🦘 별빛 점프 원정", LOGW/2, 78);
-  ctx.fillStyle="#8893bb"; ctx.font="14px 'Malgun Gothic',sans-serif";
-  ctx.fillText("초원→동굴→요새→심연 20스테이지 — 클리어하면 다음이 열려요 · 맵공방 승인 맵은 목록 아래에", LOGW/2, 112);
+  ctx.fillStyle="#7dffb0"; ctx.font="bold 34px 'Malgun Gothic',sans-serif"; ctx.fillText("🦘 별빛 점프", LOGW/2, 56);
   if(!_pfSel) pfSelRefresh();   // PERF-2: 캐시 사용(진입·클리어 시 갱신)
-  const list=_pfSel.list, best=_pfSel.best, unlocked=_pfSel.unlocked;
-  if(pfSelIdx>=list.length) pfSelIdx=0;
-  const SHOW=9, start=clamp(pfSelIdx-4, 0, Math.max(0,list.length-SHOW));
-  let y=142;
-  if(start>0){ ctx.fillStyle="#8893bb"; ctx.fillText("▲ 위로 "+start+"개", LOGW/2, y); }
-  y+=18;
+  const best=_pfSel.best, unlocked=_pfSel.unlocked;
+  // 탭(캠페인 맵 / 친구들이 만든 맵) — 허용된 학생 맵은 친구 탭으로
+  const tw=302, ty=100;
+  drawButton("🗺 캠페인 맵 ("+_pfSel.camp.length+")", LOGW/2-tw/2-8, ty, tw, 40, pfSelTab===0, function(){ pfSwitchTab(0); });
+  drawButton("🛠 친구들이 만든 맵 ("+_pfSel.comm.length+")", LOGW/2+tw/2+8, ty, tw, 40, pfSelTab===1, function(){ pfSwitchTab(1); });
+  ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
+  ctx.fillText(pfSelTab===0
+    ? "초원→동굴→요새→심연→톱니 고원→용암 공방 30스테이지 — 클리어하면 다음이 열려요"
+    : "친구들이 만들어 선생님이 허락한 맵이에요 · 맵공방에서 내 맵도 올려봐요", LOGW/2, 138);
+  const list=pfSelTabList();
+  if(pfSelIdx>=list.length) pfSelIdx=Math.max(0,list.length-1);
+  if(list.length===0){
+    ctx.fillStyle="#aab4e0"; ctx.font="17px 'Malgun Gothic',sans-serif";
+    ctx.fillText("아직 친구들이 만든 맵이 없어요.", LOGW/2, LOGH/2-14);
+    ctx.fillText("맵공방에서 만들어 제출하면 선생님 승인 후 여기 나와요! 🛠", LOGW/2, LOGH/2+16);
+    ctx.fillStyle="#aab4e0"; ctx.font="15px 'Malgun Gothic',sans-serif";
+    ctx.fillText("←→ 탭 · Esc 로비", LOGW/2, LOGH-24);
+    ctx.restore(); return;
+  }
+  const SHOW=8, start=clamp(pfSelIdx-4, 0, Math.max(0,list.length-SHOW));
+  let y=162;
+  if(start>0){ ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif"; ctx.fillText("▲ 위로 "+start+"개", LOGW/2, y); }
+  y+=16;
   for(let i=start;i<list.length && i<start+SHOW;i++){
     const lv=list[i], sel=(i===pfSelIdx), b=best[lv.id], locked=(lv.camp!==undefined && lv.camp>=unlocked);
     const camp=(lv.camp!==undefined);
@@ -3250,20 +3415,25 @@ function drawPfSelect(){
       ? "🔒 "+(lv.camp+1)+". ??? — 이전 스테이지를 클리어하면 열려요"
       : (camp?((lv.camp+1)+". "):"🛠 ")+lv.name+"  ·  ✍"+(lv.author||"별빛")
         +(b?("   ⏱ "+b.time.toFixed(2)+"초 · ⭐"+(b.stars||0)+"/"+(b.total||"?")+" · ✅"+(b.clears||1)+"회"):"   (미클리어)");
-    drawButton(label, LOGW/2, y+21, 700, 42, sel, (function(idx){ return function(){   // TOUCH-UI-1: 스테이지 선택
-      pfSelIdx=idx; const L=_pfSel.list[idx]; if(pfLevelLocked(L)){ showToast("🔒 이전 스테이지를 먼저 클리어해요!"); return; } pfStartLevel(L);
+    drawButton(label, LOGW/2, y+20, 720, 40, sel, (function(idx){ return function(){   // TOUCH-UI-1: 스테이지 선택
+      pfSelIdx=idx; const L=pfSelTabList()[idx]; if(pfLevelLocked(L)){ showToast("🔒 이전 스테이지를 먼저 클리어해요!"); return; } pfStartLevel(L);
     }; })(i));
-    y+=50;
+    y+=47;
   }
-  if(start+SHOW<list.length){ ctx.fillStyle="#8893bb"; ctx.fillText("▼ 아래로 "+(list.length-start-SHOW)+"개", LOGW/2, y+8); }
+  if(start+SHOW<list.length){ ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif"; ctx.fillText("▼ 아래로 "+(list.length-start-SHOW)+"개", LOGW/2, y+6); }
   ctx.fillStyle="#aab4e0"; ctx.font="15px 'Malgun Gothic',sans-serif";
-  ctx.fillText("↑↓ 선택 · Enter 시작 · Esc 로비   (진행도 "+Math.min(unlocked-1,PF_LEVELS.length)+"/"+PF_LEVELS.length+" 클리어)", LOGW/2, LOGH-28);
+  const prog=(pfSelTab===0)?("   (진행도 "+Math.min(unlocked-1,PF_LEVELS.length)+"/"+PF_LEVELS.length+" 클리어)"):"";
+  ctx.fillText("←→ 탭 · ↑↓ 선택 · Enter 시작 · Esc 로비"+prog, LOGW/2, LOGH-24);
   ctx.restore();
 }
 function handlePfSelectKey(code){
   if(!_pfSel) pfSelRefresh();
-  const list=_pfSel.list;   // PERF-2: 키 반복 입력마다 스토어 파싱 방지
   if(code==="Escape"){ goToStartScreen(); return; }
+  if(code==="ArrowLeft"){ pfSwitchTab(0); return; }
+  if(code==="ArrowRight"){ pfSwitchTab(1); return; }
+  if(code==="Tab"){ pfSwitchTab(pfSelTab===0?1:0); return; }
+  const list=pfSelTabList();   // PERF-2: 키 반복 입력마다 스토어 파싱 방지
+  if(list.length===0) return;
   if(code==="ArrowUp"){ pfSelIdx=(pfSelIdx+list.length-1)%list.length; return; }
   if(code==="ArrowDown"){ pfSelIdx=(pfSelIdx+1)%list.length; return; }
   if(code==="Enter"||code==="NumpadEnter"){
