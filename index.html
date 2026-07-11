@@ -3494,47 +3494,79 @@ function pfTouchAt(p, on){
 }
 
 /* =======================================================================
-   LAB-1 · 관리자 실험 게임틀 3종 (교사 패널 전용 진입 — 학생 화면 미노출)
+   LAB-1/2 · 관리자 실험 게임틀 3종 (교사 패널 전용 진입 — 학생 화면 미노출)
    ① 🏰 별빛 수비대(타워 디펜스)  ② 🚀 별빛 함대(세로 슈팅)  ③ 🕶 별빛 던전 3D(레이캐스터)
    플랫포머/RPG 선례의 분리 원칙: 각자 STATE·자체 루프·자체 렌더 — 아레나 전역 비접촉.
-   v1 = 게임틀(플레이 가능한 뼈대). 보상·학생 개방·메이커 루프는 검증 후 후속.
+   LAB-2(10단계 진화): 수비대=맵3·난이도3·적4종·탑6종·웨이브15·배속·예고·연출·별점기록
+   함대=웨이브12·편대패턴·적2종·파워업·중간보스·2페이즈보스·콤보·배너·랭킹
+   던전3D=3층·별조각 문·추격 몬스터·층테마·나침반·달리기·안개 미니맵·기록
    ======================================================================= */
 /* ── ① 별빛 수비대 — 경로 방어 타워 디펜스 ── */
 const TD_TILE=56, TD_OX=0, TD_OY=52, TD_COLS=20, TD_ROWS=11, TD_PANEL_X=1124;
-const TD_WP=[[-1,5],[3,5],[3,2],[8,2],[8,8],[13,8],[13,4],[16,4],[16,7],[20,7]];   // 타일 웨이포인트(좌→우)
-const TD_TOWERS=[
+const TD_MAPS=[   // LAB-2①: 맵 3종 — 굽잇길 / 두 갈래 / 나선 교차로
+  { name:"초원 굽잇길", emoji:"🌿", paths:[ [[-1,5],[3,5],[3,2],[8,2],[8,8],[13,8],[13,4],[16,4],[16,7],[20,7]] ] },
+  { name:"두 갈래 들판", emoji:"🌗", paths:[
+      [[-1,3],[3,3],[3,1],[9,1],[9,4],[14,4],[14,2],[17,2],[17,5],[20,5]],
+      [[-1,3],[3,3],[3,7],[7,7],[7,9],[12,9],[12,6],[17,6],[17,5],[20,5]] ] },
+  { name:"나선 교차로", emoji:"🌀", paths:[ [[-1,1],[17,1],[17,9],[2,9],[2,3],[14,3],[14,7],[5,7],[5,5],[20,5]] ] } ];
+const TD_DIFFS=[   // LAB-2②: 난이도 3종
+  { name:"쉬움",   emoji:"🌱", lives:15, gold:220, hpMul:0.9 },
+  { name:"보통",   emoji:"⭐", lives:10, gold:180, hpMul:1.0 },
+  { name:"어려움", emoji:"🔥", lives:5,  gold:160, hpMul:1.3 } ];
+const TD_TOWERS=[   // LAB-2④: 탑 6종(번개 체인·별주머니 경제 추가)
   { key:"arrow",  name:"별화살탑", emoji:"🏹", cost:60,  range:150, cd:0.5, dmg:7,               color:"#ffd23f", desc:"빠른 단일 공격" },
   { key:"frost",  name:"서리탑",   emoji:"❄️", cost:80,  range:130, cd:0.9, dmg:3,  slow:0.45, slowT:1.4, color:"#8fd9ff", desc:"적을 느리게" },
   { key:"cannon", name:"대포탑",   emoji:"💣", cost:120, range:160, cd:1.5, dmg:16, splash:75,  color:"#ff9a5a", desc:"범위 폭발" },
-  { key:"beacon", name:"별빛등대", emoji:"🔭", cost:150, range:330, cd:2.0, dmg:30,             color:"#c58bff", desc:"초장거리 저격" } ];
-const TD_FOES={
-  jelly:{ name:"그림자 젤리", asset:"soft_jelly",    hp:22,  spd:66,  gold:4,   r:16 },
-  hop:  { name:"뿔깡총",     asset:"bounce_bubble", hp:16,  spd:104, gold:4,   r:15 },
-  shield:{name:"가시딱지",   asset:"shield_block",  hp:62,  spd:46,  gold:7,   r:18 },
-  ghost:{ name:"달빛 부엉이", asset:"cloud_ghost",   hp:34,  spd:82,  gold:6,   r:16 },
-  boss: { name:"뭉게대왕",   asset:"boss_king",     hp:950, spd:34,  gold:120, r:30 } };
-const TD_WAVES=[
+  { key:"zap",    name:"번개탑",   emoji:"⚡", cost:140, range:170, cd:1.6, dmg:12, chain:3,    color:"#e6ff5a", desc:"3연쇄 번개" },
+  { key:"beacon", name:"별빛등대", emoji:"🔭", cost:150, range:330, cd:2.0, dmg:30,             color:"#c58bff", desc:"초장거리 저격" },
+  { key:"bank",   name:"별주머니", emoji:"💰", cost:100, range:0,   cd:0,   dmg:0,  income:8,   color:"#ffe875", desc:"웨이브마다 +골드" } ];
+const TD_FOES={   // LAB-2③: 적 4종 추가(러너·분열젤리·꼬마·힐러) + 중간보스
+  jelly:  { name:"그림자 젤리", asset:"soft_jelly",    hp:22,  spd:66,  gold:4,   r:16 },
+  hop:    { name:"뿔깡총",     asset:"bounce_bubble", hp:16,  spd:104, gold:4,   r:15 },
+  shield: { name:"가시딱지",   asset:"shield_block",  hp:62,  spd:46,  gold:7,   r:18 },
+  ghost:  { name:"달빛 부엉이", asset:"cloud_ghost",   hp:34,  spd:82,  gold:6,   r:16 },
+  runner: { name:"부슬 러너",  asset:"star_bug",      hp:14,  spd:150, gold:5,   r:14 },
+  split:  { name:"왕젤리",     asset:"soft_jelly",    hp:44,  spd:58,  gold:6,   r:22, splits:true },
+  mini:   { name:"꼬마 젤리",  asset:"soft_jelly",    hp:10,  spd:92,  gold:2,   r:11 },
+  healer: { name:"이슬 요정",  asset:"paper_drone",   hp:30,  spd:55,  gold:9,   r:16, heal:5, healR:90, healCd:1.3 },
+  midboss:{ name:"먹구름 거북", asset:"boss_turtle",   hp:450, spd:40,  gold:60,  r:28, boss:true },
+  boss:   { name:"뭉게대왕",   asset:"boss_king",     hp:1400,spd:32,  gold:150, r:32, boss:true } };
+const TD_WAVES=[   // LAB-2⑤: 15웨이브 + 8웨이브 중간보스
   [["jelly",8]], [["jelly",10],["hop",3]], [["hop",8],["jelly",6]], [["shield",4],["jelly",8]],
-  [["ghost",8],["hop",6]], [["shield",6],["ghost",6]], [["hop",14],["jelly",8]], [["shield",8],["ghost",8]],
-  [["ghost",10],["shield",6],["hop",8]], [["boss",1],["shield",8]] ];
+  [["runner",10],["hop",4]], [["split",6],["jelly",6]], [["ghost",8],["healer",2],["hop",6]],
+  [["midboss",1],["shield",6]],
+  [["runner",12],["split",6]], [["healer",3],["shield",8],["ghost",6]], [["runner",10],["hop",10],["jelly",10]],
+  [["split",10],["healer",3]], [["ghost",12],["shield",8],["healer",2]], [["runner",12],["split",6],["healer",3]],
+  [["boss",1],["shield",10],["healer",2]] ];
+const TD_BEST_KEY="starArena.lab.tdBest";
 let TD=null;
-function tdPathCells(){
+function tdBestLoad(){ try{ const s=JSON.parse(localStorage.getItem(TD_BEST_KEY)); if(s&&typeof s==="object") return s; }catch(e){} return {}; }
+function tdBestSave(s){ try{ localStorage.setItem(TD_BEST_KEY, JSON.stringify(s)); }catch(e){} }
+function tdPathCells(map){
   const set={};
-  for(let i=0;i<TD_WP.length-1;i++){
-    const [c0,r0]=TD_WP[i], [c1,r1]=TD_WP[i+1];
-    const dc=Math.sign(c1-c0), dr=Math.sign(r1-r0);
-    let c=c0, r=r0;
-    while(true){ if(c>=0&&c<TD_COLS&&r>=0&&r<TD_ROWS) set[c+","+r]=1; if(c===c1&&r===r1) break; c+=dc; r+=dr; }
+  for(const path of map.paths){
+    for(let i=0;i<path.length-1;i++){
+      const [c0,r0]=path[i], [c1,r1]=path[i+1];
+      const dc=Math.sign(c1-c0), dr=Math.sign(r1-r0);
+      let c=c0, r=r0;
+      while(true){ if(c>=0&&c<TD_COLS&&r>=0&&r<TD_ROWS) set[c+","+r]=1; if(c===c1&&r===r1) break; c+=dc; r+=dr; }
+    }
   }
   return set;
 }
-function tdStart(){
-  TD={ gold:180, lives:10, wave:1, phase:"build", time:0,
-       enemies:[], towers:[], shots:[], queue:[], spawnT:0, spawnIv:0.75,
-       sel:null, selT:null, pcs:tdPathCells(),
-       wps:TD_WP.map(w=>[ TD_OX+(w[0]+0.5)*TD_TILE, TD_OY+(w[1]+0.5)*TD_TILE ]) };
+function tdStart(){   // 진입 → 맵·난이도 선택 화면
+  TD={ phase:"select", mapIdx:0, diff:1, time:0 };
   gameState=STATE.TD;
-  showToast("🏰 별빛 수비대(실험) — 빈 칸을 눌러 탑을 짓고 Space로 웨이브 시작!");
+}
+function tdBegin(mapIdx, diff){   // 선택 완료 → 게임 시작
+  const map=TD_MAPS[mapIdx], D=TD_DIFFS[diff];
+  TD={ phase:"build", mapIdx:mapIdx, diff:diff, time:0, speed:1,
+       gold:D.gold, lives:D.lives, livesMax:D.lives, wave:1,
+       enemies:[], towers:[], shots:[], queue:[], spawnT:0, spawnIv:0.75, spawnN:0,
+       sel:null, selT:null, fx:[], hurtT:0, bannerT:0, bannerTxt:"", waveLoss:false,
+       pcs:tdPathCells(map),
+       pathsPx:map.paths.map(path=>path.map(w=>[ TD_OX+(w[0]+0.5)*TD_TILE, TD_OY+(w[1]+0.5)*TD_TILE ])) };
+  showToast("🏰 "+map.name+" ("+D.name+") — 빈 칸에 탑을 짓고 Space로 시작!");
 }
 function tdBuildable(c,r){
   if(c<0||c>=TD_COLS||r<0||r>=TD_ROWS) return false;
@@ -3569,91 +3601,166 @@ function tdStartWave(){
   const def=TD_WAVES[TD.wave-1]; if(!def) return;
   TD.queue=[];
   for(const [type,n] of def){ for(let k=0;k<n;k++) TD.queue.push(type); }
-  TD.spawnIv=(TD.wave>=7)?0.6:0.75; TD.spawnT=0.3;
-  TD.phase="wave"; playSfx("spring"); showToast("🌊 웨이브 "+TD.wave+" 시작!");
+  TD.spawnIv=(TD.wave>=10)?0.5:((TD.wave>=7)?0.6:0.75); TD.spawnT=0.3;
+  TD.phase="wave"; TD.waveLoss=false; playSfx("spring"); showToast("🌊 웨이브 "+TD.wave+" 시작!");
 }
 function tdKey(code){
   if(code==="Escape"){ TD=null; gameState=STATE.ADMIN; return; }
   if(!TD) return;
+  if(TD.phase==="select"){
+    if(code==="ArrowLeft"){ TD.mapIdx=(TD.mapIdx+TD_MAPS.length-1)%TD_MAPS.length; return; }
+    if(code==="ArrowRight"){ TD.mapIdx=(TD.mapIdx+1)%TD_MAPS.length; return; }
+    if(code==="ArrowUp"||code==="ArrowDown"){ TD.diff=(TD.diff+(code==="ArrowDown"?1:2))%3; return; }
+    if(code==="Enter"||code==="NumpadEnter"||code==="Space"){ tdBegin(TD.mapIdx, TD.diff); return; }
+    return;
+  }
   if(code==="KeyR"){ tdStart(); return; }
+  if(code==="KeyF"){ TD.speed=(TD.speed===1)?2:1; showToast("⏩ 배속 ×"+TD.speed); return; }   // LAB-2⑥
   if(TD.phase==="build" && (code==="Space"||code==="Enter"||code==="NumpadEnter")){ tdStartWave(); return; }
-  if(TD.sel && code.indexOf("Digit")===0){ const i=+code.slice(5)-1; if(i>=0&&i<4) tdBuy(TD.sel.c, TD.sel.r, i); return; }
+  if(TD.sel && code.indexOf("Digit")===0){ const i=+code.slice(5)-1; if(i>=0&&i<TD_TOWERS.length) tdBuy(TD.sel.c, TD.sel.r, i); return; }
 }
 function tdMouse(p){
-  if(!TD || TD.phase==="over" || TD.phase==="win") return;
+  if(!TD) return;
+  if(TD.phase!=="build" && TD.phase!=="wave") return;   // 선택/결과 화면은 uiHit 버튼만
   const c=Math.floor((p.x-TD_OX)/TD_TILE), r=Math.floor((p.y-TD_OY)/TD_TILE);
-  if(p.x>=TD_PANEL_X || p.y<TD_OY || r>=TD_ROWS){ return; }   // 패널/HUD 클릭은 uiHit 버튼이 처리
+  if(p.x>=TD_PANEL_X || p.y<TD_OY || r>=TD_ROWS){ return; }
   const t=tdTowerAt(c,r);
   if(t){ TD.selT=t; TD.sel=null; playSfx("click"); return; }
   if(tdBuildable(c,r)){ TD.sel={c:c,r:r}; TD.selT=null; playSfx("click"); return; }
   TD.sel=null; TD.selT=null;
 }
-function tdUpdate(dt){
-  if(!TD) return;
-  TD.time+=dt;
-  if(TD.phase==="over"||TD.phase==="win") return;
-  // 스폰
+function tdFx(kind,x,y,txt){ TD.fx.push({kind:kind,x:x,y:y,t:0,dur:(kind==="zap")?0.16:((kind==="gold")?0.8:0.4),txt:txt||"",pts:null}); }
+function tdHitFoe(e, dmg){
+  if(!e.alive) return;
+  e.hp-=dmg;
+  if(e.hp<=0){
+    e.alive=false;
+    const g=Math.round(e.spec.gold*(e.elite?3:1));
+    TD.gold+=g; playSfx("kill");
+    tdFx("boom", e.x, e.y); tdFx("gold", e.x, e.y-14, "+"+g+"G");   // LAB-2⑧ 연출
+    if(e.spec.splits){   // LAB-2③ 분열 젤리 → 꼬마 2
+      for(const off of [-9,9]){
+        const m=TD_FOES.mini, hpMul=(1+(TD.wave-1)*0.17)*TD_DIFFS[TD.diff].hpMul;
+        TD.enemies.push({ type:"mini", spec:m, hp:m.hp*hpMul, maxHp:m.hp*hpMul, x:e.x+off, y:e.y,
+                          wi:e.wi, pi:e.pi, trav:e.trav, slowT:0, healT:0, alive:true, elite:false });
+      }
+    }
+  }
+}
+function tdSim(dt){   // 1스텝 시뮬(배속은 tdUpdate가 반복 호출)
+  // 스폰(다중 경로 번갈아, 웨이브9+ 정예 12%)
   if(TD.phase==="wave" && TD.queue.length){
     TD.spawnT-=dt;
     if(TD.spawnT<=0){
       TD.spawnT=TD.spawnIv;
       const type=TD.queue.shift(), spec=TD_FOES[type];
-      const hpMul=1+(TD.wave-1)*0.22;
-      TD.enemies.push({ type:type, spec:spec, hp:spec.hp*hpMul, maxHp:spec.hp*hpMul,
-                        x:TD.wps[0][0], y:TD.wps[0][1], wi:1, trav:0, slowT:0, alive:true });
+      const hpMul=(1+(TD.wave-1)*0.17)*TD_DIFFS[TD.diff].hpMul;
+      const pi=TD.spawnN%TD.pathsPx.length; TD.spawnN++;
+      const elite=(!spec.boss && TD.wave>=9 && Math.random()<0.12);
+      const em=elite?2.4:1;
+      TD.enemies.push({ type:type, spec:spec, hp:spec.hp*hpMul*em, maxHp:spec.hp*hpMul*em,
+                        x:TD.pathsPx[pi][0][0], y:TD.pathsPx[pi][0][1], wi:1, pi:pi, trav:0,
+                        slowT:0, healT:0, alive:true, elite:elite });
+      if(spec.boss){ TD.bannerT=2.2; TD.bannerTxt="⚠ "+spec.name+" 등장!"; playSfx("ult"); }
     }
   }
-  // 적 이동(웨이포인트 폴리라인)
+  // 적 이동
   for(const e of TD.enemies){
     if(!e.alive) continue;
     if(e.slowT>0) e.slowT-=dt;
-    const spd=e.spec.spd*(e.slowT>0?0.55:1);
+    const wps=TD.pathsPx[e.pi];
+    const spd=e.spec.spd*(e.slowT>0?0.55:1)*(e.elite?0.92:1);
     let move=spd*dt;
-    while(move>0 && e.wi<TD.wps.length){
-      const tx=TD.wps[e.wi][0], ty=TD.wps[e.wi][1];
+    while(move>0 && e.wi<wps.length){
+      const tx=wps[e.wi][0], ty=wps[e.wi][1];
       const d=Math.hypot(tx-e.x, ty-e.y);
       if(d<=move){ e.x=tx; e.y=ty; e.wi++; move-=d; e.trav+=d; }
       else { e.x+=(tx-e.x)/d*move; e.y+=(ty-e.y)/d*move; e.trav+=move; move=0; }
     }
-    if(e.wi>=TD.wps.length){   // 골인 → 생명 감소
-      e.alive=false; TD.lives--; playSfx("hit");
+    if(e.wi>=wps.length){
+      e.alive=false; TD.lives--; TD.hurtT=0.45; TD.waveLoss=true; playSfx("hit");
       if(TD.lives<=0){ TD.lives=0; TD.phase="over"; playSfx("lose"); return; }
     }
+    // LAB-2③ 힐러: 주변 아군 회복
+    if(e.spec.heal){
+      e.healT-=dt;
+      if(e.healT<=0){ e.healT=e.spec.healCd;
+        for(const a of TD.enemies){ if(!a.alive||a===e||a.hp>=a.maxHp) continue;
+          if(dist(e.x,e.y,a.x,a.y)<=e.spec.healR){ a.hp=Math.min(a.maxHp, a.hp+e.spec.heal); tdFx("heal", a.x, a.y-10); } } }
+    }
   }
-  // 타워 조준·발사(사거리 내 가장 멀리 간 적)
+  // 타워
   for(const t of TD.towers){
-    t.cd-=dt; if(t.cd>0) continue;
     const spec=TD_TOWERS[t.spec];
+    if(spec.income) continue;   // 별주머니는 공격 없음
+    t.cd-=dt; if(t.cd>0) continue;
     let best=null;
     for(const e of TD.enemies){ if(!e.alive) continue;
       if(dist(t.x,t.y,e.x,e.y)<=spec.range && (!best||e.trav>best.trav)) best=e; }
-    if(best){ t.cd=spec.cd; TD.shots.push({ x:t.x, y:t.y-14, e:best, spec:t.spec, dmg:tdDmg(t) }); playSfx("shoot"); }
+    if(best){
+      t.cd=spec.cd;
+      if(spec.chain){   // LAB-2④ 번개탑: 즉발 3연쇄
+        let cur=best, mul=1, hitList=[cur];
+        tdHitFoe(cur, tdDmg(t)*mul);
+        for(let k=1;k<spec.chain;k++){
+          let nxt=null;
+          for(const e2 of TD.enemies){ if(!e2.alive||hitList.indexOf(e2)>=0) continue;
+            if(dist(cur.x,cur.y,e2.x,e2.y)<=90 && (!nxt||dist(cur.x,cur.y,e2.x,e2.y)<dist(cur.x,cur.y,nxt.x,nxt.y))) nxt=e2; }
+          if(!nxt) break;
+          mul*=0.7; tdHitFoe(nxt, tdDmg(t)*mul); hitList.push(nxt); cur=nxt;
+        }
+        const fx={kind:"zap",x:t.x,y:t.y,t:0,dur:0.16,txt:"",pts:hitList.map(h=>[h.x,h.y])};
+        fx.pts.unshift([t.x,t.y-14]); TD.fx.push(fx);
+        playSfx("shoot");
+      } else {
+        TD.shots.push({ x:t.x, y:t.y-14, e:best, spec:t.spec, dmg:tdDmg(t) }); playSfx("shoot");
+      }
+    }
   }
-  // 발사체(유도)
+  // 발사체
   for(const s of TD.shots){
     if(s.dead) continue;
     if(!s.e || !s.e.alive){ s.dead=true; continue; }
     const d=Math.hypot(s.e.x-s.x, s.e.y-s.y), step=480*dt;
     if(d<=Math.max(14,step)){
       const spec=TD_TOWERS[s.spec];
-      if(spec.splash){ for(const e2 of TD.enemies){ if(e2.alive && dist(s.e.x,s.e.y,e2.x,e2.y)<=spec.splash) tdHitFoe(e2, s.dmg); } }
+      if(spec.splash){ tdFx("boom", s.e.x, s.e.y); for(const e2 of TD.enemies){ if(e2.alive && dist(s.e.x,s.e.y,e2.x,e2.y)<=spec.splash) tdHitFoe(e2, s.dmg); } }
       else { if(spec.slow){ s.e.slowT=Math.max(s.e.slowT, spec.slowT); } tdHitFoe(s.e, s.dmg); }
       s.dead=true; continue;
     }
     s.x+=(s.e.x-s.x)/d*step; s.y+=(s.e.y-s.y)/d*step;
   }
-  if(TD.shots.length>60) TD.shots=TD.shots.filter(s=>!s.dead);
-  // 웨이브 종료 판정
+  if(TD.shots.length>80) TD.shots=TD.shots.filter(s=>!s.dead);
+  // 웨이브 종료
   if(TD.phase==="wave" && !TD.queue.length && !TD.enemies.some(e=>e.alive)){
     TD.enemies.length=0;
-    if(TD.wave>=TD_WAVES.length){ TD.phase="win"; playSfx("win"); }
-    else { const bonus=25+TD.wave*5; TD.gold+=bonus; showToast("✅ 웨이브 "+TD.wave+" 클리어! 보너스 +"+bonus+"G"); TD.wave++; TD.phase="build"; playSfx("clear"); }
+    if(TD.wave>=TD_WAVES.length){   // 승리 + LAB-2⑨ 별점 기록
+      TD.phase="win"; playSfx("win");
+      const ratio=TD.lives/TD.livesMax;
+      TD.stars=(ratio>=0.8)?3:((ratio>=0.4)?2:1);
+      const best=tdBestLoad(), k="m"+TD.mapIdx, prev=best[k];
+      if(!prev || TD.stars>prev.stars || (TD.stars===prev.stars && TD.lives>prev.lives)){
+        best[k]={ stars:TD.stars, lives:TD.lives, diff:TD.diff }; tdBestSave(best);
+      }
+    } else {
+      let bonus=25+TD.wave*5;
+      let income=0; for(const t of TD.towers){ const sp=TD_TOWERS[t.spec]; if(sp.income) income+=sp.income+ (t.lv-1)*4; }   // LAB-2④ 별주머니 수입
+      const perfect=!TD.waveLoss?10:0;   // LAB-2⑧ 완벽 방어
+      TD.gold+=bonus+income+perfect;
+      showToast("✅ 웨이브 "+TD.wave+" 클리어! +"+bonus+"G"+(income?(" · 💰주머니 +"+income+"G"):"")+(perfect?" · 🛡완벽 +10G":""));
+      TD.wave++; TD.phase="build"; playSfx("clear");
+    }
   }
 }
-function tdHitFoe(e, dmg){
-  if(!e.alive) return;
-  e.hp-=dmg;
-  if(e.hp<=0){ e.alive=false; TD.gold+=e.spec.gold; playSfx("kill"); }
+function tdUpdate(dt){
+  if(!TD) return;
+  TD.time+=dt;
+  if(TD.hurtT>0) TD.hurtT-=dt;
+  if(TD.bannerT>0) TD.bannerT-=dt;
+  for(const f of TD.fx){ f.t+=dt; } TD.fx=TD.fx.filter(f=>f.t<f.dur);
+  if(TD.phase==="select"||TD.phase==="over"||TD.phase==="win") return;
+  const steps=TD.speed||1;
+  for(let k=0;k<steps;k++){ tdSim(dt); if(!TD || TD.phase==="over"||TD.phase==="win") break; }
 }
 function tdBtn(text,x,y,w,h,fn,dim){
   ctx.fillStyle=dim?"rgba(60,66,96,0.55)":"rgba(70,110,190,0.85)"; roundRect(x,y,w,h,8); ctx.fill();
@@ -3662,23 +3769,60 @@ function tdBtn(text,x,y,w,h,fn,dim){
   ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(text, x+w/2, y+h/2+1);
   uiHit(x,y,w,h,fn);
 }
+function tdWavePreview(){   // LAB-2⑦: 다음 웨이브 구성 예고 문자열
+  const def=TD_WAVES[TD.wave-1]; if(!def) return "";
+  return def.map(([type,n])=>TD_FOES[type].name+"×"+n).join(" · ");
+}
+function tdDrawSelect(){   // 맵·난이도 선택 화면
+  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillStyle="#9fe6c8"; ctx.font="bold 34px 'Malgun Gothic',sans-serif"; ctx.fillText("🏰 별빛 수비대 (실험)", LOGW/2, 66);
+  ctx.fillStyle="#8893bb"; ctx.font="14px 'Malgun Gothic',sans-serif";
+  ctx.fillText("맵과 난이도를 고르세요 — ←→ 맵 · ↑↓ 난이도 · Enter 시작 · Esc 나가기", LOGW/2, 100);
+  const best=tdBestLoad();
+  for(let i=0;i<TD_MAPS.length;i++){
+    const m=TD_MAPS[i], bx=LOGW/2+(i-1)*300-130, by=150, sel=(i===TD.mapIdx);
+    ctx.fillStyle=sel?"rgba(70,110,190,0.9)":"rgba(30,38,66,0.85)"; roundRect(bx,by,260,190,14); ctx.fill();
+    ctx.strokeStyle=sel?"#ffffff":"#56608a"; ctx.lineWidth=sel?3:1.5; roundRect(bx,by,260,190,14); ctx.stroke();
+    ctx.font="44px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#fff"; ctx.fillText(m.emoji, bx+130, by+52);
+    ctx.font="bold 19px 'Malgun Gothic',sans-serif"; ctx.fillText(m.name, bx+130, by+100);
+    ctx.font="13px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#aab4e0";
+    ctx.fillText(m.paths.length>1?"길이 두 갈래로 갈라져요!":"길 하나를 막아내요", bx+130, by+126);
+    const rec=best["m"+i];
+    ctx.fillStyle="#ffe14d"; ctx.font="bold 16px 'Malgun Gothic',sans-serif";
+    ctx.fillText(rec?("★".repeat(rec.stars)+"☆".repeat(3-rec.stars)+"  ("+TD_DIFFS[rec.diff].name+")"):"미클리어", bx+130, by+158);
+    (function(idx){ uiHit(bx,by,260,190,function(){ if(TD.mapIdx===idx){ tdBegin(idx, TD.diff); } else TD.mapIdx=idx; }); })(i);
+  }
+  for(let d=0;d<TD_DIFFS.length;d++){
+    const D=TD_DIFFS[d], bx=LOGW/2+(d-1)*210-95, by=372, sel=(d===TD.diff);
+    ctx.fillStyle=sel?"rgba(120,90,190,0.9)":"rgba(30,38,66,0.85)"; roundRect(bx,by,190,64,12); ctx.fill();
+    ctx.strokeStyle=sel?"#ffffff":"#56608a"; ctx.lineWidth=sel?3:1.5; roundRect(bx,by,190,64,12); ctx.stroke();
+    ctx.fillStyle="#fff"; ctx.font="bold 17px 'Malgun Gothic',sans-serif";
+    ctx.fillText(D.emoji+" "+D.name, bx+95, by+22);
+    ctx.font="12px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#cbd4f5";
+    ctx.fillText("생명 "+D.lives+" · 시작 "+D.gold+"G", bx+95, by+44);
+    (function(dd){ uiHit(bx,by,190,64,function(){ TD.diff=dd; }); })(d);
+  }
+  drawButton("🌊 시작! ("+TD_MAPS[TD.mapIdx].name+" · "+TD_DIFFS[TD.diff].name+")", LOGW/2, 500, 480, 52, true, function(){ tdBegin(TD.mapIdx, TD.diff); });
+  drawButton("🚪 나가기 (Esc)", LOGW/2, 566, 300, 40, false, function(){ TD=null; gameState=STATE.ADMIN; });
+  ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
+  ctx.fillText("탑 6종 · 15웨이브 · 8웨이브 중간보스 · F키 2배속", LOGW/2, 626);
+  ctx.restore();
+}
 function tdRender(){
   if(!TD) return;
   ctx.fillStyle="#101a12"; ctx.fillRect(0,0,LOGW,LOGH);
+  if(TD.phase==="select"){ tdDrawSelect(); return; }
   ctx.save();
-  // 보드: 잔디 + 길 + 건설칸 격자
   for(let r=0;r<TD_ROWS;r++) for(let c=0;c<TD_COLS;c++){
     const x=TD_OX+c*TD_TILE, y=TD_OY+r*TD_TILE;
     if(TD.pcs[c+","+r]){ ctx.fillStyle="#7a5a34"; ctx.fillRect(x,y,TD_TILE,TD_TILE); ctx.fillStyle="rgba(255,220,160,0.10)"; ctx.fillRect(x,y,TD_TILE,6); }
     else { ctx.fillStyle=((c+r)%2)?"#16241a":"#141f18"; ctx.fillRect(x,y,TD_TILE,TD_TILE); }
   }
-  // 선택 칸/선택 타워 표시
   if(TD.sel){ const x=TD_OX+TD.sel.c*TD_TILE, y=TD_OY+TD.sel.r*TD_TILE;
     ctx.strokeStyle="#7dffb0"; ctx.lineWidth=3; ctx.strokeRect(x+2,y+2,TD_TILE-4,TD_TILE-4); }
   if(TD.selT){ const spec=TD_TOWERS[TD.selT.spec];
-    ctx.strokeStyle="rgba(157,184,255,0.5)"; ctx.lineWidth=2;
-    ctx.beginPath(); ctx.arc(TD.selT.x, TD.selT.y, spec.range, 0, Math.PI*2); ctx.stroke(); }
-  // 타워
+    if(spec.range){ ctx.strokeStyle="rgba(157,184,255,0.5)"; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(TD.selT.x, TD.selT.y, spec.range, 0, Math.PI*2); ctx.stroke(); } }
   ctx.textAlign="center"; ctx.textBaseline="middle";
   for(const t of TD.towers){
     const spec=TD_TOWERS[t.spec];
@@ -3687,9 +3831,10 @@ function tdRender(){
     ctx.font="20px 'Malgun Gothic',sans-serif"; ctx.fillText(spec.emoji, t.x, t.y-1);
     for(let k=0;k<t.lv;k++) drawStar(t.x-12+k*12, t.y+20, 5, 4.5, 2, "#ffe14d");
   }
-  // 적(스프라이트+체력바)
   for(const e of TD.enemies){
     if(!e.alive) continue;
+    if(e.elite){ ctx.strokeStyle="rgba(200,120,255,0.85)"; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.arc(e.x,e.y,e.spec.r+5,0,Math.PI*2); ctx.stroke(); }   // LAB-2③ 정예 오라
     const img=getMonsterImage(e.spec.asset), sz=e.spec.r*2.3;
     if(img){ ctx.drawImage(img, e.x-sz/2, e.y-sz/2, sz, sz); }
     else { ctx.fillStyle="#c58bff"; ctx.beginPath(); ctx.arc(e.x,e.y,e.spec.r,0,Math.PI*2); ctx.fill(); }
@@ -3698,42 +3843,55 @@ function tdRender(){
     ctx.fillStyle="rgba(0,0,0,0.55)"; ctx.fillRect(e.x-bw/2, e.y-e.spec.r-12, bw, 5);
     ctx.fillStyle=(e.hp/e.maxHp>0.4)?"#7dffb0":"#ff6a6a"; ctx.fillRect(e.x-bw/2, e.y-e.spec.r-12, hpw, 5);
   }
-  // 발사체
   for(const s of TD.shots){ if(s.dead) continue;
     ctx.fillStyle=TD_TOWERS[s.spec].color; ctx.beginPath(); ctx.arc(s.x,s.y,5,0,Math.PI*2); ctx.fill(); }
+  // LAB-2⑧ 이펙트
+  for(const f of TD.fx){
+    const k=f.t/f.dur;
+    if(f.kind==="boom"){ ctx.globalAlpha=1-k; ctx.strokeStyle="#ffce6a"; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.arc(f.x,f.y,8+k*26,0,Math.PI*2); ctx.stroke(); ctx.globalAlpha=1; }
+    else if(f.kind==="gold"){ ctx.globalAlpha=1-k; ctx.fillStyle="#ffe14d"; ctx.font="bold 13px 'Malgun Gothic',sans-serif";
+      ctx.fillText(f.txt, f.x, f.y-k*22); ctx.globalAlpha=1; }
+    else if(f.kind==="heal"){ ctx.globalAlpha=1-k; ctx.fillStyle="#8fffb0"; ctx.font="bold 13px 'Malgun Gothic',sans-serif";
+      ctx.fillText("+", f.x, f.y-k*14); ctx.globalAlpha=1; }
+    else if(f.kind==="zap" && f.pts){ ctx.globalAlpha=1-k; ctx.strokeStyle="#e6ff5a"; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.moveTo(f.pts[0][0], f.pts[0][1]);
+      for(let i2=1;i2<f.pts.length;i2++) ctx.lineTo(f.pts[i2][0], f.pts[i2][1]);
+      ctx.stroke(); ctx.globalAlpha=1; }
+  }
   ctx.restore();
-  // ── HUD 상단 ──
+  // HUD
   ctx.save(); ctx.textBaseline="middle";
   ctx.fillStyle="rgba(10,14,24,0.85)"; ctx.fillRect(0,0,LOGW,TD_OY);
   ctx.textAlign="left"; ctx.fillStyle="#9fe6c8"; ctx.font="bold 18px 'Malgun Gothic',sans-serif";
-  ctx.fillText("🏰 별빛 수비대 (실험)", 16, 26);
+  ctx.fillText("🏰 "+TD_MAPS[TD.mapIdx].name+" ("+TD_DIFFS[TD.diff].name+")", 16, 26);
   ctx.textAlign="center"; ctx.fillStyle="#ffffff"; ctx.font="bold 18px 'Malgun Gothic',sans-serif";
-  ctx.fillText("💰 "+TD.gold+"   ·   ❤ "+TD.lives+"   ·   🌊 "+TD.wave+" / "+TD_WAVES.length, LOGW/2-60, 26);
+  ctx.fillText("💰 "+TD.gold+"   ·   ❤ "+TD.lives+"   ·   🌊 "+TD.wave+" / "+TD_WAVES.length+(TD.speed>1?"   ·   ⏩×2":""), LOGW/2-60, 26);
   ctx.textAlign="right"; ctx.font="bold 15px 'Malgun Gothic',sans-serif";
   if(TD.phase==="build"){ ctx.fillStyle="#7dffb0"; ctx.fillText("건설 시간 — Space로 웨이브 시작", LOGW-16, 26); }
   else if(TD.phase==="wave"){ ctx.fillStyle="#ffd23f"; ctx.fillText("웨이브 진행 중! (남은 적 "+(TD.queue.length+TD.enemies.filter(e=>e.alive).length)+")", LOGW-16, 26); }
-  // ── 우측 패널 ──
+  // 패널
   ctx.fillStyle="rgba(14,18,34,0.92)"; ctx.fillRect(TD_PANEL_X, TD_OY, LOGW-TD_PANEL_X, LOGH-TD_OY);
   const px=TD_PANEL_X+8, pw=LOGW-TD_PANEL_X-16;
   ctx.textAlign="left"; ctx.fillStyle="#aab4e0"; ctx.font="bold 14px 'Malgun Gothic',sans-serif";
   if(TD.sel){
-    ctx.fillText("🛠 탑 건설 (1~4키)", px, TD_OY+22);
+    ctx.fillText("🛠 탑 건설 (1~6키)", px, TD_OY+20);
     for(let i=0;i<TD_TOWERS.length;i++){
-      const s=TD_TOWERS[i], by=TD_OY+40+i*86, poor=TD.gold<s.cost;
-      ctx.fillStyle="rgba(30,38,66,0.8)"; roundRect(px,by,pw,78,10); ctx.fill();
-      ctx.strokeStyle=poor?"#4a5170":s.color; ctx.lineWidth=1.5; roundRect(px,by,pw,78,10); ctx.stroke();
+      const s=TD_TOWERS[i], by=TD_OY+34+i*72, poor=TD.gold<s.cost;
+      ctx.fillStyle="rgba(30,38,66,0.8)"; roundRect(px,by,pw,64,10); ctx.fill();
+      ctx.strokeStyle=poor?"#4a5170":s.color; ctx.lineWidth=1.5; roundRect(px,by,pw,64,10); ctx.stroke();
       ctx.textAlign="left"; ctx.textBaseline="middle";
-      ctx.font="20px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#fff"; ctx.fillText(s.emoji, px+8, by+18);
-      ctx.font="bold 14px 'Malgun Gothic',sans-serif"; ctx.fillStyle=poor?"#8a92b8":"#ffffff"; ctx.fillText(s.name, px+34, by+16);
-      ctx.font="12px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#8fa0d0"; ctx.fillText(s.desc, px+8, by+38);
-      ctx.fillStyle=poor?"#ff8a8a":"#ffe14d"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.fillText("💰 "+s.cost+"G", px+8, by+60);
-      (function(idx){ uiHit(px,by,pw,78,function(){ tdBuy(TD.sel.c, TD.sel.r, idx); }); })(i);
+      ctx.font="18px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#fff"; ctx.fillText(s.emoji, px+8, by+16);
+      ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.fillStyle=poor?"#8a92b8":"#ffffff"; ctx.fillText(s.name, px+32, by+14);
+      ctx.font="11px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#8fa0d0"; ctx.fillText(s.desc, px+8, by+34);
+      ctx.fillStyle=poor?"#ff8a8a":"#ffe14d"; ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.fillText("💰 "+s.cost+"G", px+8, by+52);
+      (function(idx){ uiHit(px,by,pw,64,function(){ tdBuy(TD.sel.c, TD.sel.r, idx); }); })(i);
     }
   } else if(TD.selT){
     const t=TD.selT, s=TD_TOWERS[t.spec];
     ctx.fillText("🔍 "+s.emoji+" "+s.name+"  Lv"+t.lv, px, TD_OY+22);
     ctx.font="12px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#8fa0d0";
-    ctx.fillText("공격력 "+Math.round(tdDmg(t))+" · 사거리 "+s.range, px, TD_OY+44);
+    ctx.fillText(s.income?("웨이브 수입 +"+(s.income+(t.lv-1)*4)+"G"):("공격력 "+Math.round(tdDmg(t))+" · 사거리 "+s.range), px, TD_OY+44);
     ctx.fillText(s.desc, px, TD_OY+62);
     const upCost=Math.round(s.cost*0.8*t.lv);
     if(t.lv<3) tdBtn("⬆ 강화 "+upCost+"G", px, TD_OY+80, pw, 34, function(){ tdUpgrade(t); }, TD.gold<upCost);
@@ -3742,38 +3900,69 @@ function tdRender(){
   } else {
     ctx.fillText("🏰 지휘소", px, TD_OY+22);
     ctx.font="12px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#8fa0d0";
-    ctx.fillText("초록 빈 칸을 클릭해", px, TD_OY+46);
-    ctx.fillText("탑 자리를 고르세요.", px, TD_OY+64);
-    ctx.fillText("길(흙)에는 못 지어요.", px, TD_OY+82);
-    ctx.fillText("탑 클릭 = 강화/판매", px, TD_OY+104);
+    ctx.fillText("초록 빈 칸 클릭 =", px, TD_OY+46);
+    ctx.fillText("탑 자리 고르기", px, TD_OY+64);
+    ctx.fillText("탑 클릭 = 강화/판매", px, TD_OY+86);
+    ctx.fillText("F = ⏩ 2배속", px, TD_OY+108);
   }
-  if(TD.phase==="build") tdBtn("🌊 웨이브 "+TD.wave+" 시작 (Space)", px, LOGH-92, pw, 40, function(){ tdStartWave(); }, false);
-  tdBtn("🚪 나가기 (Esc)", px, LOGH-46, pw, 32, function(){ TD=null; gameState=STATE.ADMIN; }, false);
-  // 승리/패배 오버레이
+  // LAB-2⑦ 웨이브 예고
+  if(TD.phase==="build"){
+    ctx.fillStyle="#ffd97d"; ctx.font="bold 12px 'Malgun Gothic',sans-serif";
+    ctx.fillText("🔭 다음 웨이브:", px, LOGH-178);
+    ctx.fillStyle="#cbd4f5"; ctx.font="11px 'Malgun Gothic',sans-serif";
+    const pv=tdWavePreview().split(" · ");
+    for(let i=0;i<pv.length && i<3;i++) ctx.fillText(pv[i], px, LOGH-160+i*15);
+  }
+  tdBtn("⏩ 배속 ×"+TD.speed+" (F)", px, LOGH-136, pw, 30, function(){ TD.speed=(TD.speed===1)?2:1; }, false);
+  if(TD.phase==="build") tdBtn("🌊 웨이브 "+TD.wave+" 시작 (Space)", px, LOGH-98, pw, 38, function(){ tdStartWave(); }, false);
+  tdBtn("🚪 나가기 (Esc)", px, LOGH-50, pw, 32, function(){ TD=null; gameState=STATE.ADMIN; }, false);
+  // 보스 배너·피격 플래시
+  if(TD.bannerT>0){ ctx.globalAlpha=Math.min(1,TD.bannerT); ctx.textAlign="center";
+    ctx.fillStyle="rgba(60,10,20,0.75)"; ctx.fillRect(0,LOGH/2-46,LOGW,84);
+    ctx.fillStyle="#ff8a8a"; ctx.font="bold 34px 'Malgun Gothic',sans-serif"; ctx.fillText(TD.bannerTxt, LOGW/2, LOGH/2); ctx.globalAlpha=1; }
+  if(TD.hurtT>0){ ctx.globalAlpha=TD.hurtT*0.55; ctx.fillStyle="#ff2a3a"; ctx.fillRect(0,0,LOGW,LOGH); ctx.globalAlpha=1; }
   if(TD.phase==="win"||TD.phase==="over"){
     ctx.fillStyle="rgba(8,10,22,0.78)"; ctx.fillRect(0,0,LOGW,LOGH);
     ctx.textAlign="center"; ctx.font="bold 44px 'Malgun Gothic',sans-serif";
     ctx.fillStyle=(TD.phase==="win")?"#7dffb0":"#ff8a8a";
-    ctx.fillText((TD.phase==="win")?"🎉 마을을 지켜냈다!":"💧 먹구름이 마을에...", LOGW/2, LOGH/2-40);
+    ctx.fillText((TD.phase==="win")?"🎉 마을을 지켜냈다!":"💧 먹구름이 마을에...", LOGW/2, LOGH/2-56);
     ctx.fillStyle="#dfe6ff"; ctx.font="18px 'Malgun Gothic',sans-serif";
-    ctx.fillText((TD.phase==="win")?("10웨이브 완전 방어! ⏱ "+TD.time.toFixed(0)+"초"):("웨이브 "+TD.wave+"에서 방어 실패"), LOGW/2, LOGH/2+8);
-    ctx.fillText("R 다시 도전 · Esc 교사 패널", LOGW/2, LOGH/2+44);
+    if(TD.phase==="win"){
+      ctx.fillStyle="#ffe14d"; ctx.font="bold 34px 'Malgun Gothic',sans-serif";
+      ctx.fillText("★".repeat(TD.stars)+"☆".repeat(3-TD.stars), LOGW/2, LOGH/2-6);
+      ctx.fillStyle="#dfe6ff"; ctx.font="18px 'Malgun Gothic',sans-serif";
+      ctx.fillText("남은 생명 "+TD.lives+"/"+TD.livesMax+" · ⏱ "+TD.time.toFixed(0)+"초 · "+TD_DIFFS[TD.diff].name, LOGW/2, LOGH/2+30);
+    } else ctx.fillText("웨이브 "+TD.wave+"에서 방어 실패", LOGW/2, LOGH/2+8);
+    ctx.fillText("R 다시(맵 선택) · Esc 교사 패널", LOGW/2, LOGH/2+64);
   }
   ctx.restore();
 }
 /* ── ② 별빛 함대 — 세로 슈팅(갤러그식 편대) ── */
 const SH_FOES={
-  drone:{ asset:"paper_drone", hp:2,  score:10,  r:17 },
-  bug:  { asset:"star_bug",    hp:3,  score:20,  r:17 },
-  ghost:{ asset:"cloud_ghost", hp:4,  score:30,  r:17 },
-  boss: { asset:"boss_plane",  hp:320,score:500, r:52 } };
-const SH_BEST_KEY="starArena.lab.shooterBest";
+  drone: { asset:"paper_drone",   hp:2,  score:10,  r:17 },
+  bug:   { asset:"star_bug",      hp:3,  score:20,  r:17 },
+  ghost: { asset:"cloud_ghost",   hp:4,  score:30,  r:17 },
+  shield:{ asset:"cushion_block", hp:6,  score:40,  r:18 },
+  kaze:  { asset:"bounce_bubble", hp:2,  score:25,  r:16 },
+  mid:   { asset:"boss_turtle",   hp:180,score:300, r:44 },
+  boss:  { asset:"boss_plane",    hp:500,score:800, r:52 } };
+const SH_BEST_KEY="starArena.lab.shooterBest", SH_RANK_KEY="starArena.lab.shooterRank";
+const SH_MAXWAVE=12;
 let SH=null;
 function shBest(){ try{ return +localStorage.getItem(SH_BEST_KEY)||0; }catch(e){ return 0; } }
+function shRankLoad(){ try{ const s=JSON.parse(localStorage.getItem(SH_RANK_KEY)); if(Array.isArray(s)) return s; }catch(e){} return []; }
+function shRankAdd(score,wave){   // LAB-2⑨ 로컬 톱3
+  const r=shRankLoad(); r.push({score:score,wave:wave}); r.sort((a,b)=>b.score-a.score); r.length=Math.min(3,r.length);
+  try{ localStorage.setItem(SH_RANK_KEY, JSON.stringify(r)); }catch(e){}
+  try{ if(score>shBest()) localStorage.setItem(SH_BEST_KEY, ""+score); }catch(e){}
+  return r;
+}
 function shStart(){
-  SH={ p:{ x:LOGW/2, y:LOGH-110, cd:0, lives:3, inv:0 },
-       shots:[], eshots:[], foes:[], wave:0, score:0, phase:"play",
-       grp:{ x:0, y:0, dir:1, spd:42 }, fireT:1.2, spawner:null, boss:null, msg:"", msgT:0, time:0 };
+  SH={ p:{ x:LOGW/2, y:LOGH-110, cd:0, lives:3, inv:0, spread:0, barrier:false },
+       shots:[], eshots:[], foes:[], drops:[], wave:0, score:0, kills:0, phase:"play",
+       grp:{ x:0, y:0, dir:1, spd:42 }, fireT:1.2, spawner:null, boss:null,
+       combo:0, comboT:0, maxCombo:0, nextLifeAt:5000, waveHit:false,
+       msg:"", msgT:0, warnT:0, time:0 };
   gameState=STATE.SHOOTER;
   shNextWave();
 }
@@ -3784,19 +3973,37 @@ function shGrid(rows, cols, typeFn){
     SH.foes.push({ kind:"grid", type:type, spec:spec, bx:x0+c*gapX, by:y0+r*gapY, hp:spec.hp, alive:true });
   }
 }
+function shV(n, type, yBase){   // LAB-2②: V자 편대
+  const spec=SH_FOES[type];
+  for(let i=0;i<n;i++){
+    const off=i-(n-1)/2;
+    SH.foes.push({ kind:"grid", type:type, spec:spec, bx:LOGW/2+off*64, by:(yBase||96)+Math.abs(off)*40, hp:spec.hp, alive:true });
+  }
+}
+function shDiamond(type, cx, cy){   // LAB-2②: 다이아 편대(9기)
+  const spec=SH_FOES[type], P=[[0,-2],[-1,-1],[1,-1],[-2,0],[0,0],[2,0],[-1,1],[1,1],[0,2]];
+  for(const [dx,dy] of P) SH.foes.push({ kind:"grid", type:type, spec:spec, bx:cx+dx*56, by:cy+dy*46, hp:spec.hp, alive:true });
+}
 function shNextWave(){
   SH.wave++;
-  SH.grp={ x:0, y:0, dir:1, spd:40+SH.wave*9 };
-  SH.spawner=null; SH.boss=null;
-  if(SH.wave===1) shGrid(3,6,function(){ return "drone"; });
-  else if(SH.wave===2) shGrid(4,6,function(r,c){ return (r+c)%2?"bug":"drone"; });
-  else if(SH.wave===3){ shGrid(3,6,function(){ return "bug"; }); SH.spawner={ left:6, t:1.6, iv:2.2, type:"ghost" }; }
-  else if(SH.wave===4) shGrid(5,7,function(r){ return r<2?"ghost":(r<4?"bug":"drone"); });
-  else if(SH.wave===5){
-    SH.boss={ kind:"boss", type:"boss", spec:SH_FOES.boss, x:LOGW/2, y:150, hp:SH_FOES.boss.hp, alive:true, t:0, fire:1.2 };
-    SH.spawner={ left:99, t:2.5, iv:3.0, type:"drone" };
-  }
-  else { SH.phase="win"; try{ if(SH.score>shBest()) localStorage.setItem(SH_BEST_KEY, ""+SH.score); }catch(e){} playSfx("win"); return; }
+  SH.grp={ x:0, y:0, dir:1, spd:38+SH.wave*7 };
+  SH.spawner=null; SH.boss=null; SH.waveHit=false;
+  const w=SH.wave;
+  if(w===1) shGrid(3,6,function(){ return "drone"; });
+  else if(w===2) shGrid(4,6,function(r,c){ return (r+c)%2?"bug":"drone"; });
+  else if(w===3){ shGrid(3,6,function(){ return "bug"; }); SH.spawner={ left:6, t:1.6, iv:2.2, type:"ghost", aim:false }; }
+  else if(w===4){ shV(7,"bug",96); shV(7,"drone",176); }
+  else if(w===5){ SH.boss={ type:"mid", spec:SH_FOES.mid, x:LOGW/2, y:150, hp:SH_FOES.mid.hp, alive:true, t:0, fire:1.4, ring:2.4 };
+    SH.warnT=1.6; SH.spawner={ left:99, t:3, iv:3.4, type:"drone", aim:false }; }
+  else if(w===6) shGrid(5,7,function(r){ return r===0?"shield":(r<3?"bug":"drone"); });
+  else if(w===7){ shGrid(2,5,function(){ return "bug"; }); SH.spawner={ left:12, t:1.2, iv:1.5, type:"kaze", aim:true }; }
+  else if(w===8){ shGrid(3,7,function(r){ return r===0?"shield":"ghost"; }); SH.spawner={ left:8, t:2, iv:2.2, type:"ghost", aim:false }; }
+  else if(w===9){ shDiamond("shield", LOGW/2, 170); SH.spawner={ left:8, t:1.4, iv:1.8, type:"kaze", aim:true }; }
+  else if(w===10) shGrid(5,8,function(r,c){ return (r+c)%3===0?"ghost":((r+c)%3===1?"bug":"drone"); });
+  else if(w===11){ shDiamond("shield", LOGW/2-200, 170); shDiamond("bug", LOGW/2+200, 170); SH.spawner={ left:10, t:1.2, iv:1.6, type:"kaze", aim:true }; }
+  else if(w===12){ SH.boss={ type:"boss", spec:SH_FOES.boss, x:LOGW/2, y:150, hp:SH_FOES.boss.hp, alive:true, t:0, fire:1.2, phase:1 };
+    SH.warnT=1.8; SH.spawner={ left:99, t:2.5, iv:3.0, type:"drone", aim:false }; }
+  else { SH.phase="win"; SH.rank=shRankAdd(SH.score, SH.wave-1); playSfx("win"); return; }
   SH.msg="WAVE "+SH.wave; SH.msgT=1.4; playSfx("spring");
 }
 function shKey(code){
@@ -3804,13 +4011,37 @@ function shKey(code){
   if(!SH) return;
   if(code==="KeyR"){ shStart(); return; }
 }
+function shAddScore(base){   // LAB-2⑦ 콤보
+  SH.combo++; SH.comboT=1.5; SH.maxCombo=Math.max(SH.maxCombo, SH.combo);
+  const mult=Math.min(5, 1+Math.floor(SH.combo/4));
+  SH.score+=base*mult;
+  if(SH.score>=SH.nextLifeAt && SH.p.lives<5){ SH.p.lives++; SH.nextLifeAt+=5000; showToast("❤ 보너스 생명! (점수 "+SH.score+")"); playSfx("powerup"); }
+}
+function shKillFoe(f){
+  f.alive=false; SH.kills++;
+  shAddScore(f.spec.score); playSfx("kill");
+  if(Math.random()<0.12){   // LAB-2③ 파워업 드랍
+    const roll=Math.random();
+    const kind=(roll<0.05)?"life":((roll<0.5)?"spread":"barrier");
+    SH.drops.push({ x:f.x, y:f.y, vy:120, kind:kind });
+  }
+}
+function shHurtPlayer(){
+  const p=SH.p;
+  if(p.inv>0) return;
+  if(p.barrier){ p.barrier=false; p.inv=1.2; playSfx("break"); showToast("🛡 배리어가 막아줬다!"); return; }   // LAB-2④ 배리어
+  p.lives--; p.inv=1.7; p.spread=0; SH.waveHit=true; playSfx("hit");
+  SH.combo=0;
+  if(p.lives<=0){ SH.phase="over"; SH.rank=shRankAdd(SH.score, SH.wave); playSfx("lose"); }
+}
 function shUpdate(dt){
   if(!SH) return;
   SH.time+=dt;
   if(SH.phase!=="play") return;
   if(SH.msgT>0) SH.msgT-=dt;
+  if(SH.warnT>0) SH.warnT-=dt;
+  if(SH.comboT>0){ SH.comboT-=dt; if(SH.comboT<=0) SH.combo=0; }
   const p=SH.p;
-  // 이동·발사
   let mx=0,my=0;
   if(keysDown.has("ArrowLeft")||keysDown.has("KeyA")) mx-=1;
   if(keysDown.has("ArrowRight")||keysDown.has("KeyD")) mx+=1;
@@ -3818,104 +4049,143 @@ function shUpdate(dt){
   if(keysDown.has("ArrowDown")||keysDown.has("KeyS")) my+=1;
   p.x=clamp(p.x+mx*380*dt, 60, LOGW-60);
   p.y=clamp(p.y+my*300*dt, LOGH-250, LOGH-70);
-  p.cd-=dt; if(p.inv>0) p.inv-=dt;
+  p.cd-=dt; if(p.inv>0) p.inv-=dt; if(p.spread>0) p.spread-=dt;
   if((keysDown.has("KeyZ")||keysDown.has("Space")) && p.cd<=0){
-    p.cd=0.16; SH.shots.push({ x:p.x-10, y:p.y-24 }, { x:p.x+10, y:p.y-24 }); playSfx("shoot");
+    p.cd=0.16;
+    SH.shots.push({ x:p.x-10, y:p.y-24, vx:0 }, { x:p.x+10, y:p.y-24, vx:0 });
+    if(p.spread>0){ SH.shots.push({ x:p.x, y:p.y-20, vx:-160 }, { x:p.x, y:p.y-20, vx:160 }); }   // 3연발
+    playSfx("shoot");
   }
-  for(const s of SH.shots){ s.y-=660*dt; }
-  SH.shots=SH.shots.filter(s=>s.y>-30);
-  // 편대 이동(가장자리 반전 + 한 칸 하강, 하강 하한선 보호)
-  const alive=SH.foes.filter(f=>f.alive);
+  for(const s of SH.shots){ s.y-=660*dt; s.x+=(s.vx||0)*dt; }
+  SH.shots=SH.shots.filter(s=>s.y>-30 && s.x>-30 && s.x<LOGW+30);
+  // 편대
+  const alive=SH.foes.filter(f=>f.alive && f.kind==="grid");
   if(alive.length){
     SH.grp.x+=SH.grp.dir*SH.grp.spd*dt;
     let minX=1e9, maxX=-1e9, maxY=-1e9;
     for(const f of alive){ const sx=f.bx+SH.grp.x; if(sx<minX)minX=sx; if(sx>maxX)maxX=sx; const sy=f.by+SH.grp.y; if(sy>maxY)maxY=sy; }
     if((SH.grp.dir>0 && maxX>LOGW-70)||(SH.grp.dir<0 && minX<70)){
       SH.grp.dir*=-1;
-      if(maxY<LOGH-300) SH.grp.y+=16;   // 플레이어 지대 앞에서 하강 정지
+      if(maxY<LOGH-300) SH.grp.y+=16;
     }
   }
-  // 다이버 스포너
+  // 스포너(카미카제는 플레이어 조준 강하)
   if(SH.spawner && SH.spawner.left>0){
     SH.spawner.t-=dt;
     if(SH.spawner.t<=0){
       SH.spawner.t=SH.spawner.iv; SH.spawner.left--;
-      const dl=(SH.wave===5)?SH.foes.filter(f=>f.alive&&f.kind==="dive").length:0;
-      if(!(SH.wave===5 && dl>=4)){
+      const dl=SH.foes.filter(f=>f.alive&&f.kind==="dive").length;
+      if(dl<6){
         const spec=SH_FOES[SH.spawner.type];
-        SH.foes.push({ kind:"dive", type:SH.spawner.type, spec:spec, t:0, x0:120+Math.random()*(LOGW-240), amp:90+Math.random()*70, spd:170+SH.wave*18, x:0, y:-30, hp:spec.hp, alive:true });
+        const x0=120+Math.random()*(LOGW-240);
+        SH.foes.push({ kind:"dive", type:SH.spawner.type, spec:spec, t:0, x0:x0, amp:90+Math.random()*70,
+                       spd:170+SH.wave*15, aim:SH.spawner.aim?((p.x-x0)/3):0, x:x0, y:-30, hp:spec.hp, alive:true });
       }
     }
   }
   for(const f of SH.foes){
     if(!f.alive) continue;
     if(f.kind==="grid"){ f.x=f.bx+SH.grp.x; f.y=f.by+SH.grp.y; }
-    else if(f.kind==="dive"){ f.t+=dt; f.y=-30+f.t*f.spd; f.x=f.x0+Math.sin(f.t*2.6)*f.amp; if(f.y>LOGH+40) f.alive=false; }
+    else if(f.kind==="dive"){ f.t+=dt; f.y=-30+f.t*f.spd;
+      f.x=f.x0+(f.aim?f.aim*f.t:Math.sin(f.t*2.6)*f.amp);
+      if(f.y>LOGH+40) f.alive=false; }
   }
-  // 보스
+  // 보스(중간보스=링 탄막 / 최종보스=2페이즈)
   if(SH.boss && SH.boss.alive){
     const b=SH.boss; b.t+=dt;
     b.x=LOGW/2+Math.sin(b.t*0.7)*260; b.y=150+Math.sin(b.t*1.7)*30;
     b.fire-=dt;
-    if(b.fire<=0){ b.fire=1.25;
-      const a=Math.atan2(p.y-b.y, p.x-b.x);
-      for(const off of [-0.3,0,0.3]) SH.eshots.push({ x:b.x, y:b.y+30, vx:Math.cos(a+off)*250, vy:Math.sin(a+off)*250 });
-      playSfx("fire");
+    if(b.type==="mid"){
+      if(b.fire<=0){ b.fire=1.4;
+        const a=Math.atan2(p.y-b.y, p.x-b.x);
+        for(const off of [-0.25,0,0.25]) SH.eshots.push({ x:b.x, y:b.y+26, vx:Math.cos(a+off)*230, vy:Math.sin(a+off)*230 });
+        playSfx("fire"); }
+      b.ring-=dt;
+      if(b.ring<=0){ b.ring=2.6;
+        for(let k=0;k<8;k++){ const a=k/8*Math.PI*2; SH.eshots.push({ x:b.x, y:b.y, vx:Math.cos(a)*170, vy:Math.sin(a)*170 }); } }
+    } else {
+      if(b.phase===1 && b.hp<b.spec.hp*0.5){ b.phase=2; SH.warnT=1.2; showToast("⚠ 보스가 화났다!"); }
+      if(b.fire<=0){
+        b.fire=(b.phase===2)?0.85:1.2;
+        const a=Math.atan2(p.y-b.y, p.x-b.x);
+        const offs=(b.phase===2)?[-0.5,-0.25,0,0.25,0.5]:[-0.3,0,0.3];
+        for(const off of offs) SH.eshots.push({ x:b.x, y:b.y+30, vx:Math.cos(a+off)*255, vy:Math.sin(a+off)*255 });
+        playSfx("fire");
+      }
     }
   }
-  // 편대 사격(초등 배려: 초반 웨이브는 뜸하고 느리게)
+  // 편대 사격
   SH.fireT-=dt;
   if(SH.fireT<=0){
-    SH.fireT=Math.max(0.5, 1.4-SH.wave*0.14);
+    SH.fireT=Math.max(0.5, 1.4-SH.wave*0.09);
     const shooters=SH.foes.filter(f=>f.alive);
     if(shooters.length){ const f=shooters[Math.floor(Math.random()*shooters.length)];
-      SH.eshots.push({ x:f.x, y:f.y+14, vx:0, vy:205+SH.wave*20 }); }
+      SH.eshots.push({ x:f.x, y:f.y+14, vx:0, vy:205+SH.wave*16 }); }
   }
   for(const e of SH.eshots){ e.x+=e.vx*dt; e.y+=e.vy*dt; }
-  SH.eshots=SH.eshots.filter(e=>e.y<LOGH+30 && e.y>-30 && e.x>-30 && e.x<LOGW+30);
-  // 충돌: 내 탄 vs 적
+  SH.eshots=SH.eshots.filter(e=>e.y<LOGH+30 && e.y>-40 && e.x>-40 && e.x<LOGW+40);
+  // 파워업 낙하·수집
+  for(const d of SH.drops){ d.y+=d.vy*dt; }
+  SH.drops=SH.drops.filter(d=>{
+    if(d.y>LOGH+20) return false;
+    if(Math.abs(d.x-p.x)<26 && Math.abs(d.y-p.y)<28){
+      if(d.kind==="spread"){ p.spread=10; showToast("✨ 3연발! (10초)"); }
+      else if(d.kind==="barrier"){ p.barrier=true; showToast("🛡 배리어!"); }
+      else { if(p.lives<5){ p.lives++; showToast("❤ 생명 +1!"); } else { SH.score+=200; } }
+      playSfx("powerup"); return false;
+    }
+    return true;
+  });
+  // 충돌: 내 탄 vs 적/보스
   for(const s of SH.shots){
     if(s.dead) continue;
     for(const f of SH.foes){ if(!f.alive) continue;
       if(Math.abs(s.x-f.x)<f.spec.r+5 && Math.abs(s.y-f.y)<f.spec.r+8){
-        s.dead=true; f.hp--; if(f.hp<=0){ f.alive=false; SH.score+=f.spec.score; playSfx("kill"); } break; } }
+        s.dead=true; f.hp--; if(f.hp<=0) shKillFoe(f); break; } }
     if(!s.dead && SH.boss && SH.boss.alive){
       const b=SH.boss;
       if(Math.abs(s.x-b.x)<b.spec.r && Math.abs(s.y-b.y)<b.spec.r){
-        s.dead=true; b.hp--; if(b.hp<=0){ b.alive=false; SH.score+=b.spec.score; playSfx("ult"); } } }
+        s.dead=true; b.hp--;
+        if(b.hp<=0){ b.alive=false; SH.kills++; shAddScore(b.spec.score); playSfx("ult");
+          SH.spawner=null; } } }   // 보스 웨이브의 무한 스포너 종료(웨이브 클리어 판정 가능하게)
   }
   SH.shots=SH.shots.filter(s=>!s.dead);
   // 충돌: 적탄/적몸 vs 플레이어
   if(p.inv<=0){
     let hit=false;
     for(const e of SH.eshots){ if(Math.abs(e.x-p.x)<20 && Math.abs(e.y-p.y)<22){ e.y=LOGH+99; hit=true; break; } }
-    if(!hit){ for(const f of SH.foes){ if(f.alive && Math.abs(f.x-p.x)<f.spec.r+14 && Math.abs(f.y-p.y)<f.spec.r+16){ hit=true; break; } } }
-    if(hit){
-      p.lives--; p.inv=1.7; playSfx("hit");
-      if(p.lives<=0){ SH.phase="over"; try{ if(SH.score>shBest()) localStorage.setItem(SH_BEST_KEY, ""+SH.score); }catch(e){} playSfx("lose"); return; }
-    }
+    if(!hit){ for(const f of SH.foes){ if(f.alive && Math.abs(f.x-p.x)<f.spec.r+14 && Math.abs(f.y-p.y)<f.spec.r+16){ if(f.kind==="dive") f.alive=false; hit=true; break; } } }
+    if(hit){ shHurtPlayer(); if(SH.phase!=="play") return; }
   }
-  // 웨이브 클리어
-  const anyFoe=SH.foes.some(f=>f.alive) || (SH.boss&&SH.boss.alive) || (SH.spawner&&SH.spawner.left>0&&SH.wave!==5);
-  if(!anyFoe){ SH.foes.length=0; SH.eshots.length=0; shNextWave(); }
+  // 웨이브 클리어(노피격 보너스)
+  const anyFoe=SH.foes.some(f=>f.alive) || (SH.boss&&SH.boss.alive) || (SH.spawner&&SH.spawner.left>0&&SH.spawner.left<90);
+  if(!anyFoe){
+    if(!SH.waveHit && SH.wave>0){ SH.score+=500; showToast("🛡 노피격 보너스 +500!"); }
+    SH.foes.length=0; SH.eshots.length=0; shNextWave();
+  }
 }
 function shRender(){
   if(!SH) return;
   ctx.fillStyle="#070a1e"; ctx.fillRect(0,0,LOGW,LOGH);
   ctx.save();
-  // 스크롤 별밭 2겹
+  // 성운 + 스크롤 별밭
+  ctx.globalAlpha=0.14;
+  ctx.fillStyle="#5a3a8a"; ctx.beginPath(); ctx.arc((SH.time*8)%LOGW, 200, 180, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle="#2a5a8a"; ctx.beginPath(); ctx.arc(LOGW-((SH.time*5)%LOGW), 480, 220, 0, Math.PI*2); ctx.fill();
+  ctx.globalAlpha=1;
   for(let i=0;i<50;i++){
     const spd=(i%2)?60:120, y=((i*97)+SH.time*spd)%(LOGH+20)-10, x=(i*167+((i*77)%97)*7)%LOGW;
     ctx.globalAlpha=(i%2)?0.35:0.6; ctx.fillStyle="#dfe6ff"; ctx.fillRect(x, y, 2, (i%2)?2:3);
   }
   ctx.globalAlpha=1;
-  // 적
   ctx.textAlign="center"; ctx.textBaseline="middle";
   for(const f of SH.foes){
     if(!f.alive) continue;
     const img=getMonsterImage(f.spec.asset), sz=f.spec.r*2.3;
     if(img) ctx.drawImage(img, f.x-sz/2, f.y-sz/2, sz, sz);
     else { ctx.fillStyle="#c58bff"; ctx.beginPath(); ctx.arc(f.x,f.y,f.spec.r,0,Math.PI*2); ctx.fill(); }
+    if(f.type==="shield" && f.hp>3){ ctx.strokeStyle="rgba(160,220,255,0.7)"; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(f.x,f.y,f.spec.r+4,0,Math.PI*2); ctx.stroke(); }
   }
   if(SH.boss && SH.boss.alive){
     const b=SH.boss, img=getMonsterImage(b.spec.asset), sz=b.spec.r*2.4;
@@ -3923,16 +4193,20 @@ function shRender(){
     else { ctx.fillStyle="#ff9a5a"; ctx.beginPath(); ctx.arc(b.x,b.y,b.spec.r,0,Math.PI*2); ctx.fill(); }
     const bw=320, hpw=bw*Math.max(0,b.hp/b.spec.hp);
     ctx.fillStyle="rgba(0,0,0,0.5)"; ctx.fillRect(LOGW/2-bw/2, 58, bw, 10);
-    ctx.fillStyle="#ff8a8a"; ctx.fillRect(LOGW/2-bw/2, 58, hpw, 10);
+    ctx.fillStyle=(b.type==="boss"&&b.phase===2)?"#ff5a5a":"#ff8a8a"; ctx.fillRect(LOGW/2-bw/2, 58, hpw, 10);
   }
-  // 탄
   for(const s of SH.shots) drawStar(s.x, s.y, 4, 7, 3, "#ffe14d");
   for(const e of SH.eshots){ ctx.fillStyle="#ff7a7a"; ctx.beginPath(); ctx.arc(e.x,e.y,6,0,Math.PI*2); ctx.fill(); }
-  // 플레이어 함선 + 캐릭터
+  for(const d of SH.drops){
+    const icon=(d.kind==="spread")?"✨":((d.kind==="barrier")?"🛡":"❤");
+    ctx.font="22px 'Malgun Gothic',sans-serif"; ctx.fillText(icon, d.x, d.y+Math.sin(uiTime*6)*3);
+  }
   {
     const p=SH.p;
     if(p.inv>0 && Math.floor(p.inv*12)%2===0) ctx.globalAlpha=0.35;
-    ctx.fillStyle="#9fe0ff";
+    if(p.barrier){ ctx.strokeStyle="rgba(140,220,255,"+(0.5+0.3*Math.sin(uiTime*6))+")"; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.arc(p.x, p.y-4, 40, 0, Math.PI*2); ctx.stroke(); }
+    ctx.fillStyle=p.spread>0?"#ffe875":"#9fe0ff";
     ctx.beginPath(); ctx.moveTo(p.x, p.y-26); ctx.lineTo(p.x-24, p.y+18); ctx.lineTo(p.x+24, p.y+18); ctx.closePath(); ctx.fill();
     ctx.fillStyle="#4f7dd0"; ctx.fillRect(p.x-30, p.y+14, 60, 8);
     ctx.fillStyle="rgba(255,210,90,"+(0.5+0.5*Math.sin(uiTime*20))+")";
@@ -3950,60 +4224,122 @@ function shRender(){
   ctx.textAlign="left"; ctx.fillStyle="#9fe6c8"; ctx.font="bold 17px 'Malgun Gothic',sans-serif";
   ctx.fillText("🚀 별빛 함대 (실험)", 16, 22);
   ctx.textAlign="center"; ctx.fillStyle="#ffffff"; ctx.font="bold 18px 'Malgun Gothic',sans-serif";
-  ctx.fillText("점수 "+SH.score+"   ·   🏆 "+Math.max(shBest(),SH.score)+"   ·   WAVE "+Math.min(SH.wave,5)+"/5", LOGW/2, 22);
+  ctx.fillText("점수 "+SH.score+"   ·   🏆 "+Math.max(shBest(),SH.score)+"   ·   WAVE "+Math.min(SH.wave,SH_MAXWAVE)+"/"+SH_MAXWAVE, LOGW/2, 22);
   ctx.textAlign="right"; ctx.fillStyle="#ff8a8a"; ctx.fillText("❤".repeat(Math.max(0,SH.p.lives)), LOGW-16, 22);
+  if(SH.combo>=4){ ctx.textAlign="center"; ctx.fillStyle="#ffe14d"; ctx.font="bold 24px 'Malgun Gothic',sans-serif";
+    ctx.fillText("🔥 콤보 ×"+Math.min(5,1+Math.floor(SH.combo/4))+" ("+SH.combo+")", LOGW/2, 66); }
+  if(SH.warnT>0){ ctx.globalAlpha=0.5+0.5*Math.sin(uiTime*16); ctx.textAlign="center";
+    ctx.fillStyle="rgba(80,10,20,0.7)"; ctx.fillRect(0,LOGH/2-40,LOGW,72);
+    ctx.fillStyle="#ff6a6a"; ctx.font="bold 42px 'Malgun Gothic',sans-serif"; ctx.fillText("⚠ WARNING ⚠", LOGW/2, LOGH/2-4); ctx.globalAlpha=1; }
   if(SH.msgT>0){ ctx.textAlign="center"; ctx.globalAlpha=Math.min(1,SH.msgT); ctx.fillStyle="#ffe14d";
     ctx.font="bold 54px 'Malgun Gothic',sans-serif"; ctx.fillText(SH.msg, LOGW/2, LOGH/2-40); ctx.globalAlpha=1; }
   ctx.textAlign="center"; ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
-  ctx.fillText("←→↑↓ 이동 · Z 발사 · Esc 나가기", LOGW/2, LOGH-18);
+  ctx.fillText("←→↑↓ 이동 · Z 발사 · Esc 나가기   ✨3연발 🛡배리어 ❤생명", LOGW/2, LOGH-18);
   if(SH.phase!=="play"){
-    ctx.fillStyle="rgba(8,10,22,0.78)"; ctx.fillRect(0,0,LOGW,LOGH);
+    ctx.fillStyle="rgba(8,10,22,0.82)"; ctx.fillRect(0,0,LOGW,LOGH);
     ctx.font="bold 44px 'Malgun Gothic',sans-serif";
     ctx.fillStyle=(SH.phase==="win")?"#7dffb0":"#ff8a8a";
-    ctx.fillText((SH.phase==="win")?"🎉 함대 사령관 승리!":"💥 함선 격추...", LOGW/2, LOGH/2-40);
+    ctx.fillText((SH.phase==="win")?"🎉 함대 사령관 승리!":"💥 함선 격추...", LOGW/2, LOGH/2-96);
     ctx.fillStyle="#dfe6ff"; ctx.font="18px 'Malgun Gothic',sans-serif";
-    ctx.fillText("점수 "+SH.score+" · 최고 기록 "+Math.max(shBest(),SH.score), LOGW/2, LOGH/2+8);
-    ctx.fillText("R 다시 도전 · Esc 교사 패널", LOGW/2, LOGH/2+44);
+    ctx.fillText("점수 "+SH.score+" · 처치 "+SH.kills+" · 최대콤보 "+SH.maxCombo+" · 웨이브 "+Math.min(SH.wave,SH_MAXWAVE), LOGW/2, LOGH/2-48);
+    const rank=SH.rank||shRankLoad();
+    ctx.fillStyle="#ffe14d"; ctx.font="bold 17px 'Malgun Gothic',sans-serif"; ctx.fillText("🏆 명예의 전당", LOGW/2, LOGH/2-8);
+    ctx.fillStyle="#cbd4f5"; ctx.font="15px 'Malgun Gothic',sans-serif";
+    for(let i=0;i<3;i++){ const r=rank[i];
+      ctx.fillText((i+1)+"위  "+(r?(r.score+"점 (웨이브 "+r.wave+")"):"—"), LOGW/2, LOGH/2+20+i*24); }
+    ctx.fillText("R 다시 도전 · Esc 교사 패널", LOGW/2, LOGH/2+108);
   }
   ctx.restore();
 }
-/* ── ③ 별빛 던전 3D — 캔버스 레이캐스터(1인칭 미로 탈출) ── */
-const RAY_MAP=[
-  "################",
-  "#*......#.....##",
-  "#.#.#.#.#.###.##",
-  "#.#.#.......#.##",
-  "#.######.##.#.##",
-  "#.#...#.......##",
-  "#.#.#.#.#.###.##",
-  "#...#...#.#...##",
-  "#########.#..###",
-  "#.....#...#...##",
-  "#.#...#.#.###.##",
-  "#G#.....#.....##",
-  "#.##.########.##",
-  "#.............##",
-  "################",
-  "################" ];
+/* ── ③ 별빛 던전 3D — 캔버스 레이캐스터(3층 미로·별조각·추격 몬스터) ── */
 const RAY_N=320, RAY_PLANE=0.66;
+const RAY_FLOORS=[   // LAB-2①④: 층별 크기·시드·벽 테마
+  { size:17, seed:11224433, wall:[100,122,196], name:"1층 · 푸른 회랑" },
+  { size:21, seed:55667788, wall:[86,168,120],  name:"2층 · 이끼 굴" },
+  { size:25, seed:99001122, wall:[150,100,190], name:"3층 · 보라 심연" } ];
+const RAY_BEST_KEY="starArena.lab.rayBest";
 let RAY=null, _rayZ=new Array(RAY_N);
-function rayWall(x,y){
-  const c=Math.floor(x), r=Math.floor(y);
-  if(c<0||r<0||r>=RAY_MAP.length||c>=RAY_MAP[r].length) return true;
-  return RAY_MAP[r][c]==="#";
+function rayGenMaze(size, seed){   // 시드 DFS 백트래킹 + 루프 — genmaze.js와 동일 알고리즘(런타임 생성)
+  let s=seed>>>0;
+  const rnd=function(){ s=(s*1103515245+12345)>>>0; return s/4294967296; };
+  const W=size, H=size, g=[];
+  for(let r=0;r<H;r++) g.push(new Array(W).fill("#"));
+  const stack=[[1,1]]; g[1][1]=".";
+  while(stack.length){
+    const [c,r]=stack[stack.length-1];
+    const dirs=[[2,0],[-2,0],[0,2],[0,-2]];
+    for(let i=dirs.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); const t=dirs[i]; dirs[i]=dirs[j]; dirs[j]=t; }
+    let moved=false;
+    for(const [dc,dr] of dirs){
+      const nc=c+dc, nr=r+dr;
+      if(nc>0&&nc<W-1&&nr>0&&nr<H-1&&g[nr][nc]==="#"){ g[r+dr/2][c+dc/2]="."; g[nr][nc]="."; stack.push([nc,nr]); moved=true; break; }
+    }
+    if(!moved) stack.pop();
+  }
+  let opened=0;
+  for(let t=0;t<300 && opened<Math.floor(size*0.7);t++){
+    const c=1+Math.floor(rnd()*(W-2)), r=1+Math.floor(rnd()*(H-2));
+    if(g[r][c]!=="#") continue;
+    const h=(g[r][c-1]==="."&&g[r][c+1]==="."), v=(g[r-1][c]==="."&&g[r+1][c]===".");
+    if(h!==v&&(h||v)){ g[r][c]="."; opened++; }
+  }
+  return g.map(row=>row.join(""));
 }
-function rayOpen(x,y){   // 반지름 0.2 사각 샘플 — 벽에 끼임 방지
-  return !rayWall(x-0.2,y-0.2)&&!rayWall(x+0.2,y-0.2)&&!rayWall(x-0.2,y+0.2)&&!rayWall(x+0.2,y+0.2);
+function rayBfsDist(map, sc, sr){   // BFS 거리맵(별조각·골 배치·몬스터 경로용)
+  const H=map.length, W=map[0].length, d={}; d[sc+","+sr]=0;
+  const q=[[sc,sr]];
+  while(q.length){
+    const [c,r]=q.shift(), cur=d[c+","+r];
+    for(const [dc,dr] of [[1,0],[-1,0],[0,1],[0,-1]]){
+      const nc=c+dc, nr=r+dr, k=nc+","+nr;
+      if(nc<0||nr<0||nr>=H||nc>=W||map[nr][nc]==="#"||k in d) continue;
+      d[k]=cur+1; q.push([nc,nr]);
+    }
+  }
+  return d;
+}
+function rayLoadFloor(fi){
+  const F=RAY_FLOORS[fi];
+  const map=rayGenMaze(F.size, F.seed);
+  const dmap=rayBfsDist(map,1,1);
+  const cells=Object.keys(dmap).map(k=>{ const [c,r]=k.split(",").map(Number); return {c:c,r:r,d:dmap[k]}; });
+  cells.sort((a,b)=>a.d-b.d);
+  const far=cells[cells.length-1];
+  // LAB-2② 별조각 5개: 거리 분위수(0.25~0.85)에서 골고루
+  const stars=[];
+  for(let i=0;i<5;i++){
+    const q=0.25+i*0.15, cell=cells[Math.floor((cells.length-1)*q)];
+    if((cell.c===1&&cell.r===1)||(cell.c===far.c&&cell.r===far.r)){ stars.push(cells[Math.floor((cells.length-1)*q)+1]||cell); }
+    else stars.push(cell);
+  }
+  // LAB-2③ 몬스터 소굴 = 중간 거리 지점
+  const den=cells[Math.floor((cells.length-1)*0.55)];
+  RAY.map=map; RAY.size=F.size; RAY.floor=fi;
+  RAY.px=1.5; RAY.py=1.5; RAY.ang=0;
+  RAY.gx=far.c+0.5; RAY.gy=far.r+0.5;
+  RAY.stars=stars.map(s=>({ x:s.c+0.5, y:s.r+0.5, got:false }));
+  RAY.got=0; RAY.need=3;
+  RAY.mons=[];
+  const monN=(fi===0)?1:((fi===1)?1:2);
+  for(let k=0;k<monN;k++){
+    const dc=cells[Math.floor((cells.length-1)*(0.55+k*0.25))]||den;
+    RAY.mons.push({ x:dc.c+0.5, y:dc.r+0.5, den:{x:dc.c+0.5,y:dc.r+0.5}, path:null, repathT:0, spd:1.55+fi*0.15 });
+  }
+  RAY.seen={}; RAY.floorT=0; RAY.caughtInv=0; RAY.bob=0;
+  showToast("🕶 "+F.name+" — ⭐ 3개를 모으면 큰 별의 문이 열려요!");
 }
 function rayStart(){
-  let sx=1.5, sy=1.5, gx=1.5, gy=1.5;
-  for(let r=0;r<RAY_MAP.length;r++) for(let c=0;c<RAY_MAP[r].length;c++){
-    if(RAY_MAP[r][c]==="*"){ sx=c+0.5; sy=r+0.5; }
-    if(RAY_MAP[r][c]==="G"){ gx=c+0.5; gy=r+0.5; }
-  }
-  RAY={ px:sx, py:sy, ang:0, gx:gx, gy:gy, time:0, cleared:false, mini:true };
+  RAY={ times:[], totalGot:0, cleared:false, mini:true, time:0 };
   gameState=STATE.RAY3D;
-  showToast("🕶 별빛 던전 3D(실험) — 미로 속 큰 별을 찾아요! (M 지도)");
+  rayLoadFloor(0);
+}
+function rayWallAt(x,y){
+  const c=Math.floor(x), r=Math.floor(y);
+  if(c<0||r<0||!RAY.map||r>=RAY.map.length||c>=RAY.map[r].length) return true;
+  return RAY.map[r][c]==="#";
+}
+function rayOpenPos(x,y){
+  return !rayWallAt(x-0.2,y-0.2)&&!rayWallAt(x+0.2,y-0.2)&&!rayWallAt(x-0.2,y+0.2)&&!rayWallAt(x+0.2,y+0.2);
 }
 function rayKey(code){
   if(code==="Escape"){ RAY=null; gameState=STATE.ADMIN; return; }
@@ -4013,31 +4349,116 @@ function rayKey(code){
   if(RAY.cleared && (code==="Enter"||code==="NumpadEnter")){ rayStart(); return; }
 }
 function rayUpdate(dt){
-  if(!RAY || RAY.cleared) return;
-  RAY.time+=dt;
-  const rot=2.6, spd=3.1, strafe=2.5;
+  if(!RAY || RAY.cleared || !RAY.map) return;
+  RAY.time+=dt; RAY.floorT+=dt;
+  if(RAY.caughtInv>0) RAY.caughtInv-=dt;
+  if(RAY.clearMsgT>0){ RAY.clearMsgT-=dt; if(RAY.clearMsgT<=0 && RAY.nextFloor!==undefined){ const nf=RAY.nextFloor; RAY.nextFloor=undefined; rayLoadFloor(nf); } return; }
+  const rot=2.6;
+  const run=(keysDown.has("ShiftLeft")||keysDown.has("ShiftRight"));   // LAB-2⑥ 달리기
+  const spd=(run?4.7:3.1), strafe=(run?3.6:2.5);
   if(keysDown.has("ArrowLeft"))  RAY.ang-=rot*dt;
   if(keysDown.has("ArrowRight")) RAY.ang+=rot*dt;
   const dx=Math.cos(RAY.ang), dy=Math.sin(RAY.ang);
-  let mx=0,my=0;
-  if(keysDown.has("ArrowUp")||keysDown.has("KeyW")){ mx+=dx*spd*dt; my+=dy*spd*dt; }
-  if(keysDown.has("ArrowDown")||keysDown.has("KeyS")){ mx-=dx*spd*dt; my-=dy*spd*dt; }
-  if(keysDown.has("KeyA")){ mx+=dy*strafe*dt; my+=-dx*strafe*dt; }
-  if(keysDown.has("KeyD")){ mx+=-dy*strafe*dt; my+=dx*strafe*dt; }
-  if(mx!==0 && rayOpen(RAY.px+mx, RAY.py)) RAY.px+=mx;   // 축 분리 충돌(벽 스침 허용)
-  if(my!==0 && rayOpen(RAY.px, RAY.py+my)) RAY.py+=my;
-  if(dist(RAY.px,RAY.py,RAY.gx,RAY.gy)<0.55){ RAY.cleared=true; playSfx("clear"); }
+  let mx=0,my=0, moving=false;
+  if(keysDown.has("ArrowUp")||keysDown.has("KeyW")){ mx+=dx*spd*dt; my+=dy*spd*dt; moving=true; }
+  if(keysDown.has("ArrowDown")||keysDown.has("KeyS")){ mx-=dx*spd*dt; my-=dy*spd*dt; moving=true; }
+  if(keysDown.has("KeyA")){ mx+=dy*strafe*dt; my+=-dx*strafe*dt; moving=true; }
+  if(keysDown.has("KeyD")){ mx+=-dy*strafe*dt; my+=dx*strafe*dt; moving=true; }
+  if(mx!==0 && rayOpenPos(RAY.px+mx, RAY.py)) RAY.px+=mx;
+  if(my!==0 && rayOpenPos(RAY.px, RAY.py+my)) RAY.py+=my;
+  RAY.bob=moving?(RAY.bob+dt*(run?11:7)):0;   // 걸음 흔들림
+  // LAB-2⑦ 미니맵 안개: 주변 2칸 시야 기록
+  const pc=Math.floor(RAY.px), pr=Math.floor(RAY.py);
+  for(let r=pr-2;r<=pr+2;r++) for(let c=pc-2;c<=pc+2;c++) RAY.seen[c+","+r]=1;
+  // 별조각 수집
+  for(const s of RAY.stars){
+    if(s.got) continue;
+    if(dist(RAY.px,RAY.py,s.x,s.y)<0.45){
+      s.got=true; RAY.got++; RAY.totalGot++; playSfx("buff"); RAY.sparkT=0.4;
+      if(RAY.got===RAY.need) showToast("🌟 큰 별의 문이 열렸다! ("+RAY.got+"/5)");
+      else showToast("⭐ 별조각! ("+RAY.got+"/5)"+(RAY.got<RAY.need?(" — 문까지 "+(RAY.need-RAY.got)+"개"):""));
+    }
+  }
+  if(RAY.sparkT>0) RAY.sparkT-=dt;
+  // LAB-2③ 추격 몬스터: 0.45s마다 BFS 재탐색 → 다음 칸으로 이동
+  for(const m of RAY.mons){
+    m.repathT-=dt;
+    if(m.repathT<=0){
+      m.repathT=0.45;
+      const d=rayBfsDist(RAY.map, Math.floor(m.x), Math.floor(m.y));
+      const pk=pc+","+pr;
+      if(pk in d){
+        // 플레이어에서 몬스터 방향으로 역추적해 몬스터 옆의 다음 칸 찾기
+        let cc=pc, cr=pr, guard=0;
+        while(guard++<2000){
+          const cur=d[cc+","+cr];
+          if(cur<=1) break;
+          let stepped=false;
+          for(const [dc,dr] of [[1,0],[-1,0],[0,1],[0,-1]]){
+            const nc=cc+dc, nr=cr+dr;
+            if(d[nc+","+nr]===cur-1){ cc=nc; cr=nr; stepped=true; break; }
+          }
+          if(!stepped) break;
+        }
+        m.tx=cc+0.5; m.ty=cr+0.5;
+      } else { m.tx=m.den.x; m.ty=m.den.y; }
+    }
+    if(m.tx!==undefined){
+      const dd=Math.hypot(m.tx-m.x, m.ty-m.y);
+      if(dd>0.05){ m.x+=(m.tx-m.x)/dd*Math.min(dd,m.spd*dt); m.y+=(m.ty-m.y)/dd*Math.min(dd,m.spd*dt); }
+    }
+    // 잡힘 → 시작점 리스폰(죽음 없음, 별조각 유지)
+    if(RAY.caughtInv<=0 && dist(RAY.px,RAY.py,m.x,m.y)<0.45){
+      RAY.px=1.5; RAY.py=1.5; RAY.caughtInv=2; playSfx("hit");
+      showToast("💧 그림자 젤리에게 잡혔다! 시작점으로...");
+      m.x=m.den.x; m.y=m.den.y; m.tx=undefined;
+    }
+  }
+  // 골(문 잠금: 별 3개)
+  if(dist(RAY.px,RAY.py,RAY.gx,RAY.gy)<0.55){
+    if(RAY.got>=RAY.need){
+      RAY.times.push(RAY.floorT); playSfx("clear");
+      if(RAY.floor>=RAY_FLOORS.length-1){
+        RAY.cleared=true;
+        const total=RAY.times.reduce((a,b)=>a+b,0);
+        RAY.total=total; RAY.starsRate=(RAY.totalGot>=13)?3:((RAY.totalGot>=8)?2:1);
+        try{ const best=JSON.parse(localStorage.getItem(RAY_BEST_KEY)||"null");
+          if(!best || total<best.total) localStorage.setItem(RAY_BEST_KEY, JSON.stringify({ total:Math.round(total*10)/10, stars:RAY.totalGot })); }catch(e){}
+        playSfx("win");
+      } else {
+        RAY.clearMsgT=1.3; RAY.nextFloor=RAY.floor+1;
+        showToast("🌟 "+RAY_FLOORS[RAY.floor].name+" 클리어! 아래층으로...");
+      }
+    } else if(!RAY.lockToastT || RAY.lockToastT<=0){
+      showToast("🔒 별조각 "+RAY.need+"개가 필요해요! ("+RAY.got+"/"+RAY.need+")"); RAY.lockToastT=1.2;
+    }
+  }
+  if(RAY.lockToastT>0) RAY.lockToastT-=dt;
+}
+function raySprite(wx, wy, drawFn){   // 월드 좌표 → 화면 투영(중심 기둥 z 근사 가림)
+  const dirX=Math.cos(RAY.ang), dirY=Math.sin(RAY.ang);
+  const plX=-dirY*RAY_PLANE, plY=dirX*RAY_PLANE;
+  const spX=wx-RAY.px, spY=wy-RAY.py;
+  const inv=1/(plX*dirY-dirX*plY);
+  const trX=inv*(dirY*spX-dirX*spY), trY=inv*(-plY*spX+plX*spY);
+  if(trY<=0.15) return;
+  const sx=Math.round((RAY_N/2)*(1+trX/trY));
+  const chk=[sx, sx-8, sx+8];
+  let vis=false;
+  for(const cc of chk){ if(cc>=0&&cc<RAY_N&&trY<_rayZ[cc]+0.3){ vis=true; break; } }
+  if(!vis) return;
+  drawFn(sx*(LOGW/RAY_N), trY);
 }
 function rayRender(){
-  if(!RAY) return;
+  if(!RAY || !RAY.map) return;
   const colW=LOGW/RAY_N;
-  // 천장(별하늘)·바닥
-  ctx.fillStyle="#0a0d24"; ctx.fillRect(0,0,LOGW,LOGH/2);
-  ctx.fillStyle="#161a34"; ctx.fillRect(0,LOGH/2,LOGW,LOGH/2);
+  const F=RAY_FLOORS[RAY.floor]||RAY_FLOORS[0];
+  const bobOff=Math.sin(RAY.bob)*4;   // LAB-2⑥ 걸음 흔들림(약하게)
+  ctx.fillStyle="#0a0d24"; ctx.fillRect(0,0,LOGW,LOGH/2+bobOff);
+  ctx.fillStyle="#161a34"; ctx.fillRect(0,LOGH/2+bobOff,LOGW,LOGH/2-bobOff+4);
   ctx.fillStyle="#dfe6ff";
   for(let i=0;i<26;i++){ const sx=(i*151)%LOGW, sy=(i*83)%Math.floor(LOGH*0.42); ctx.globalAlpha=0.5; ctx.fillRect(sx,sy,2,2); }
   ctx.globalAlpha=1;
-  // 벽 기둥(Lodev DDA)
   const dirX=Math.cos(RAY.ang), dirY=Math.sin(RAY.ang);
   const plX=-dirY*RAY_PLANE, plY=dirX*RAY_PLANE;
   for(let i=0;i<RAY_N;i++){
@@ -4049,65 +4470,100 @@ function rayRender(){
     if(rdx<0){ stepX=-1; sideX=(RAY.px-mapX)*ddx; } else { stepX=1; sideX=(mapX+1-RAY.px)*ddx; }
     if(rdy<0){ stepY=-1; sideY=(RAY.py-mapY)*ddy; } else { stepY=1; sideY=(mapY+1-RAY.py)*ddy; }
     let side=0, hit=false, guard=0;
-    while(!hit && guard++<64){
+    while(!hit && guard++<80){
       if(sideX<sideY){ sideX+=ddx; mapX+=stepX; side=0; } else { sideY+=ddy; mapY+=stepY; side=1; }
-      if(mapY<0||mapY>=RAY_MAP.length||mapX<0||mapX>=RAY_MAP[0].length){ hit=true; break; }
-      if(RAY_MAP[mapY][mapX]==="#") hit=true;
+      if(mapY<0||mapY>=RAY.map.length||mapX<0||mapX>=RAY.map[0].length){ hit=true; break; }
+      if(RAY.map[mapY][mapX]==="#") hit=true;
     }
     const perp=Math.max(0.06, side===0 ? (sideX-ddx) : (sideY-ddy));
     _rayZ[i]=perp;
     const h=Math.min(LOGH*1.4, LOGH/perp);
-    const b=Math.max(0.14, 1-perp*0.105)*(side?0.72:1);
-    ctx.fillStyle="rgb("+Math.round(100*b)+","+Math.round(122*b)+","+Math.round(196*b)+")";
-    ctx.fillRect(i*colW, (LOGH-h)/2, colW+1, h);
+    const checker=((mapX+mapY)%2)?0.92:1;   // LAB-2④ 체커 명암(입체감)
+    const b=Math.max(0.12, 1-perp*0.10)*(side?0.72:1)*checker;
+    ctx.fillStyle="rgb("+Math.round(F.wall[0]*b)+","+Math.round(F.wall[1]*b)+","+Math.round(F.wall[2]*b)+")";
+    ctx.fillRect(i*colW, (LOGH-h)/2+bobOff, colW+1, h);
   }
-  // 골(큰 별) 스프라이트 투영 — 중심 기둥 z 검사로 근사 가림
+  // 스프라이트: 별조각 → 몬스터 → 골(가까운 것 위에)
+  for(const s of RAY.stars){
+    if(s.got) continue;
+    raySprite(s.x, s.y, function(px2, dist2){
+      const size=Math.min(240, LOGH/dist2*0.22);
+      drawStar(px2, LOGH/2+bobOff+size*0.4, 5, size*0.5, size*0.22, "#ffe14d");
+    });
+  }
+  for(const m of RAY.mons){
+    raySprite(m.x, m.y, function(px2, dist2){
+      const size=Math.min(500, LOGH/dist2*0.5);
+      const img=getMonsterImage("soft_jelly");
+      if(img) ctx.drawImage(img, px2-size/2, LOGH/2+bobOff-size*0.1, size, size);
+      else { ctx.fillStyle="#7ad0e0"; ctx.beginPath(); ctx.arc(px2, LOGH/2+bobOff+size*0.2, size*0.4, 0, Math.PI*2); ctx.fill(); }
+    });
+  }
   {
-    const spX=RAY.gx-RAY.px, spY=RAY.gy-RAY.py;
-    const inv=1/(plX*dirY-dirX*plY);
-    const trX=inv*(dirY*spX-dirX*spY), trY=inv*(-plY*spX+plX*spY);
-    if(trY>0.15){
-      const sx=Math.round((RAY_N/2)*(1+trX/trY));
-      if(sx>=0 && sx<RAY_N && trY<_rayZ[sx]+0.3){
-        const size=Math.min(600, LOGH/trY*0.55);
-        const glow=0.5+0.5*Math.sin(uiTime*5);
-        ctx.globalAlpha=0.25+0.25*glow;
-        ctx.fillStyle="#ffe875"; ctx.beginPath(); ctx.arc(sx*colW, LOGH/2+size*0.08, size*0.5, 0, Math.PI*2); ctx.fill();
-        ctx.globalAlpha=1;
-        drawStar(sx*colW, LOGH/2+size*0.08, 5, size*0.34, size*0.15, "#ffe14d");
-      }
-    }
+    const locked=RAY.got<RAY.need;
+    raySprite(RAY.gx, RAY.gy, function(px2, dist2){
+      const size=Math.min(600, LOGH/dist2*0.55);
+      const glow=0.5+0.5*Math.sin(uiTime*5);
+      ctx.globalAlpha=(locked?0.15:0.25+0.25*glow);
+      ctx.fillStyle=locked?"#8893bb":"#ffe875";
+      ctx.beginPath(); ctx.arc(px2, LOGH/2+bobOff+size*0.08, size*0.5, 0, Math.PI*2); ctx.fill();
+      ctx.globalAlpha=1;
+      drawStar(px2, LOGH/2+bobOff+size*0.08, 5, size*0.34, size*0.15, locked?"#6a7290":"#ffe14d");
+      if(locked){ ctx.font=Math.round(size*0.2)+"px 'Malgun Gothic',sans-serif"; ctx.textAlign="center"; ctx.fillText("🔒", px2, LOGH/2+bobOff-size*0.28); }
+    });
   }
-  // 미니맵
+  // 수집 반짝임·잡힘 비네트
+  if(RAY.sparkT>0){ ctx.globalAlpha=RAY.sparkT*0.8; ctx.fillStyle="#fff8d0"; ctx.fillRect(0,0,LOGW,LOGH); ctx.globalAlpha=1; }
+  if(RAY.caughtInv>1.4){ ctx.globalAlpha=(RAY.caughtInv-1.4)*0.9; ctx.fillStyle="#20304a"; ctx.fillRect(0,0,LOGW,LOGH); ctx.globalAlpha=1; }
+  // LAB-2⑦ 미니맵(가본 곳만)
   if(RAY.mini){
-    const ms=9, mx0=LOGW-16-16*ms, my0=54;
-    ctx.fillStyle="rgba(8,10,22,0.8)"; ctx.fillRect(mx0-6,my0-6,16*ms+12,16*ms+12);
-    for(let r=0;r<RAY_MAP.length;r++) for(let c=0;c<RAY_MAP[0].length;c++){
-      ctx.fillStyle=(RAY_MAP[r][c]==="#")?"#3a4470":"#10142c";
+    const N=RAY.size, ms=Math.max(5, Math.floor(150/N)), mx0=LOGW-16-N*ms, my0=54;
+    ctx.fillStyle="rgba(8,10,22,0.8)"; ctx.fillRect(mx0-6,my0-6,N*ms+12,N*ms+12);
+    for(let r=0;r<N;r++) for(let c=0;c<N;c++){
+      if(!RAY.seen[c+","+r]) continue;
+      ctx.fillStyle=(RAY.map[r][c]==="#")?"#3a4470":"#10142c";
       ctx.fillRect(mx0+c*ms, my0+r*ms, ms-1, ms-1);
     }
-    drawStar(mx0+RAY.gx*ms, my0+RAY.gy*ms, 5, 4.5, 2, "#ffe14d");
+    for(const s of RAY.stars){ if(!s.got && RAY.seen[Math.floor(s.x)+","+Math.floor(s.y)]) drawStar(mx0+s.x*ms, my0+s.y*ms, 5, 3.5, 1.6, "#ffe14d"); }
+    if(RAY.seen[Math.floor(RAY.gx)+","+Math.floor(RAY.gy)]) drawStar(mx0+RAY.gx*ms, my0+RAY.gy*ms, 5, 5, 2.2, RAY.got>=RAY.need?"#7dffb0":"#8893bb");
     ctx.fillStyle="#7dffb0"; ctx.beginPath(); ctx.arc(mx0+RAY.px*ms, my0+RAY.py*ms, 3, 0, Math.PI*2); ctx.fill();
     ctx.strokeStyle="#7dffb0"; ctx.lineWidth=1.5;
     ctx.beginPath(); ctx.moveTo(mx0+RAY.px*ms, my0+RAY.py*ms);
     ctx.lineTo(mx0+(RAY.px+Math.cos(RAY.ang)*1.2)*ms, my0+(RAY.py+Math.sin(RAY.ang)*1.2)*ms); ctx.stroke();
   }
-  // HUD
+  // LAB-2⑤ 나침반 + 카운터 HUD
   ctx.save(); ctx.textBaseline="middle";
   ctx.fillStyle="rgba(10,14,24,0.85)"; ctx.fillRect(0,0,LOGW,44);
-  ctx.textAlign="left"; ctx.fillStyle="#9fe6c8"; ctx.font="bold 17px 'Malgun Gothic',sans-serif";
-  ctx.fillText("🕶 별빛 던전 3D (실험) — 큰 별을 찾아라!", 16, 22);
-  ctx.textAlign="right"; ctx.fillStyle="#ffffff"; ctx.font="bold 16px 'Malgun Gothic',sans-serif";
-  ctx.fillText("⏱ "+RAY.time.toFixed(1)+"초", LOGW-16, 22);
+  ctx.textAlign="left"; ctx.fillStyle="#9fe6c8"; ctx.font="bold 16px 'Malgun Gothic',sans-serif";
+  ctx.fillText("🕶 "+F.name+"  ("+(RAY.floor+1)+"/3층)", 16, 22);
+  ctx.textAlign="right"; ctx.fillStyle="#ffffff"; ctx.font="bold 15px 'Malgun Gothic',sans-serif";
+  ctx.fillText("⭐ "+RAY.got+"/5 (문 "+RAY.need+")   ⏱ "+RAY.floorT.toFixed(1)+"초", LOGW-16, 22);
+  {
+    const ga=Math.atan2(RAY.gy-RAY.py, RAY.gx-RAY.px)-RAY.ang;
+    ctx.save(); ctx.translate(LOGW/2, 22); ctx.rotate(ga);
+    ctx.fillStyle=RAY.got>=RAY.need?"#7dffb0":"#8893bb";
+    ctx.beginPath(); ctx.moveTo(12,0); ctx.lineTo(-7,-7); ctx.lineTo(-3,0); ctx.lineTo(-7,7); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    ctx.textAlign="center"; ctx.fillStyle="#8893bb"; ctx.font="11px 'Malgun Gothic',sans-serif";
+    ctx.fillText("큰 별", LOGW/2, 38);
+  }
   ctx.textAlign="center"; ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
-  ctx.fillText("↑↓(W/S) 이동 · ←→ 회전 · A/D 옆걸음 · M 지도 · Esc 나가기", LOGW/2, LOGH-18);
+  ctx.fillText("↑↓(W/S) 이동 · ←→ 회전 · A/D 옆걸음 · Shift 달리기 · M 지도 · Esc 나가기", LOGW/2, LOGH-18);
+  if(RAY.clearMsgT>0){ ctx.fillStyle="rgba(8,10,22,0.6)"; ctx.fillRect(0,LOGH/2-50,LOGW,100);
+    ctx.fillStyle="#7dffb0"; ctx.font="bold 34px 'Malgun Gothic',sans-serif";
+    ctx.fillText("🌟 층 클리어! 아래로 내려간다...", LOGW/2, LOGH/2); }
   if(RAY.cleared){
-    ctx.fillStyle="rgba(8,10,22,0.78)"; ctx.fillRect(0,0,LOGW,LOGH);
+    ctx.fillStyle="rgba(8,10,22,0.82)"; ctx.fillRect(0,0,LOGW,LOGH);
     ctx.fillStyle="#ffe14d"; ctx.font="bold 44px 'Malgun Gothic',sans-serif";
-    ctx.fillText("🌟 큰 별을 찾았다!", LOGW/2, LOGH/2-40);
-    ctx.fillStyle="#dfe6ff"; ctx.font="18px 'Malgun Gothic',sans-serif";
-    ctx.fillText("⏱ "+RAY.time.toFixed(1)+"초 만에 탈출!", LOGW/2, LOGH/2+8);
-    ctx.fillText("R(Enter) 다시 · Esc 교사 패널", LOGW/2, LOGH/2+44);
+    ctx.fillText("🌟 던전 완전 정복!", LOGW/2, LOGH/2-72);
+    ctx.font="bold 34px 'Malgun Gothic',sans-serif";
+    ctx.fillText("★".repeat(RAY.starsRate)+"☆".repeat(3-RAY.starsRate), LOGW/2, LOGH/2-24);
+    ctx.fillStyle="#dfe6ff"; ctx.font="17px 'Malgun Gothic',sans-serif";
+    ctx.fillText("⏱ 합계 "+RAY.total.toFixed(1)+"초 ("+RAY.times.map(t=>t.toFixed(0)+"s").join(" · ")+") · ⭐ "+RAY.totalGot+"/15", LOGW/2, LOGH/2+16);
+    let bestTxt="—";
+    try{ const b=JSON.parse(localStorage.getItem(RAY_BEST_KEY)||"null"); if(b) bestTxt=b.total+"초 · ⭐"+b.stars; }catch(e){}
+    ctx.fillText("🏆 최고 기록: "+bestTxt, LOGW/2, LOGH/2+46);
+    ctx.fillText("R(Enter) 다시 · Esc 교사 패널", LOGW/2, LOGH/2+82);
   }
   ctx.restore();
 }
