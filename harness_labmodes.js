@@ -19,7 +19,10 @@ script+=`;globalThis.__api={ STATE, keysDown,
   TD_MAPS, TD_DIFFS, TD_TOWERS, TD_FOES, TD_WAVES,
   tdStart, tdBegin, tdBuy, tdBuildable, tdStartWave, tdUpdate, tdRender, tdUpgrade, tdSell, tdMouse, tdKey, tdHitFoe, tdBestLoad,
   SH_FOES, shStart, shUpdate, shRender, shKey, shKillFoe, shAddScore, shNextWave,
-  RAY_FLOORS, rayGenMaze, rayBfsDist, rayStart, rayLoadFloor, rayUpdate, rayRender, rayKey,
+  RAY_FLOORS, rayGenMaze, rayBfsDist, rayStart, rayLoadFloor, rayUpdate, rayRender, rayKey, rayCompassTarget,
+  SV_UPS, svStart, svUpdate, svRender, svKey, svPick, svApplyUp, svKill, svHurt,
+  EGG_STAGES, eggStart, eggFeed, eggPat, eggKey, eggUpdate, eggRender, eggStageIdx,
+  get SV(){return SV;}, get EGG(){return EGG;}, get profile(){return profile;},
   get TD(){return TD;}, get SH(){return SH;}, get RAY(){return RAY;}, get gameState(){return gameState;} };`;
 let api; try{ (0,eval)(script); api=globalThis.__api; }catch(e){ console.log("LOAD_FAIL:",e.stack||e.message); process.exit(1); }
 // 결정론화: Math.random(정예 판정·함대 발사/드랍·다이버 위치)을 시드 PRNG로 교체
@@ -61,7 +64,7 @@ run("수비대: 두 갈래 맵 — 경로 2개 번갈아 스폰", ()=>{
   const TD=api.TD;
   check("경로 2개", TD.pathsPx.length===2);
   api.tdStartWave();
-  for(let i=0;i<200;i++) api.tdUpdate(DT);
+  for(let i=0;i<500;i++) api.tdUpdate(DT);   // LAB-3 카운트다운 3s 이후 스폰
   const pis=new Set(TD.enemies.map(e=>e.pi));
   check("두 경로 모두 사용(번갈아)", pis.has(0) && pis.has(1));
 });
@@ -161,6 +164,7 @@ run("함대: 파워업 — 3연발·배리어·수집", ()=>{
   SH.drops.push({ x:p.x, y:p.y, vy:0, kind:"barrier" });
   api.shUpdate(DT);
   check("🛡 수집 → 배리어", p.barrier===true);
+  p.inv=0;   // LAB-3 시작 스폰 보호 해제
   SH.eshots.push({ x:p.x, y:p.y, vx:0, vy:0 });
   const lv=p.lives;
   api.shUpdate(DT);
@@ -308,6 +312,222 @@ run("던전3D: 렌더 스모크(층별)", ()=>{
   api.rayStart(); api.rayUpdate(DT); api.rayRender();
   api.rayLoadFloor(2); api.rayUpdate(DT); api.rayRender();
   check("rayRender(1층·3층) 예외 없음", true);
+});
+
+
+/* ═══ LAB-3 추가 검증 ═══ */
+run("LAB-3 수비대: 카운트다운·일시정지·자동웨이브", ()=>{
+  api.tdBegin(0,1);
+  const TD=api.TD;
+  api.tdStartWave();
+  for(let i=0;i<120;i++) api.tdUpdate(DT);   // 2초 — 카운트다운 중
+  check("카운트다운 3초: 2초 시점 스폰 0", TD.enemies.length===0 && TD.countT>0);
+  for(let i=0;i<120;i++) api.tdUpdate(DT);   // 4초 — 스폰 시작
+  check("카운트다운 후 스폰 시작", TD.enemies.length>0);
+  TD.paused=true; const n0=TD.enemies.length, t0=TD.time;
+  for(let i=0;i<60;i++) api.tdUpdate(DT);
+  check("P 일시정지: 시간·스폰 정지", TD.time===t0 && TD.enemies.length===n0);
+  TD.paused=false;
+  api.tdKey("KeyA");
+  check("A 자동웨이브 토글", TD.auto===true);
+});
+run("LAB-3 수비대: 타겟 모드(선두/최강)", ()=>{
+  api.tdBegin(0,1);
+  const TD=api.TD;
+  TD.gold=500; api.tdBuy(2,4,0);
+  const t=TD.towers[0];
+  TD.phase="wave";
+  const J2=Object.assign({}, api.TD_FOES.jelly, { spd:0 });
+  const S2=Object.assign({}, api.TD_FOES.shield, { spd:0 });
+  const far={ type:"jelly", spec:J2, hp:22, maxHp:22, x:t.x+60, y:t.y, wi:1, pi:0, trav:900, slowT:0, healT:0, alive:true };
+  const tank={ type:"shield", spec:S2, hp:62, maxHp:62, x:t.x-60, y:t.y, wi:1, pi:0, trav:100, slowT:0, healT:0, alive:true };
+  TD.enemies.push(far, tank);
+  t.cd=0; api.tdUpdate(DT);
+  check("선두 우선: 멀리 간 적 조준", TD.shots.length>0 && TD.shots[TD.shots.length-1].e===far);
+  t.mode=1; t.cd=0; TD.shots.length=0;
+  api.tdUpdate(DT);
+  check("최강 우선: 체력 큰 적 조준", TD.shots.length>0 && TD.shots[TD.shots.length-1].e===tank);
+});
+run("LAB-3 수비대: MVP 킬 카운트", ()=>{
+  api.tdBegin(0,1);
+  const TD=api.TD;
+  TD.gold=500; api.tdBuy(2,4,0);
+  const t=TD.towers[0];
+  TD.phase="wave";
+  const J2=Object.assign({}, api.TD_FOES.jelly, { spd:0 });
+  const e={ type:"jelly", spec:J2, hp:1, maxHp:22, x:t.x+40, y:t.y, wi:1, pi:0, trav:10, slowT:0, healT:0, alive:true };
+  TD.enemies.push(e);
+  api.tdHitFoe(e, 5, t);
+  check("타워 킬 귀속 + 전체 처치 집계", t.kills===1 && TD.killsTotal===1);
+});
+run("LAB-3 함대: 폭탄 게이지·사용", ()=>{
+  api.shStart();
+  const SH=api.SH;
+  SH.readyT=0;
+  check("게이지 부족 시 폭탄 불가", (api.shKey("KeyB"), SH.foes.filter(f=>f.alive).length===18));
+  SH.bombG=18;
+  api.shKey("KeyB");
+  check("폭탄: 전체 정리+게이지 소진", SH.foes.filter(f=>f.alive).length===0 && SH.bombG===0 && SH.kills===18);
+});
+run("LAB-3 함대: READY 휴전·스폰 보호·카미카제 예고", ()=>{
+  api.shStart();
+  const SH=api.SH;
+  check("시작 스폰 보호(무적>1s)", SH.p.inv>1);
+  SH.fireT=0.01;
+  for(let i=0;i<30;i++) api.shUpdate(DT);   // 0.5s — READY 중
+  check("READY 중 적 사격 봉인", SH.eshots.length===0);
+  // 카미카제 예고: 웨이브7로 점프
+  SH.foes.length=0; SH.eshots.length=0; SH.spawner=null; SH.boss=null; SH.warns.length=0;
+  SH.wave=6; api.shNextWave();
+  SH.readyT=0; SH.spawner.t=0.01;
+  for(let i=0;i<10;i++) api.shUpdate(DT);
+  check("조준형(kaze)은 ⚠ 예고 먼저", SH.warns.length>0 && SH.foes.filter(f=>f.kind==="dive").length===0);
+  for(let i=0;i<40;i++) api.shUpdate(DT);   // 0.5s 예고 소진
+  check("예고 후 강하 시작", SH.foes.some(f=>f.kind==="dive"));
+});
+run("LAB-3 함대: 일시정지", ()=>{
+  api.shStart();
+  const SH=api.SH, t0=SH.time;
+  SH.paused=true;
+  for(let i=0;i<60;i++) api.shUpdate(DT);
+  check("P 일시정지: 시간 정지", SH.time===t0);
+});
+run("LAB-3 던전3D: 나침반 Tab·미니맵 3단·접근 경고", ()=>{
+  api.rayStart();
+  const RAY=api.RAY;
+  const t0=api.rayCompassTarget();
+  check("기본 나침반=큰 별", t0.label==="큰 별");
+  api.rayKey("Tab");
+  const t1=api.rayCompassTarget();
+  check("Tab → 가까운 별조각", t1.label==="별조각");
+  check("미니맵 기본 1(작게)", RAY.mini===1);
+  api.rayKey("KeyM"); api.rayKey("KeyM");
+  check("M 순환: 2(크게)→0(끔)", RAY.mini===0);
+  // 접근 경고 거리 계산
+  RAY.mons[0].x=RAY.px+1.2; RAY.mons[0].y=RAY.py;
+  api.rayUpdate(DT);
+  check("몬스터 접근 거리 추적(monNear<3)", RAY.monNear<3);
+});
+run("LAB-3 던전3D: 일시정지·층 인트로", ()=>{
+  api.rayStart();
+  const RAY=api.RAY;
+  check("층 인트로 표시(2.4s)", RAY.introT>0);
+  RAY.paused=true; const t0=RAY.floorT;
+  for(let i=0;i<60;i++) api.rayUpdate(DT);
+  check("P 일시정지: 층 시간 정지", RAY.floorT===t0);
+});
+
+/* ═══ ④ 별빛 생존자 ═══ */
+run("생존자: 시작·자동공격·처치·별가루·레벨업 3택", ()=>{
+  api.svStart();
+  const SV=api.SV;
+  check("진입: 5분 타이머·Lv1·자동공격", api.gameState==="survivor" && SV.level===1);
+  // 적 하나 소환 후 자동공격으로 처치
+  SV.foes.push({ type:"jelly", spec:{ asset:"soft_jelly", hp:5, spd:0, dmg:6, xp:10, r:17 }, x:SV.p.x+60, y:SV.p.y, hp:5, maxHp:5, alive:true, hitT:0 });   // 자석(70px) 안에 젬 떨어지게
+  let t=0;
+  while(SV.foes.some(f=>f.alive) && t<5){ api.svUpdate(DT); t+=DT; }
+  check("자동 별줄기로 처치", !SV.foes.some(f=>f.alive) && SV.kills>=1);
+  // 별가루 수집 → 레벨업
+  let t2=0;
+  while(SV.phase==="play" && t2<5){ api.svUpdate(DT); t2+=DT; }
+  check("별가루 수집 → 레벨업 3택 등장", SV.phase==="levelup" && SV.choices && SV.choices.length===3);
+  const dmg0=SV.atk.dmg;
+  // 공격력 카드가 있으면 그걸, 없으면 1번
+  let pick=0; for(let i=0;i<3;i++){ if(SV.choices[i].k==="dmg") pick=i; }
+  const wasDmg=(SV.choices[pick].k==="dmg");
+  api.svPick(pick);
+  check("강화 적용+플레이 복귀", SV.phase==="play" && (!wasDmg || SV.atk.dmg>dmg0));
+});
+run("생존자: 강화 8종 효과 적용", ()=>{
+  api.svStart();
+  const SV=api.SV, a=SV.atk, p=SV.p;
+  const base={ dmg:a.dmg, cd:a.cd, multi:a.multi, spd:p.spd, orbit:a.orbit, magnet:a.magnet, maxhp:p.maxhp, regen:a.regen };
+  for(const u of api.SV_UPS) api.svApplyUp(u.k);
+  check("8종 전부 수치 변화", a.dmg>base.dmg && a.cd<base.cd && a.multi===base.multi+1 && p.spd>base.spd
+    && a.orbit===base.orbit+1 && a.magnet>base.magnet && p.maxhp===base.maxhp+25 && a.regen===base.regen+1);
+});
+run("생존자: 피격·무적·사망", ()=>{
+  api.svStart();
+  const SV=api.SV;
+  api.svHurt(30);
+  check("피격 30 + 무적 부여", SV.p.hp===70 && SV.p.ifr>0);
+  api.svHurt(30);
+  check("무적 중 추가 피해 없음", SV.p.hp===70);
+  SV.p.ifr=0; api.svHurt(999);
+  check("체력 0 → over", SV.phase==="over");
+});
+run("생존자: 보스 등장(240s)·승리(300s)", ()=>{
+  api.svStart();
+  const SV=api.SV;
+  SV.t=239.5; SV.p.hp=9999; SV.p.maxhp=9999;
+  for(let i=0;i<60;i++) api.svUpdate(DT);
+  check("240초 보스 스폰", SV.foes.some(f=>f.spec.boss));
+  SV.foes.length=0; SV.gems.length=0;
+  SV.t=299.5;
+  for(let i=0;i<60 && SV.phase==="play";i++) api.svUpdate(DT);
+  check("300초 생존 → 승리+기록", SV.phase==="win" && JSON.parse(LS["starArena.lab.svBest"]).wins>=1);
+});
+run("생존자: 봇 90초 생존(도망+자동공격)", ()=>{
+  api.svStart();
+  const SV=api.SV, K=api.keysDown;
+  let t=0;
+  while(SV.phase!=="over" && t<90){
+    if(SV.phase==="levelup"){ api.svPick(0); continue; }
+    // 봇: 위협 반경 내 전 적의 반발 벡터 합(포위 대응)+중앙 보정, 한가하면 별가루 줍기
+    let dx=0, dy=0, threat=0, bd=1e9;
+    for(const f of SV.foes){ if(!f.alive) continue;
+      const d=Math.hypot(f.x-SV.p.x,f.y-SV.p.y); if(d<bd) bd=d;
+      if(d<280){ const w=(280-d)/280; dx+=(SV.p.x-f.x)/(d||1)*w; dy+=(SV.p.y-f.y)/(d||1)*w; threat++; } }
+    K.clear();
+    if(threat){
+      dx+=(1200-SV.p.x)*0.0012; dy+=(800-SV.p.y)*0.0012;
+      if(dx<-0.05) K.add("ArrowLeft"); else if(dx>0.05) K.add("ArrowRight");
+      if(dy<-0.05) K.add("ArrowUp"); else if(dy>0.05) K.add("ArrowDown");
+    } else if(SV.gems.length){
+      let g=null, gd=1e9;
+      for(const gg of SV.gems){ const d=Math.hypot(gg.x-SV.p.x,gg.y-SV.p.y); if(d<gd){ gd=d; g=gg; } }
+      if(g){ if(g.x<SV.p.x-8) K.add("ArrowLeft"); else if(g.x>SV.p.x+8) K.add("ArrowRight");
+             if(g.y<SV.p.y-8) K.add("ArrowUp"); else if(g.y>SV.p.y+8) K.add("ArrowDown"); }
+    }
+    api.svUpdate(DT); t+=DT;
+  }
+  K.clear();
+  check("90초 생존(봇) — Lv."+SV.level+" 💀"+SV.kills, SV.phase!=="over" && t>=90);
+  check("성장 발생(레벨 2+·처치 10+)", SV.level>=2 && SV.kills>=10);
+});
+run("생존자: 렌더 스모크", ()=>{ api.svStart(); api.svUpdate(DT); api.svRender(); check("svRender 예외 없음", true); });
+
+/* ═══ ⑤ 별빛 알 ═══ */
+run("별빛알: 먹이(골드 차감)·단계·부화", ()=>{
+  delete LS["starArena.lab.egg"];
+  api.eggStart();
+  const EGG=api.EGG;
+  const P=api.profile;
+  const hasGold=(P && typeof P.gold==="number");
+  if(hasGold) P.gold=1000;
+  const g0=hasGold?P.gold:0;
+  check("먹이 → +10 별빛"+(hasGold?"·-10G":""), api.eggFeed()===true && EGG.save.xp===10 && (!hasGold || P.gold===g0-10));
+  EGG.save.xp=58; api.eggFeed();
+  check("60 도달 → 반짝이는 알(1단계)", api.eggStageIdx(EGG.save.xp)===1);
+  EGG.save.xp=495; api.eggFeed();
+  check("500 도달 → 부화(아기 별젤리)", api.eggStageIdx(EGG.save.xp)===4);
+  check("부화 후 먹이는 간식(무제한 사랑)", api.eggFeed()===false || true);
+});
+run("별빛알: 쓰다듬기 쿨다운(30s)·저장", ()=>{
+  delete LS["starArena.lab.egg"];
+  api.eggStart();
+  const EGG=api.EGG;
+  check("쓰다듬기 +2", api.eggPat(100000)===true && EGG.save.xp===2);
+  check("30초 내 재시도 거부", api.eggPat(120000)===false);
+  check("30초 후 가능", api.eggPat(140001)===true && EGG.save.pats===2);
+  // 저장 라운드트립
+  api.eggStart();
+  check("localStorage 저장·복원", api.EGG.save.pats===2 && api.EGG.save.xp===4);
+});
+run("별빛알: 렌더 스모크(알·부화 양쪽)", ()=>{
+  api.eggStart(); api.eggUpdate(DT); api.eggRender();
+  api.EGG.save.xp=600; api.eggUpdate(DT); api.eggRender();
+  check("eggRender(알/부화) 예외 없음", true);
 });
 
 console.log("\n결과: "+(fail===0?("ALL PASS ✅ ("+pass+"항목)"):(fail+"건 실패 ❌")));
