@@ -22,6 +22,8 @@ script+=`;globalThis.__api={ STATE, keysDown,
   RAY_FLOORS, rayGenMaze, rayBfsDist, rayStart, rayLoadFloor, rayUpdate, rayRender, rayKey, rayCompassTarget,
   SV_UPS, svStart, svUpdate, svRender, svKey, svPick, svApplyUp, svKill, svHurt,
   EGG_STAGES, eggStart, eggFeed, eggPat, eggKey, eggUpdate, eggRender, eggStageIdx,
+  PZ_LEVELS, pzStart, pzBegin, pzMove, pzUndo, pzKey, pzRender, pzBestLoad,
+  get PZ(){return PZ;},
   get SV(){return SV;}, get EGG(){return EGG;}, get profile(){return profile;},
   get TD(){return TD;}, get SH(){return SH;}, get RAY(){return RAY;}, get gameState(){return gameState;} };`;
 let api; try{ (0,eval)(script); api=globalThis.__api; }catch(e){ console.log("LOAD_FAIL:",e.stack||e.message); process.exit(1); }
@@ -528,6 +530,99 @@ run("별빛알: 렌더 스모크(알·부화 양쪽)", ()=>{
   api.eggStart(); api.eggUpdate(DT); api.eggRender();
   api.EGG.save.xp=600; api.eggUpdate(DT); api.eggRender();
   check("eggRender(알/부화) 예외 없음", true);
+});
+
+
+/* ═══ ⑥ 별조각 밀기(소코반) ═══ */
+function pzSolve(rows, capStates){   // 독립 BFS 솔버 — 게임 데이터와 별개로 재검증
+  const H=rows.length, W=rows[0].length;
+  let px=0, py=0; const boxes=[], goals=[]; const wall=[];
+  for(let r=0;r<H;r++){ wall.push([]);
+    for(let c=0;c<W;c++){ const ch=rows[r][c];
+      wall[r].push(ch==="#");
+      if(ch==="*"){ px=c; py=r; }
+      if(ch==="$") boxes.push(c+r*W);
+      if(ch==="o") goals.push(c+r*W);
+    } }
+  if(boxes.length!==goals.length||!boxes.length) return { ok:false };
+  const goalSet=new Set(goals);
+  const key=(p,bs)=>p+"|"+bs.join(",");
+  const start={ p:px+py*W, bs:boxes.slice().sort((a,b)=>a-b), moves:0 };
+  const seen=new Set([key(start.p,start.bs)]);
+  let q=[start], states=0;
+  const DIRS=[1,-1,W,-W];
+  while(q.length){
+    const nq=[];
+    for(const st of q){
+      if(st.bs.every(b=>goalSet.has(b))) return { ok:true, moves:st.moves };
+      for(const d of DIRS){
+        const np=st.p+d, nc=np%W, nr=(np-nc)/W;
+        if(wall[nr][nc]) continue;
+        const bi=st.bs.indexOf(np);
+        let bs=st.bs;
+        if(bi>=0){
+          const bp=np+d, bc=bp%W, br=(bp-bc)/W;
+          if(wall[br][bc] || st.bs.indexOf(bp)>=0) continue;
+          bs=st.bs.slice(); bs[bi]=bp; bs.sort((a,b)=>a-b);
+        }
+        const k=key(np,bs);
+        if(seen.has(k)) continue;
+        seen.add(k);
+        if(++states>capStates) return { ok:false };
+        nq.push({ p:np, bs:bs, moves:st.moves+1 });
+      }
+    }
+    q=nq;
+  }
+  return { ok:false };
+}
+run("퍼즐: 12판 전부 풀림 + 표기 최소수 정확(독립 솔버 재검증)", ()=>{
+  let allOk=true, minOk=true;
+  for(let i=0;i<api.PZ_LEVELS.length;i++){
+    const L=api.PZ_LEVELS[i], r=pzSolve(L.rows, 500000);
+    if(!r.ok){ allOk=false; console.log("      풀림 실패: "+L.name); }
+    else if(r.moves!==L.min){ minOk=false; console.log("      최소수 불일치 "+L.name+": 표기 "+L.min+" vs 솔버 "+r.moves); }
+  }
+  check("12판 전부 해 존재", allOk && api.PZ_LEVELS.length===12);
+  check("표기 최소수 = 솔버 최적수", minOk);
+});
+run("퍼즐: 규칙(밀기·벽·이중밀기 금지)·언두", ()=>{
+  api.pzStart(); api.pzBegin(0);   // "첫 밀기": #.*$o.#
+  const PZ=api.PZ;
+  check("로드: 별1·홈1", PZ.boxes.length===1 && PZ.goals.length===1);
+  api.pzMove(-1,0);   // (1,2)로
+  check("벽으로 이동 불가(왼쪽 끝)", api.pzMove(-1,0)===false && PZ.px===1);
+  // 오른쪽 밀기 → 별이 홈으로 → 클리어(1수 ★3)
+  api.pzBegin(0);
+  const ok=api.pzMove(1,0);
+  check("밀기 성공 + 즉시 클리어(1수)", ok===true && api.PZ.cleared===true && api.PZ.moves===1);
+  check("★3 (최소수 달성) + 기록 저장", api.PZ.stars===3 && api.pzBestLoad()["0"].stars===3);
+});
+run("퍼즐: 언두 복원·리셋", ()=>{
+  api.pzStart(); api.pzBegin(2);   // 3번째 퍼즐(6수급)
+  const PZ=api.PZ;
+  const p0={x:PZ.px,y:PZ.py};
+  api.pzMove(0,-1);   // 위로 밀기 시도(별 위치에 따라 이동만 될 수도)
+  const moved=(PZ.px!==p0.x||PZ.py!==p0.y);
+  if(moved){ api.pzUndo(); }
+  check("언두 → 위치 복원", PZ.px===p0.x && PZ.py===p0.y);
+  api.pzMove(1,0); api.pzMove(0,-1);
+  api.pzKey("KeyR");
+  check("R 리셋 → 초기 상태", api.PZ.moves===0 && api.PZ.px===p0.x);
+});
+run("퍼즐: 이중 밀기 금지", ()=>{
+  // 커스텀 미니 상황: 별 두 개 연속
+  api.pzStart(); api.pzBegin(0);
+  const PZ=api.PZ;
+  PZ.boxes.push({c:PZ.boxes[0].c+1, r:PZ.boxes[0].r});   // $$ 나란히
+  const mv=api.pzMove(1,0);
+  check("별 2개 연속은 못 밀어요", mv===false);
+});
+run("퍼즐: 렌더 스모크(선택+플레이+클리어)", ()=>{
+  api.pzStart(); api.pzRender();
+  api.pzBegin(0); api.pzRender();
+  api.pzMove(1,0); api.pzRender();
+  check("pzRender 예외 없음", true);
 });
 
 console.log("\n결과: "+(fail===0?("ALL PASS ✅ ("+pass+"항목)"):(fail+"건 실패 ❌")));
