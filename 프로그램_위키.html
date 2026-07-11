@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>별빛 아레나 — 프로그램 위키 (유지보수·AI 인수인계)</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;background:#0e1230;color:#dfe6ff;line-height:1.7;}
+.wrap{max-width:1080px;margin:0 auto;padding:24px 20px 120px;}
+h1{color:#9fe6c8;font-size:30px;margin:18px 0 6px;}
+h2{color:#ffe14d;font-size:22px;margin:44px 0 12px;padding-top:16px;border-top:2px solid #2a3560;}
+h3{color:#9fb4ff;font-size:17px;margin:22px 0 8px;}
+p,li{font-size:14.5px;color:#c9d2f0;}
+ul{margin:6px 0 12px 22px;}
+.sub{color:#8893bb;font-size:14px;}
+table{border-collapse:collapse;width:100%;margin:12px 0 20px;font-size:13.5px;}
+th{background:#1a2350;color:#ffe14d;padding:8px 10px;text-align:left;border:1px solid #2a3560;}
+td{padding:7px 10px;border:1px solid #232c55;vertical-align:top;}
+tr:nth-child(even) td{background:#121a3e;}
+code{background:#1a2350;color:#8fe3ff;padding:1px 6px;border-radius:5px;font-size:13px;font-family:Consolas,Menlo,monospace;}
+pre{background:#0a0f28;border:1px solid #2a3560;border-radius:10px;padding:14px;overflow-x:auto;font-size:13px;color:#aee3ff;margin:10px 0 18px;font-family:Consolas,Menlo,monospace;line-height:1.5;}
+.nav{position:sticky;top:0;background:rgba(10,14,36,0.96);padding:10px 0;border-bottom:1px solid #2a3560;z-index:9;display:flex;flex-wrap:wrap;gap:8px;}
+.nav a{color:#9fe6c8;text-decoration:none;font-size:13px;background:#1a2350;padding:4px 12px;border-radius:99px;border:1px solid #2a3560;}
+.nav a:hover{background:#26326b;}
+.card{background:#131a3e;border:1px solid #2a3560;border-radius:12px;padding:14px 18px;margin:12px 0;}
+.warn{border-left:4px solid #ff8a8a;background:#2a1626;padding:10px 14px;border-radius:8px;margin:10px 0;font-size:14px;}
+.tip{border-left:4px solid #7dffb0;background:#12281e;padding:10px 14px;border-radius:8px;margin:10px 0;font-size:14px;}
+.tag{display:inline-block;background:#26326b;color:#cfe0ff;border-radius:6px;padding:0 8px;font-size:12px;margin-right:4px;}
+.ok{color:#7dffb0;} .no{color:#ff9a9a;} .mid{color:#ffd97d;}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>🌟 별빛 아레나 — 프로그램 위키</h1>
+<p class="sub">유지보수 · 수정 레시피 · 에셋 인벤토리 — <b>사람(선생님)과 AI(GPT/Claude 등) 누구든 이 문서만 읽으면 고칠 수 있게</b> 만든 문서입니다. (2026-07-11 기준)</p>
+
+<div class="nav">
+<a href="#games">🎮 게임 13종 지도</a>
+<a href="#code">🧠 코드 구조</a>
+<a href="#recipe">🔧 수정 레시피</a>
+<a href="#editor">🛠 에디터 현황</a>
+<a href="#harness">🧪 검증(하네스)</a>
+<a href="#assets">🎨 에셋 인벤토리</a>
+<a href="#rules">⚠ 절대 규칙</a>
+<a href="#gpt">🤖 AI 인수인계</a>
+</div>
+
+<h2 id="games">🎮 게임 13종 지도</h2>
+<p>모든 게임이 <b>단 하나의 파일</b> <code>index.html</code> 안에 있습니다(쌍둥이 <code>star_arena.html</code>은 바이트 동일 복사본). 세계관(별빛/먹구름)·캐릭터·몬스터 에셋을 공유합니다.</p>
+<h3>본편 3종 (학생 공개)</h3>
+<table>
+<tr><th>게임</th><th>장르</th><th>진입</th><th>상태(STATE)</th><th>함수 접두사</th></tr>
+<tr><td>⚔ 별빛 아레나</td><td>탑다운 아레나 슈팅(섬멸·수정·점령·별모으기)</td><td>시작화면</td><td>PLAYING 등</td><td>update/render, tick*</td></tr>
+<tr><td>🦘 별빛 점프</td><td>플랫포머(캠페인 30 + 맵공방)</td><td>시작화면</td><td>PLATFORMER / PF_SELECT</td><td><code>pf*</code>, 데이터 <code>PF_LEVELS</code></td></tr>
+<tr><td>🌙 별빛 마을</td><td>RPG 챕터1</td><td>교사 패널 J</td><td>RPG</td><td><code>rpg*</code>, 데이터 <code>RPG_DB</code>(wiki/에서 주입)</td></tr>
+</table>
+<h3>실험실 10종 (교사 패널 → 🧪 실험실 버튼 또는 L키 · 숫자 1~9,0)</h3>
+<table>
+<tr><th>#</th><th>게임</th><th>장르</th><th>STATE</th><th>접두사</th><th>핵심 데이터 상수</th><th>기록(localStorage)</th></tr>
+<tr><td>1</td><td>🏰 별빛 수비대</td><td>타워 디펜스</td><td>"td"</td><td><code>td*</code></td><td>TD_MAPS · TD_DIFFS · TD_TOWERS · TD_FOES · TD_WAVES</td><td>starArena.lab.tdBest</td></tr>
+<tr><td>2</td><td>🚀 별빛 함대</td><td>세로 슈팅</td><td>"shooter"</td><td><code>sh*</code></td><td>SH_FOES · shNextWave()의 웨이브 12개</td><td>…shooterBest / shooterRank</td></tr>
+<tr><td>3</td><td>🕶 별빛 던전 3D</td><td>1인칭 레이캐스터</td><td>"ray3d"</td><td><code>ray*</code></td><td>RAY_FLOORS(크기·시드·벽색·젤리속도)</td><td>…rayBest</td></tr>
+<tr><td>4</td><td>⚔ 별빛 생존자</td><td>뱀서라이크</td><td>"survivor"</td><td><code>sv*</code></td><td>SV_FOES · SV_UPS(강화 8종) · SV_WIN_T/BOSS_T</td><td>…svBest</td></tr>
+<tr><td>5</td><td>🥚 별빛 알</td><td>펫 키우기</td><td>"egg"</td><td><code>egg*</code></td><td>EGG_STAGES(5단계 임계값)</td><td>…egg</td></tr>
+<tr><td>6</td><td>🧩 별조각 밀기</td><td>소코반 퍼즐</td><td>"puzzle"</td><td><code>pz*</code></td><td>PZ_LEVELS(내장 12판) + 출제 에디터</td><td>…pzBest / pzCustom</td></tr>
+<tr><td>7</td><td>🏃 별빛 러너</td><td>자동 달리기</td><td>"runner"</td><td><code>rn*</code></td><td>rnUpdate() 스폰 확률·속도 램프</td><td>…rnBest</td></tr>
+<tr><td>8</td><td>🧱 벽돌깨기</td><td>브레이크아웃</td><td>"breakout"</td><td><code>bk*</code></td><td>bkBricks()(3스테이지 배치)</td><td>…bkBest</td></tr>
+<tr><td>9</td><td>🐍 별꼬리</td><td>스네이크</td><td>"snake"</td><td><code>sn*</code></td><td>SN_COLS/ROWS · 속도(stepIv)</td><td>…snBest</td></tr>
+<tr><td>10</td><td>⚫ 별빛 오델로</td><td>보드(AI 대전)</td><td>"othello"</td><td><code>ot*</code></td><td>otAiMove()(모서리+100·변+8·X칸-12)</td><td>…otWins</td></tr>
+</table>
+<p class="sub">허브: <code>LAB_GAMES</code> 배열(STATE "labhub", <code>lh*</code>). 모든 실험은 <b>교사 전용</b> — 학생 시작화면 미노출. Esc=교사 패널 복귀, P=일시정지(턴제 제외).</p>
+
+<h2 id="code">🧠 코드 구조 — 어디를 찾아야 하나</h2>
+<div class="card">
+<p><b>구조 원칙(모든 모드 공통):</b> 각 게임은 ①<code>STATE</code> 문자열 ②<code>xxStart()</code> 진입 ③<code>xxUpdate(dt)</code> 로직 ④<code>xxRender()</code> 그리기 ⑤<code>xxKey(code)</code> 키입력 — 5개 함수로 독립. 서로 전역을 건드리지 않습니다(아레나 비접촉 원칙).</p>
+<p><b>연결 지점 4곳(새 모드 추가 시 이 4곳+패널만 만지면 됨):</b></p>
+<ul>
+<li><code>const STATE = {</code> — 상태 문자열 등록</li>
+<li><code>function update(dt)</code> 안의 <code>if(gameState===STATE.XXX){ xxUpdate(dt); return; }</code> 줄</li>
+<li><code>function render()</code> 안의 같은 패턴 줄</li>
+<li>키보드 라우팅(검색: <code>handleAdminKey</code> 위쪽의 <code>if(gameState === STATE.</code> 나열부)</li>
+</ul>
+<p><b>실험실 코드 위치:</b> <code>LAB-1/2/3</code> 주석 블록(검색: <code>관리자 실험 게임틀</code>)부터 <code>BALANCE-1</code> 주석 전까지 한 덩어리.</p>
+</div>
+
+<h2 id="recipe">🔧 수정 레시피 (4단계 — 이대로만)</h2>
+<div class="card">
+<p><b>① 찾기</b> — 위 표의 <b>데이터 상수</b> 이름으로 파일 내 검색. 예: 수비대 화살탑 공격력 = <code>TD_TOWERS</code> 검색 → <code>dmg:7</code> 수정.</p>
+<p><b>② 문법 확인</b> — 터미널에서:</p>
+<pre>node -e 'const fs=require("fs");const h=fs.readFileSync("index.html","utf8");const m=h.match(/&lt;script&gt;([\s\S]*?)&lt;\/script&gt;/);try{new Function(m[1]);console.log("OK");}catch(e){console.log("ERR:",e.message);}'</pre>
+<p><b>③ 검증</b> — <code>node harness_labmodes.js</code> (실험 10종, 135항목) + 관련 하네스. 실패하면 원인 고치기 전엔 배포 금지.</p>
+<p><b>④ 미러+배포</b> — </p>
+<pre>cp index.html star_arena.html
+git add -A && git commit -m "설명" && git push
+# 1~2분 후 https://chang333787-boop.github.io/star-arena/ 강력새로고침(Cmd+Shift+R)</pre>
+</div>
+<h3>자주 하는 수정 예시</h3>
+<table>
+<tr><th>하고 싶은 것</th><th>검색어</th><th>바꿀 것</th></tr>
+<tr><td>수비대 시작 골드/생명</td><td><code>TD_DIFFS</code></td><td>lives / gold / hpMul</td></tr>
+<tr><td>수비대 웨이브 구성</td><td><code>TD_WAVES</code></td><td>[["적이름",마리수],…] 15줄</td></tr>
+<tr><td>함대 웨이브 추가</td><td><code>shNextWave</code></td><td>else if(w===13){…} 추가 + SH_MAXWAVE</td></tr>
+<tr><td>생존자 강화 카드</td><td><code>SV_UPS</code></td><td>행 추가 + svApplyUp()에 효과</td></tr>
+<tr><td>퍼즐 추가(내장)</td><td><code>PZ_LEVELS</code></td><td>rows 추가 — 반드시 하네스로 풀림 검증!</td></tr>
+<tr><td>러너 난이도</td><td><code>rnUpdate</code></td><td>spd 램프(330+t*9)·스폰 확률</td></tr>
+<tr><td>알 부화 단계</td><td><code>EGG_STAGES</code></td><td>at(임계값)·이름·설명</td></tr>
+<tr><td>플랫포머 캠페인</td><td><code>PF_LEVELS</code></td><td>스테이지 추가 → <code>node harness_pfcamp.js</code> 필수</td></tr>
+</table>
+
+<h2 id="editor">🛠 에디터(제작 도구) 현황</h2>
+<table>
+<tr><th>모드</th><th>제작 도구</th><th>상태</th><th>비고</th></tr>
+<tr><td>아레나 4모드</td><td>맵공방(게임 내 에디터)</td><td class="ok">완비</td><td>제출→교사 G키 승인→공유(클라우드)</td></tr>
+<tr><td>별빛 점프</td><td>맵공방(기믹 26종 팔레트)</td><td class="ok">완비</td><td>승인맵은 "친구들이 만든 맵" 탭</td></tr>
+<tr><td>RPG</td><td>위키 파이프라인 + K키 승인</td><td class="ok">완비</td><td>wiki/*.json → inject_db.py</td></tr>
+<tr><td>🧩 별조각 밀기</td><td><b>게임 내 출제 에디터</b></td><td class="ok">완비(신규)</td><td>목록→[🛠 퍼즐 만들기]→클릭 배치→🔍 <b>풀이 자동검증</b>(풀리는 퍼즐만 💾 저장 가능)→[📂 내가 만든 퍼즐]</td></tr>
+<tr><td>수비대/함대/던전3D/생존자 등</td><td>데이터 상수 편집</td><td class="mid">표 수정 방식</td><td>위 레시피 표 참고 — 전용 에디터는 후속(수비대 맵/웨이브 메이커가 1순위)</td></tr>
+</table>
+
+<h2 id="harness">🧪 검증(하네스) — 배포 전 안전망</h2>
+<p>하네스 = <code>index.html</code>을 불러서 실제 게임 로직을 자동 실행·검사하는 node 스크립트. <b>수정 후 관련 하네스가 초록이어야 배포.</b></p>
+<table>
+<tr><th>파일</th><th>검사 대상</th><th>비고</th></tr>
+<tr><td><code>harness_labmodes.js</code></td><td>실험 10종 전부(135항목)</td><td>수비대 봇 15웨이브 완주 · 퍼즐 12판 솔버 · 오델로 자동대국 등</td></tr>
+<tr><td><code>harness_pfcamp.js</code></td><td>플랫포머 캠페인 30판 봇 클리어</td><td>스테이지 추가 시 필수</td></tr>
+<tr><td><code>harness_platformer.js / _edtest / _cloud_maps</code></td><td>플랫포머 물리·에디터·클라우드</td><td></td></tr>
+<tr><td><code>harness_rpg.js</code></td><td>RPG 챕터1 완주</td><td></td></tr>
+<tr><td><code>harness_accounts.js</code> 외 18종</td><td>계정 동기화·온라인·전투 등</td><td>campaign/checkpoint는 확률 시뮬이라 가끔 재실행 필요(flaky)</td></tr>
+</table>
+<pre># 전부 돌리기
+for h in harness_*.js; do node "$h" >/dev/null 2>&1 && echo "PASS $h" || echo "FAIL $h"; done</pre>
+
+<h2 id="assets">🎨 에셋 인벤토리 (구현/사용/필요 — 외주·AI 생성용 표)</h2>
+<h3>A. 사용 중인 이미지 에셋 (assets/ 폴더, 실재 파일)</h3>
+<table>
+<tr><th>파일</th><th>쓰는 곳</th></tr>
+<tr><td>monsters/soft_jelly.png (파랭이)</td><td>플랫포머 순찰몹 · 수비대(젤리/왕젤리/꼬마) · 던전3D 추격젤리 · 생존자 · 러너 장애물 · 별빛알 부화체 · RPG</td></tr>
+<tr><td>monsters/bounce_bubble.png</td><td>수비대 뿔깡총 · 함대 카미카제 · 벽돌깨기 1열 장식 · 생존자 · RPG</td></tr>
+<tr><td>monsters/shield_block.png</td><td>수비대 가시딱지 · 함대 실드기 · 생존자 탱커 · RPG</td></tr>
+<tr><td>monsters/cloud_ghost.png</td><td>수비대 부엉이 · 함대 유령기 · 생존자 · 러너 비행 장애물 · RPG</td></tr>
+<tr><td>monsters/star_bug.png</td><td>수비대 러너몹 · 함대 벌레기 · RPG</td></tr>
+<tr><td>monsters/paper_drone.png</td><td>수비대 이슬요정(힐러) · 함대 드론 · RPG</td></tr>
+<tr><td>monsters/cushion_block.png</td><td>함대 실드기 · RPG</td></tr>
+<tr><td>monsters/boss_king.png (뭉게대왕)</td><td>수비대 최종보스 · 생존자 보스 · RPG 보스</td></tr>
+<tr><td>monsters/boss_turtle.png</td><td>수비대 중간보스 · 함대 중간보스</td></tr>
+<tr><td>monsters/boss_plane.png</td><td>함대 최종보스</td></tr>
+<tr><td>monsters/boss_robot.png · ice_bubble.png · heal_fairy.png</td><td><span class="mid">아레나/RPG용 — 실험실 미사용(재활용 후보)</span></td></tr>
+<tr><td>characters/* (학생 디자인 캐릭터)</td><td>전 모드 플레이어(drawCharacterSprite) — 러너·함대 함선 탑승·별꼬리 머리·퍼즐 시고니 등</td></tr>
+<tr><td>obstacles/cushion_wall_tileset.png</td><td>플랫포머 벽(#)</td></tr>
+<tr><td>rpg/kenney_roguelike_sheet.png + _char.png (CC0)</td><td>RPG 오브젝트·NPC — 좌표표는 메모리/핸드오프 참고</td></tr>
+<tr><td>tiles/ · bushes/ · traps/ · pickups/ · weapons/ · ui/</td><td>아레나 본편</td></tr>
+</table>
+<h3>B. 절차적(코드로 그림 — 이미지 파일 없음)</h3>
+<table>
+<tr><th>항목</th><th>위치</th><th>이미지로 교체하면 좋은가?</th></tr>
+<tr><td>수비대 탑 6종(원+이모지)</td><td>tdRender</td><td class="mid">교체 추천(탑 일러스트 6종)</td></tr>
+<tr><td>함대 함선(삼각형+불꽃)</td><td>shRender</td><td class="mid">교체 추천(함선 1종)</td></tr>
+<tr><td>던전3D 벽(단색 음영)</td><td>rayRender</td><td class="mid">벽 텍스처 1~3장(64×64)이면 확 삶</td></tr>
+<tr><td>별빛 알(타원+별무늬+금)</td><td>eggRender</td><td class="mid">단계별 알 5장 or 유지도 귀여움</td></tr>
+<tr><td>퍼즐 별/홈, 러너 가시, 벽돌, 뱀 몸통, 오델로 알</td><td>각 *Render</td><td class="ok">유지 무방(깔끔)</td></tr>
+</table>
+<h3>C. 필요한 에셋 — <b>GPT/외주에게 시킬 목록</b> (우선순위순)</h3>
+<table>
+<tr><th>순위</th><th>에셋</th><th>규격</th><th>비고</th></tr>
+<tr><td>1</td><td><b>효과음 20종</b> (현재 전부 무음!)</td><td>mp3, 0.2~1초, 초등 밝은 톤<br>경로: <code>assets/sfx/이름.mp3</code></td><td>필요 파일명(코드가 이미 이 이름을 부름):<br><code>click, shoot, powerup, hit, kill, clear, win, lose, buff, spring, jump, break, stomp, reload, fire, ult, checkpoint, paint, infect, pick, spawn, special</code></td></tr>
+<tr><td>2</td><td>수비대 탑 일러스트 6종</td><td>png 96×96 투명배경</td><td>별화살탑/서리탑/대포탑/번개탑/별빛등대/별주머니 — 별빛 세계관(파스텔+별)</td></tr>
+<tr><td>3</td><td>던전3D 벽 텍스처 3장</td><td>png 64×64 타일링</td><td>푸른 돌벽/이끼벽/보라 수정벽</td></tr>
+<tr><td>4</td><td>함대 아군 함선</td><td>png 96×96</td><td>별 모양 소형선, 위에서 본 모습</td></tr>
+<tr><td>5</td><td>알 단계 일러스트 5장</td><td>png 160×192</td><td>알→반짝→금→직전→아기 별젤리(파랭이 아기)</td></tr>
+<tr><td>6</td><td>BGM 3곡</td><td>mp3 루프 1~2분</td><td>마을(잔잔)/전투(신남)/보스(긴장) — 현재 BGM 시스템 없음(연결 코드도 필요)</td></tr>
+</table>
+<p class="sub">※ 새 이미지를 넣을 땐 <code>assets/</code>에 파일 추가 → 코드에서 <code>worldImage()</code>/<code>getMonsterImage()</code> 패턴을 따라 로드 헬퍼에 등록(WORLD_ASSETS 표 검색).</p>
+
+<h2 id="rules">⚠ 절대 규칙 (어기면 사고)</h2>
+<div class="warn"><b>1. Firebase는 실제 교실 서버.</b> 로컬(8899)에서도 classCode "star-class" 실서버에 붙습니다. 브라우저에서 테스트 계정을 만들었으면 반드시 <code>AccountStore.deleteCloudStudent(id)</code>로 삭제. 계정 동기화 병합 로직(mergeStudentRecord)은 절대 last-write-wins로 되돌리지 말 것(레벨 롤백 재발).</div>
+<div class="warn"><b>2. 쌍둥이 미러.</b> 커밋 전 <code>cp index.html star_arena.html</code> — 두 파일은 항상 바이트 동일해야 합니다.</div>
+<div class="warn"><b>3. 눈 편안 원칙(초등 교실).</b> 전체화면 플래시 금지(가장자리 비네트로) · 깜빡임 점멸 1초에 8회 이하 · 고대비 스트로브 금지 · 화면 흔들림은 방향성 킥 2~3px까지. 공중에 몬스터 두면 방향 뒤집힘 발광 버그 유형 주의(플랫포머에서 수정됨).</div>
+<div class="warn"><b>4. 하네스가 부르는 전역 이름 유지.</b> MAPS·STATE·startGame·gameState·profile·PF_LEVELS·td*/sh*/ray*/sv*/egg*/pz*/rn*/bk*/sn*/ot* 등 — 이름을 바꾸면 하네스 18+종이 깨집니다.</div>
+<div class="warn"><b>5. 학생 노출 금지 상태 유지.</b> 실험실 진입점은 교사 패널뿐이어야 합니다. 시작화면에 실험 모드 버튼을 추가하려면 선생님 결정 후에.</div>
+
+<h2 id="gpt">🤖 AI 인수인계 — 붙여넣기용 프롬프트</h2>
+<div class="tip">아래 문단을 GPT/Claude에게 그대로 붙여넣고 시작하세요.</div>
+<pre>너는 초등 교실용 HTML5 게임 "별빛 아레나"의 유지보수 개발자다.
+- 저장소: github.com/chang333787-boop/star-arena · 배포: GitHub Pages(푸시하면 1~2분 뒤 반영)
+- 모든 게임 코드는 index.html 단일 파일(약 1만4천 줄). star_arena.html은 항상 바이트 동일 미러(cp로 복사).
+- 먼저 저장소의 "프로그램_위키.html"과 "작업현황_HANDOFF.md"를 읽어라. 게임 13종의 STATE·함수 접두사·
+  데이터 상수·수정 레시피·절대 규칙(Firebase 실서버/미러/눈편안/전역 이름 유지)이 거기 있다.
+- 수정 절차: ①데이터 상수 검색→수정 ②node 문법 체크 ③node harness_labmodes.js 등 관련 하네스 초록 확인
+  ④cp index.html star_arena.html ⑤commit+push. 하네스가 빨간데 배포하는 것은 금지.
+- 대상 사용자: 한국 초등학생. 모든 문구는 쉬운 한국어, 화면 자극(전체화면 플래시·스트로브) 금지.
+- 큰 기능을 추가할 땐 기존 모드의 5함수 패턴(xxStart/xxUpdate/xxRender/xxKey + STATE)을 그대로 따라라.</pre>
+<p class="sub">이 위키 자체도 저장소 파일(<code>프로그램_위키.html</code>)입니다 — 구조가 바뀌면 함께 갱신하세요.</p>
+</div>
+</body>
+</html>

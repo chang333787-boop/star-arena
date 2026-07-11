@@ -1927,7 +1927,8 @@ const STATE = { START:"start", SHOP:"shop",
   PF_SELECT:"pf_select", PLATFORMER:"platformer",     /* GENRE-EXPAND-1 §3: 별빛 점프 */
   RPG:"rpg", RPG_REVIEW:"rpg_review",                 /* RPG모드_PRD §1.1·§7.4: 별빛 마을 + 교사 콘텐츠 승인 */
   TD:"td", SHOOTER:"shooter", RAY3D:"ray3d",          /* LAB-1: 관리자 실험 게임틀(수비대·함대·던전3D) — 교사 패널 전용 진입 */
-  SURVIVOR:"survivor", EGG:"egg", PUZZLE:"puzzle" };   /* LAB-3: 실험 ④생존자 ⑤별빛알 ⑥별조각밀기 */
+  SURVIVOR:"survivor", EGG:"egg", PUZZLE:"puzzle",     /* LAB-3: 실험 ④생존자 ⑤별빛알 ⑥별조각밀기 */
+  RUNNER:"runner", BREAKOUT:"breakout", SNAKE:"snake", OTHELLO:"othello", LABHUB:"labhub" };   /* LAB-4: ⑦러너 ⑧벽돌 ⑨별꼬리 ⑩오델로 + 허브 */
 let gameState = STATE.SPLASH;
 let splashTimer = 0;
 let loginMsg = "";          // 로그인 안내/오류
@@ -2285,6 +2286,11 @@ function handleKeyPress(code){
   if(gameState === STATE.SURVIVOR){ svKey(code); return; }  // LAB-3 실험: 별빛 생존자
   if(gameState === STATE.EGG){ eggKey(code); return; }      // LAB-3 실험: 별빛 알
   if(gameState === STATE.PUZZLE){ pzKey(code); return; }    // LAB-3 실험: 별조각 밀기
+  if(gameState === STATE.RUNNER){ rnKey(code); return; }    // LAB-4 실험: 별빛 러너
+  if(gameState === STATE.BREAKOUT){ bkKey(code); return; }  // LAB-4 실험: 벽돌깨기
+  if(gameState === STATE.SNAKE){ snKey(code); return; }     // LAB-4 실험: 별꼬리
+  if(gameState === STATE.OTHELLO){ otKey(code); return; }   // LAB-4 실험: 별빛 오델로
+  if(gameState === STATE.LABHUB){ lhKey(code); return; }    // LAB-4: 실험실 허브
   if(gameState === STATE.EDITOR){ handleEditorKey(code); return; }        // OVERNIGHT-1: 맵공방
   if(gameState === STATE.MAP_REVIEW){ handleMapReviewKey(code); return; } // OVERNIGHT-1: 교사 맵 승인
   if(gameState === STATE.SHOP){ handleShopKey(code); return; }
@@ -5279,8 +5285,95 @@ function pzStart(){
   PZ={ phase:"select", idx:0 };
   gameState=STATE.PUZZLE;
 }
-function pzBegin(idx){
-  const L=PZ_LEVELS[idx]; if(!L) return;
+const PZ_CUSTOM_KEY="starArena.lab.pzCustom";
+function pzCustomLoad(){ try{ const s=JSON.parse(localStorage.getItem(PZ_CUSTOM_KEY)); if(Array.isArray(s)) return s; }catch(e){} return []; }
+function pzCustomSave(a){ try{ localStorage.setItem(PZ_CUSTOM_KEY, JSON.stringify(a)); }catch(e){} }
+function pzSolveGame(rows, capStates){   // 인게임 BFS 솔버 — 출제 검증("풀 수 있는 퍼즐만 저장")
+  const H=rows.length, W=rows[0].length;
+  let px=-1, py=-1; const boxes=[], goals=[]; const wall=[];
+  for(let r=0;r<H;r++){ wall.push([]);
+    for(let c=0;c<W;c++){ const ch=rows[r][c];
+      wall[r].push(ch==="#");
+      if(ch==="*"){ px=c; py=r; }
+      if(ch==="$") boxes.push(c+r*W);
+      if(ch==="o") goals.push(c+r*W);
+    } }
+  if(px<0) return { ok:false, why:"시고니(*)가 없어요" };
+  if(!boxes.length) return { ok:false, why:"별조각($)이 없어요" };
+  if(boxes.length!==goals.length) return { ok:false, why:"별("+boxes.length+")과 홈("+goals.length+") 수가 달라요" };
+  if(boxes.length>5) return { ok:false, why:"별은 5개까지만!" };
+  const goalSet={}; for(const g of goals) goalSet[g]=1;
+  const key=function(p,bs){ return p+"|"+bs.join(","); };
+  const start={ p:px+py*W, bs:boxes.slice().sort(function(a,b){return a-b;}), moves:0 };
+  const seen={}; seen[key(start.p,start.bs)]=1;
+  let q=[start], states=0;
+  const DIRS=[1,-1,W,-W];
+  while(q.length){
+    const nq=[];
+    for(const st of q){
+      let done=true; for(const b of st.bs){ if(!goalSet[b]){ done=false; break; } }
+      if(done) return { ok:true, moves:st.moves };
+      for(const d of DIRS){
+        const np=st.p+d, nc=np%W, nr=(np-nc)/W;
+        if(nr<0||nr>=H||wall[nr][nc]) continue;
+        const bi=st.bs.indexOf(np);
+        let bs=st.bs;
+        if(bi>=0){
+          const bp=np+d, bc=bp%W, br=(bp-bc)/W;
+          if(br<0||br>=H||wall[br][bc]||st.bs.indexOf(bp)>=0) continue;
+          bs=st.bs.slice(); bs[bi]=bp; bs.sort(function(a,b){return a-b;});
+        }
+        const k=key(np,bs);
+        if(seen[k]) continue;
+        seen[k]=1;
+        if(++states>(capStates||250000)) return { ok:false, why:"너무 복잡해요(더 단순하게)" };
+        nq.push({ p:np, bs:bs, moves:st.moves+1 });
+      }
+    }
+    q=nq;
+  }
+  return { ok:false, why:"풀 수 없는 퍼즐이에요" };
+}
+function pzEditStart(){
+  const W=9, H=7, g=[];
+  for(let r=0;r<H;r++){ g.push([]);
+    for(let c=0;c<W;c++) g[r].push((c===0||r===0||c===W-1||r===H-1)?"#":"."); }
+  PZ={ phase:"edit", idx:PZ?PZ.idx:0, eg:g, eW:W, eH:H, checked:null, editMsg:"칸을 클릭해 바꿔요: 바닥→벽→⭐별→⭕홈→😺시고니" };
+}
+function pzEditCycle(c,r){
+  if(!PZ||PZ.phase!=="edit") return;
+  if(c<=0||r<=0||c>=PZ.eW-1||r>=PZ.eH-1) return;   // 테두리 고정
+  const cur=PZ.eg[r][c];
+  const next=(cur===".")?"#":((cur==="#")?"$":((cur==="$")?"o":((cur==="o")?"*":".")));
+  if(next==="*"){ for(let rr=0;rr<PZ.eH;rr++) for(let cc=0;cc<PZ.eW;cc++){ if(PZ.eg[rr][cc]==="*") PZ.eg[rr][cc]="."; } }
+  PZ.eg[r][c]=next;
+  PZ.checked=null; PZ.editMsg="바꿨어요! 다 만들면 🔍 검증을 눌러요";
+  playSfx("click");
+}
+function pzEditRows(){ return PZ.eg.map(function(row){ return row.join(""); }); }
+function pzEditCheck(){
+  if(!PZ||PZ.phase!=="edit") return null;
+  const r=pzSolveGame(pzEditRows(), 250000);
+  PZ.checked=r;
+  PZ.editMsg=r.ok?("✅ 풀 수 있어요! 최소 "+r.moves+"수 — 💾 저장 가능"):("❌ "+r.why);
+  playSfx(r.ok?"clear":"hit");
+  return r;
+}
+function pzEditSave(){
+  if(!PZ||PZ.phase!=="edit") return false;
+  if(!PZ.checked||!PZ.checked.ok){ showToast("먼저 🔍 검증을 통과해야 저장돼요!"); return false; }
+  const list=pzCustomLoad();
+  if(list.length>=12){ showToast("내 퍼즐은 12개까지! 오래된 것을 지워 주세요"); return false; }
+  let name=null; try{ name=window.prompt("퍼즐 이름 (2~10자)","내 퍼즐 "+(list.length+1)); }catch(e){}
+  if(!name) return false;
+  name=(""+name).trim().slice(0,10)||("내 퍼즐 "+(list.length+1));
+  list.push({ name:name, rows:pzEditRows(), min:PZ.checked.moves });
+  pzCustomSave(list);
+  showToast("💾 저장! \""+name+"\" (최소 "+PZ.checked.moves+"수)");
+  playSfx("win");
+  return true;
+}
+function pzBeginLevel(L, customTag){
   const rows=L.rows, H=rows.length, W=rows[0].length;
   const walls=[], boxes=[], goals=[];
   let px=1, py=1;
@@ -5291,8 +5384,13 @@ function pzBegin(idx){
       if(ch==="$") boxes.push({c:c,r:r});
       if(ch==="o") goals.push({c:c,r:r});
     } }
-  PZ={ phase:"play", idx:idx, W:W, H:H, walls:walls, boxes:boxes, goals:goals,
+  PZ={ phase:"play", idx:0, W:W, H:H, walls:walls, boxes:boxes, goals:goals, level:L, custom:customTag||null,
        px:px, py:py, moves:0, pushes:0, hist:[], cleared:false, stars:0 };
+}
+function pzBegin(idx){
+  const L=PZ_LEVELS[idx]; if(!L) return;
+  pzBeginLevel(L, null);
+  PZ.idx=idx;
 }
 function pzBoxAt(c,r){ for(const b of PZ.boxes){ if(b.c===c&&b.r===r) return b; } return null; }
 function pzGoalAt(c,r){ for(const g of PZ.goals){ if(g.c===c&&g.r===r) return true; } return false; }
@@ -5315,11 +5413,13 @@ function pzMove(dc,dr){
   // 클리어 판정
   if(PZ.boxes.every(bb=>pzGoalAt(bb.c,bb.r))){
     PZ.cleared=true; playSfx("clear");
-    const min=PZ_LEVELS[PZ.idx].min;
+    const min=(PZ.level&&PZ.level.min)||PZ_LEVELS[PZ.idx].min;
     PZ.stars=(PZ.moves<=min)?3:((PZ.moves<=Math.ceil(min*1.6))?2:1);
-    const best=pzBestLoad(), k=""+PZ.idx, prev=best[k];
-    if(!prev || PZ.stars>prev.stars || (PZ.stars===prev.stars && PZ.moves<prev.moves)){
-      best[k]={ stars:PZ.stars, moves:PZ.moves }; pzBestSave(best);
+    if(!PZ.custom){   // 내장 퍼즐만 ★기록(커스텀은 이름 바뀌면 꼬여서 v1 미기록)
+      const best=pzBestLoad(), k=""+PZ.idx, prev=best[k];
+      if(!prev || PZ.stars>prev.stars || (PZ.stars===prev.stars && PZ.moves<prev.moves)){
+        best[k]={ stars:PZ.stars, moves:PZ.moves }; pzBestSave(best);
+      }
     }
     playSfx("win");
   }
@@ -5342,13 +5442,34 @@ function pzKey(code){
     if(code==="ArrowRight"){ PZ.idx=(PZ.idx+1)%PZ_LEVELS.length; return; }
     if(code==="ArrowUp"){ PZ.idx=(PZ.idx+PZ_LEVELS.length-cols)%PZ_LEVELS.length; return; }
     if(code==="ArrowDown"){ PZ.idx=(PZ.idx+cols)%PZ_LEVELS.length; return; }
+    if(code==="KeyE"){ pzEditStart(); return; }                       // 퍼즐 만들기
+    if(code==="KeyC"){ PZ.phase="custom"; PZ.cidx=0; return; }        // 내가 만든 퍼즐
     if(code==="Enter"||code==="NumpadEnter"||code==="Space"){ pzBegin(PZ.idx); return; }
     return;
   }
-  if(code==="Escape"){ const i=PZ.idx; pzStart(); PZ.idx=i; return; }
+  if(PZ.phase==="custom"){
+    const list=pzCustomLoad();
+    if(code==="Escape"){ const i=PZ.idx; pzStart(); PZ.idx=i; return; }
+    if(!list.length) return;
+    if(code==="ArrowUp"){ PZ.cidx=((PZ.cidx||0)+list.length-1)%list.length; return; }
+    if(code==="ArrowDown"){ PZ.cidx=((PZ.cidx||0)+1)%list.length; return; }
+    if(code==="Delete"||code==="KeyX"){ list.splice(PZ.cidx||0,1); pzCustomSave(list); PZ.cidx=0; showToast("🗑 삭제했어요"); return; }
+    if(code==="Enter"||code==="NumpadEnter"){ pzBeginLevel(list[PZ.cidx||0], "custom"); return; }
+    return;
+  }
+  if(PZ.phase==="edit"){
+    if(code==="Escape"){ const i=PZ.idx; pzStart(); PZ.idx=i; return; }
+    if(code==="KeyV"){ pzEditCheck(); return; }
+    if(code==="KeyB"){ pzEditSave(); return; }
+    if(code==="KeyN"){ pzEditStart(); return; }
+    return;
+  }
+  if(code==="Escape"){ if(PZ.custom){ pzStart(); PZ.phase="custom"; PZ.cidx=0; } else { const i=PZ.idx; pzStart(); PZ.idx=i; } return; }
   if(PZ.cleared){
-    if(code==="Enter"||code==="NumpadEnter"){ if(PZ.idx+1<PZ_LEVELS.length) pzBegin(PZ.idx+1); else { pzStart(); } return; }
-    if(code==="KeyR"){ pzBegin(PZ.idx); return; }
+    if(code==="Enter"||code==="NumpadEnter"){
+      if(PZ.custom){ pzStart(); PZ.phase="custom"; PZ.cidx=0; return; }
+      if(PZ.idx+1<PZ_LEVELS.length) pzBegin(PZ.idx+1); else { pzStart(); } return; }
+    if(code==="KeyR"){ if(PZ.custom) pzBeginLevel(PZ.level,"custom"); else pzBegin(PZ.idx); return; }
     return;
   }
   if(code==="ArrowLeft"||code==="KeyA"){ pzMove(-1,0); return; }
@@ -5356,7 +5477,7 @@ function pzKey(code){
   if(code==="ArrowUp"||code==="KeyW"){ pzMove(0,-1); return; }
   if(code==="ArrowDown"||code==="KeyS"){ pzMove(0,1); return; }
   if(code==="KeyU"){ pzUndo(); return; }
-  if(code==="KeyR"){ pzBegin(PZ.idx); return; }
+  if(code==="KeyR"){ if(PZ.custom) pzBeginLevel(PZ.level,"custom"); else pzBegin(PZ.idx); return; }
 }
 function pzUpdate(dt){ /* 턴제 — 프레임 로직 없음(연출용 시간은 uiTime 사용) */ }
 function pzRender(){
@@ -5385,11 +5506,15 @@ function pzRender(){
       ctx.fillText(rec?("★".repeat(rec.stars)+"☆".repeat(3-rec.stars)+" ("+rec.moves+"수)"):"미해결", bx+bw/2, by+72);
       (function(idx){ uiHit(bx,by,bw,bh,function(){ if(PZ.idx===idx) pzBegin(idx); else PZ.idx=idx; }); })(i);
     }
+    drawButton("🛠 퍼즐 만들기 (E)", LOGW/2-240, LOGH-58, 420, 44, false, function(){ pzEditStart(); });
+    drawButton("📂 내가 만든 퍼즐 (C) — "+pzCustomLoad().length+"개", LOGW/2+240, LOGH-58, 420, 44, false, function(){ PZ.phase="custom"; PZ.cidx=0; });
     ctx.fillStyle="#aab4e0"; ctx.font="14px 'Malgun Gothic',sans-serif";
-    ctx.fillText("←→↑↓ 고르기 · Enter 시작 · Esc 나가기", LOGW/2, LOGH-24);
+    ctx.fillText("←→↑↓ 고르기 · Enter 시작 · Esc 나가기", LOGW/2, LOGH-16);
     ctx.restore(); return;
   }
-  const L=PZ_LEVELS[PZ.idx];
+  if(PZ.phase==="custom"){ pzRenderCustom(); return; }
+  if(PZ.phase==="edit"){ pzRenderEdit(); return; }
+  const L=PZ.level||PZ_LEVELS[PZ.idx];
   const cell=Math.min(76, Math.floor(520/PZ.H), Math.floor(880/PZ.W));
   const ox=LOGW/2-PZ.W*cell/2, oy=90+(520-PZ.H*cell)/2;
   // 보드
@@ -5426,7 +5551,7 @@ function pzRender(){
   // HUD
   ctx.fillStyle="rgba(10,14,24,0.85)"; ctx.fillRect(0,0,LOGW,52);
   ctx.textAlign="left"; ctx.fillStyle="#9fe6c8"; ctx.font="bold 18px 'Malgun Gothic',sans-serif";
-  ctx.fillText("🧩 "+(PZ.idx+1)+". "+L.name, 16, 26);
+  ctx.fillText(PZ.custom?("🧩 ✍ "+L.name+" (내 퍼즐)"):("🧩 "+(PZ.idx+1)+". "+L.name), 16, 26);
   ctx.textAlign="center"; ctx.fillStyle="#ffffff"; ctx.font="bold 18px 'Malgun Gothic',sans-serif";
   ctx.fillText("이동 "+PZ.moves+"수  ·  🏆 최소 "+L.min+"수", LOGW/2, 26);
   ctx.textAlign="right"; ctx.fillStyle="#aab4e0"; ctx.font="14px 'Malgun Gothic',sans-serif";
@@ -5441,8 +5566,635 @@ function pzRender(){
     ctx.fillText("★".repeat(PZ.stars)+"☆".repeat(3-PZ.stars), LOGW/2, LOGH/2-14);
     ctx.fillStyle="#dfe6ff"; ctx.font="17px 'Malgun Gothic',sans-serif";
     ctx.fillText("이동 "+PZ.moves+"수 (최소 "+L.min+"수 · ★★★="+L.min+"수 이내)", LOGW/2, LOGH/2+22);
-    ctx.fillText((PZ.idx+1<PZ_LEVELS.length)?"Enter 다음 퍼즐 · R 다시 · Esc 목록":"마지막 퍼즐 클리어! Enter 목록으로", LOGW/2, LOGH/2+54);
+    ctx.fillText(PZ.custom?"Enter 내 퍼즐 목록 · R 다시":((PZ.idx+1<PZ_LEVELS.length)?"Enter 다음 퍼즐 · R 다시 · Esc 목록":"마지막 퍼즐 클리어! Enter 목록으로"), LOGW/2, LOGH/2+54);
   }
+  ctx.restore();
+}
+
+function pzRenderCustom(){
+  const list=pzCustomLoad();
+  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillStyle="#9fe6c8"; ctx.font="bold 30px 'Malgun Gothic',sans-serif"; ctx.fillText("📂 내가 만든 퍼즐", LOGW/2, 60);
+  ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
+  ctx.fillText("Enter/클릭 플레이 · X 삭제 · Esc 목록으로", LOGW/2, 92);
+  if(!list.length){
+    ctx.fillStyle="#aab4e0"; ctx.font="17px 'Malgun Gothic',sans-serif";
+    ctx.fillText("아직 만든 퍼즐이 없어요 — 목록에서 [🛠 퍼즐 만들기]!", LOGW/2, LOGH/2);
+    ctx.restore(); return;
+  }
+  for(let i=0;i<list.length;i++){
+    const bx=LOGW/2-260, by=120+i*44, sel=(i===(PZ.cidx||0));
+    ctx.fillStyle=sel?"rgba(70,110,190,0.92)":"rgba(30,38,66,0.85)"; roundRect(bx,by,520,38,9); ctx.fill();
+    ctx.strokeStyle=sel?"#fff":"#56608a"; ctx.lineWidth=sel?2.5:1.2; roundRect(bx,by,520,38,9); ctx.stroke();
+    ctx.fillStyle="#fff"; ctx.font="bold 15px 'Malgun Gothic',sans-serif";
+    ctx.fillText("✍ "+list[i].name+"   (최소 "+list[i].min+"수)", LOGW/2-20, by+19);
+    (function(idx){ uiHit(bx,by,470,38,function(){ PZ.cidx=idx; pzBeginLevel(list[idx],"custom"); }); })(i);
+    ctx.fillStyle="#ff8a8a"; ctx.font="bold 14px 'Malgun Gothic',sans-serif"; ctx.fillText("🗑", bx+498, by+19);
+    (function(idx){ uiHit(bx+478,by,42,38,function(){ const l2=pzCustomLoad(); l2.splice(idx,1); pzCustomSave(l2); PZ.cidx=0; showToast("🗑 삭제했어요"); }); })(i);
+  }
+  ctx.restore();
+}
+function pzRenderEdit(){
+  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillStyle="#9fe6c8"; ctx.font="bold 28px 'Malgun Gothic',sans-serif"; ctx.fillText("🛠 퍼즐 만들기 — 별조각 밀기 출제", LOGW/2, 52);
+  const cell=72, ox=LOGW/2-PZ.eW*cell/2, oy=96;
+  for(let r=0;r<PZ.eH;r++) for(let c=0;c<PZ.eW;c++){
+    const x=ox+c*cell, y=oy+r*cell, ch=PZ.eg[r][c];
+    if(ch==="#"){ ctx.fillStyle="#3f4a80"; roundRect(x+2,y+2,cell-4,cell-4,8); ctx.fill(); }
+    else { ctx.fillStyle=((c+r)%2)?"#141b3a":"#121834"; ctx.fillRect(x,y,cell,cell); }
+    if(ch==="o"){ ctx.strokeStyle="rgba(255,225,120,0.75)"; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.arc(x+cell/2, y+cell/2, cell*0.3, 0, Math.PI*2); ctx.stroke(); }
+    if(ch==="$") drawStar(x+cell/2, y+cell/2, 5, cell*0.3, cell*0.13, "#ffe14d");
+    if(ch==="*"){ ctx.font="30px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#fff"; ctx.fillText("😺", x+cell/2, y+cell/2); }
+    const inner=(c>0&&r>0&&c<PZ.eW-1&&r<PZ.eH-1);
+    if(inner){ (function(cc,rr){ uiHit(x,y,cell,cell,function(){ pzEditCycle(cc,rr); }); })(c,r); }
+  }
+  ctx.strokeStyle="#3a4470"; ctx.lineWidth=2; ctx.strokeRect(ox-2, oy-2, PZ.eW*cell+4, PZ.eH*cell+4);
+  ctx.fillStyle=(PZ.checked&&PZ.checked.ok)?"#7dffb0":"#ffd97d"; ctx.font="bold 16px 'Malgun Gothic',sans-serif";
+  ctx.fillText(PZ.editMsg||"", LOGW/2, oy+PZ.eH*cell+28);
+  drawButton("🔍 풀이 검증 (V)", LOGW/2-330, LOGH-52, 300, 44, false, function(){ pzEditCheck(); });
+  drawButton("💾 저장 (B)", LOGW/2, LOGH-52, 300, 44, !!(PZ.checked&&PZ.checked.ok), function(){ pzEditSave(); });
+  drawButton("🧹 새로 (N)", LOGW/2+330, LOGH-52, 300, 44, false, function(){ pzEditStart(); });
+  ctx.fillStyle="#8893bb"; ctx.font="12px 'Malgun Gothic',sans-serif";
+  ctx.fillText("클릭 순환: 바닥→벽→⭐별→⭕홈→😺시고니 · 별≤5 · 검증 통과해야 저장 · Esc 목록", LOGW/2, LOGH-14);
+  ctx.restore();
+}
+/* ── ⑦ 🏃 별빛 러너 — 자동 달리기(점프/슬라이드·거리 기록) ── */
+const RN_BEST_KEY="starArena.lab.rnBest";
+let RN=null;
+function rnBest(){ try{ return +localStorage.getItem(RN_BEST_KEY)||0; }catch(e){ return 0; } }
+function rnStart(){
+  RN={ y:0, vy:0, slide:0, spd:330, dist:0, coins:0, obst:[], stars:[], spawnT:1.1,
+       over:false, paused:false, groundY:LOGH-140, t:0, dj:true };
+  gameState=STATE.RUNNER;
+  showToast("🏃 별빛 러너(실험) — Z 점프(2단!) · ↓ 슬라이드 · 장애물을 피해 멀리!");
+}
+function rnJump(){
+  if(!RN||RN.over) return;
+  if(RN.y===0){ RN.vy=-760; RN.dj=true; playSfx("jump"); }
+  else if(RN.dj){ RN.vy=-640; RN.dj=false; playSfx("jump"); }
+}
+function rnKey(code){
+  if(code==="Escape"){ RN=null; gameState=STATE.ADMIN; return; }
+  if(!RN) return;
+  if(code==="KeyR"){ rnStart(); return; }
+  if(code==="KeyP"){ RN.paused=!RN.paused; return; }
+  if(RN.over){ if(code==="Enter"||code==="NumpadEnter"){ rnStart(); } return; }
+  if(code==="KeyZ"||code==="Space"||code==="ArrowUp"||code==="KeyW"){ rnJump(); return; }
+}
+function rnUpdate(dt){
+  if(!RN||RN.over||RN.paused) return;
+  RN.t+=dt; RN.spd=Math.min(640, 330+RN.t*9);
+  RN.dist+=RN.spd*dt/56;   // 미터(타일) 단위
+  RN.slide=(keysDown.has("ArrowDown")||keysDown.has("KeyS"))?1:0;
+  // 중력
+  RN.vy+=2400*dt; RN.y+=RN.vy*dt;
+  if(RN.y>0){ RN.y=0; RN.vy=0; }
+  // 스폰(간격은 속도 비례 — 반응 시간 일정)
+  RN.spawnT-=dt;
+  if(RN.spawnT<=0){
+    RN.spawnT=(0.9+Math.random()*0.9)*(430/RN.spd);
+    const roll=Math.random();
+    if(roll<0.42) RN.obst.push({ kind:"spike", x:LOGW+60, w:44, h:46 });
+    else if(roll<0.72) RN.obst.push({ kind:"jelly", x:LOGW+60, w:40, h:40 });
+    else RN.obst.push({ kind:"ghost", x:LOGW+60, w:44, h:38, fly:40 });   // 슬라이드로 통과(서면 쿵: 40~78px 구간)
+    if(Math.random()<0.5){ const n=3+Math.floor(Math.random()*3);
+      for(let k=0;k<n;k++) RN.stars.push({ x:LOGW+240+k*44, y:RN.groundY-90-Math.sin(k/(n-1)*Math.PI)*70 }); }
+  }
+  for(const o of RN.obst) o.x-=RN.spd*dt;
+  for(const s of RN.stars) s.x-=RN.spd*dt;
+  RN.obst=RN.obst.filter(o=>o.x>-80);
+  RN.stars=RN.stars.filter(s=>s.x>-40 && !s.got);
+  // 판정(플레이어 x=210 고정)
+  const px=210, ph=RN.slide?34:62, py=RN.groundY+RN.y;   // py=발 위치
+  for(const o of RN.obst){
+    const ox0=o.x-o.w/2+8, ox1=o.x+o.w/2-8;
+    if(px+16<ox0||px-16>ox1) continue;
+    if(o.kind==="ghost"){ const gy0=RN.groundY-o.fly-o.h, gy1=RN.groundY-o.fly;
+      if(py-ph<gy1 && py>gy0){ RN.over=true; } }
+    else { const oy0=RN.groundY-o.h;
+      if(py>oy0+6){ RN.over=true; } }
+    if(RN.over){ playSfx("lose");
+      try{ if(Math.floor(RN.dist)>rnBest()) localStorage.setItem(RN_BEST_KEY, ""+Math.floor(RN.dist)); }catch(e){}
+      return; }
+  }
+  for(const s of RN.stars){
+    if(Math.abs(s.x-px)<26 && Math.abs(s.y-(py-ph/2))<44){ s.got=true; RN.coins++; playSfx("buff"); }
+  }
+}
+function rnRender(){
+  if(!RN) return;
+  ctx.fillStyle="#0c1226"; ctx.fillRect(0,0,LOGW,LOGH);
+  ctx.save();
+  for(let i=0;i<40;i++){ const x=((i*167)-(RN.dist*56*0.25))%(LOGW+40), y=(i*97)%(RN.groundY-120);
+    ctx.globalAlpha=0.4; ctx.fillStyle="#dfe6ff"; ctx.fillRect(((x%(LOGW+40))+LOGW+40)%(LOGW+40)-20, y, 2, 2); }
+  ctx.globalAlpha=1;
+  // 바닥
+  ctx.fillStyle="#1c2b4d"; ctx.fillRect(0, RN.groundY, LOGW, LOGH-RN.groundY);
+  ctx.fillStyle="#2b3d66"; ctx.fillRect(0, RN.groundY, LOGW, 8);
+  const off=(RN.dist*56)%56;
+  ctx.fillStyle="rgba(255,255,255,0.07)";
+  for(let x=-off; x<LOGW; x+=56) ctx.fillRect(x, RN.groundY+22, 30, 4);
+  // 별·장애물
+  ctx.textAlign="center"; ctx.textBaseline="middle";
+  for(const s of RN.stars) drawStar(s.x, s.y, 5, 11, 5, "#ffe14d");
+  for(const o of RN.obst){
+    if(o.kind==="spike"){ ctx.fillStyle="#ff6a6a";
+      for(let k=0;k<3;k++){ const bx=o.x-o.w/2+k*(o.w/3);
+        ctx.beginPath(); ctx.moveTo(bx, RN.groundY); ctx.lineTo(bx+o.w/6, RN.groundY-o.h); ctx.lineTo(bx+o.w/3, RN.groundY); ctx.closePath(); ctx.fill(); } }
+    else if(o.kind==="jelly"){ const img=getMonsterImage("soft_jelly"), sz=o.w*2.3;
+      if(img) ctx.drawImage(img, o.x-sz/2, RN.groundY-sz*0.72, sz, sz);
+      else { ctx.fillStyle="#7ad0e0"; ctx.beginPath(); ctx.arc(o.x, RN.groundY-o.h/2, o.w/2, 0, Math.PI*2); ctx.fill(); } }
+    else { const img=getMonsterImage("cloud_ghost"), sz=o.w*2.2, gy=RN.groundY-o.fly-o.h/2;
+      if(img) ctx.drawImage(img, o.x-sz/2, gy-sz/2, sz, sz);
+      else { ctx.fillStyle="#c5b8ff"; ctx.beginPath(); ctx.arc(o.x, gy, o.w/2, 0, Math.PI*2); ctx.fill(); } }
+  }
+  // 플레이어(달리기 바운스 + 슬라이드)
+  {
+    const px=210, py=RN.groundY+RN.y;
+    const bounce=(RN.y===0 && !RN.slide)?Math.abs(Math.sin(RN.t*11))*5:0;
+    ctx.save(); ctx.translate(px, py-bounce);
+    if(RN.slide){ ctx.scale(1.25, 0.55); }
+    const drew=drawCharacterSprite(selectedCharacterId, 20, 0, { moving:true, attacking:false });
+    if(!drew){ ctx.fillStyle="#ffe14d"; ctx.beginPath(); ctx.arc(0,-24,20,0,Math.PI*2); ctx.fill(); }
+    ctx.restore();
+  }
+  ctx.restore();
+  ctx.save(); ctx.textBaseline="middle";
+  ctx.fillStyle="rgba(10,14,24,0.85)"; ctx.fillRect(0,0,LOGW,44);
+  ctx.textAlign="left"; ctx.fillStyle="#9fe6c8"; ctx.font="bold 17px 'Malgun Gothic',sans-serif";
+  ctx.fillText("🏃 별빛 러너 (실험)", 16, 22);
+  ctx.textAlign="center"; ctx.fillStyle="#fff"; ctx.font="bold 20px 'Malgun Gothic',sans-serif";
+  ctx.fillText(Math.floor(RN.dist)+"m   ·   ⭐ "+RN.coins, LOGW/2, 22);
+  ctx.textAlign="right"; ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
+  ctx.fillText("🏆 "+Math.max(rnBest(),Math.floor(RN.dist))+"m", LOGW-16, 22);
+  ctx.textAlign="center"; ctx.fillStyle="#8893bb";
+  ctx.fillText("Z 점프(공중에서 한 번 더!) · ↓ 슬라이드 · P 정지 · Esc 나가기", LOGW/2, LOGH-18);
+  if(RN.paused){ ctx.fillStyle="rgba(8,10,22,0.6)"; ctx.fillRect(0,0,LOGW,LOGH);
+    ctx.fillStyle="#fff"; ctx.font="bold 40px 'Malgun Gothic',sans-serif"; ctx.fillText("⏸ 일시정지 (P)", LOGW/2, LOGH/2); }
+  if(RN.over){
+    ctx.fillStyle="rgba(8,10,22,0.78)"; ctx.fillRect(0,0,LOGW,LOGH);
+    ctx.fillStyle="#ff8a8a"; ctx.font="bold 44px 'Malgun Gothic',sans-serif"; ctx.fillText("💫 꽈당!", LOGW/2, LOGH/2-52);
+    ctx.fillStyle="#dfe6ff"; ctx.font="18px 'Malgun Gothic',sans-serif";
+    ctx.fillText(Math.floor(RN.dist)+"m 달림 · ⭐ "+RN.coins+"개 · 🏆 최고 "+rnBest()+"m", LOGW/2, LOGH/2-4);
+    ctx.fillText("Enter 다시 달리기 · Esc 교사 패널", LOGW/2, LOGH/2+32);
+  }
+  ctx.restore();
+}
+/* ── ⑧ 🧱 별빛 벽돌깨기 — 브레이크아웃(3스테이지·파워업) ── */
+const BK_BEST_KEY="starArena.lab.bkBest";
+let BK=null;
+function bkBest(){ try{ const s=JSON.parse(localStorage.getItem(BK_BEST_KEY)); if(s) return s; }catch(e){} return { score:0, stage:0 }; }
+function bkBricks(stage){
+  const rows=5, cols=10, out=[];
+  for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){
+    if(stage===2 && (c+r)%2===0 && r>0) continue;            // 체스판
+    if(stage===3 && Math.abs(c-4.5)<(2-Math.min(r,2))) continue;   // V자 구멍
+    const hp=(r===0)?3:((r<3)?2:1);
+    out.push({ c:c, r:r, x:140+c*100, y:90+r*44, w:92, h:36, hp:hp, max:hp });
+  }
+  return out;
+}
+function bkServe(){ BK.balls=[{ x:BK.px, y:LOGH-96, vx:(Math.random()<0.5?-1:1)*180, vy:-430, stuck:false }]; }
+function bkStart(){
+  BK={ px:LOGW/2, pw:130, stage:1, score:0, lives:3, bricks:bkBricks(1), balls:[], drops:[],
+       slowT:0, wideT:0, over:false, win:false, paused:false, t:0 };
+  bkServe();
+  gameState=STATE.BREAKOUT;
+  showToast("🧱 별빛 벽돌깨기(실험) — ←→로 받아치자! 3스테이지!");
+}
+function bkKey(code){
+  if(code==="Escape"){ BK=null; gameState=STATE.ADMIN; return; }
+  if(!BK) return;
+  if(code==="KeyR"){ bkStart(); return; }
+  if(code==="KeyP"){ BK.paused=!BK.paused; return; }
+  if((BK.over||BK.win) && (code==="Enter"||code==="NumpadEnter")){ bkStart(); return; }
+}
+function bkUpdate(dt){
+  if(!BK||BK.over||BK.win||BK.paused) return;
+  BK.t+=dt;
+  if(BK.slowT>0) BK.slowT-=dt;
+  if(BK.wideT>0){ BK.wideT-=dt; if(BK.wideT<=0) BK.pw=130; }
+  let mx=0;
+  if(keysDown.has("ArrowLeft")||keysDown.has("KeyA")) mx-=1;
+  if(keysDown.has("ArrowRight")||keysDown.has("KeyD")) mx+=1;
+  BK.px=clamp(BK.px+mx*520*dt, BK.pw/2+10, LOGW-BK.pw/2-10);
+  const mul=(BK.slowT>0)?0.62:1;
+  for(const b of BK.balls){
+    b.x+=b.vx*mul*dt; b.y+=b.vy*mul*dt;
+    if(b.x<14){ b.x=14; b.vx=Math.abs(b.vx); playSfx("click"); }
+    if(b.x>LOGW-14){ b.x=LOGW-14; b.vx=-Math.abs(b.vx); playSfx("click"); }
+    if(b.y<58){ b.y=58; b.vy=Math.abs(b.vy); playSfx("click"); }
+    // 패들
+    if(b.vy>0 && b.y>LOGH-84 && b.y<LOGH-58 && Math.abs(b.x-BK.px)<BK.pw/2+10){
+      const off=(b.x-BK.px)/(BK.pw/2);
+      const spd=Math.min(760, Math.hypot(b.vx,b.vy)+8);
+      const ang=-Math.PI/2+off*1.05;
+      b.vx=Math.cos(ang+Math.PI/2)*0; b.vx=Math.sin(ang)*0;   // 재계산 아래
+      b.vx=spd*Math.sin(off*1.05); b.vy=-Math.abs(spd*Math.cos(off*1.05));
+      b.y=LOGH-85; playSfx("spring");
+    }
+    // 벽돌
+    for(const br of BK.bricks){
+      if(br.hp<=0) continue;
+      if(b.x>br.x-10 && b.x<br.x+br.w+10 && b.y>br.y-10 && b.y<br.y+br.h+10){
+        const dl=Math.abs(b.x-(br.x-10)), dr=Math.abs(b.x-(br.x+br.w+10));
+        const dtp=Math.abs(b.y-(br.y-10)), db=Math.abs(b.y-(br.y+br.h+10));
+        const m=Math.min(dl,dr,dtp,db);
+        if(m===dl) b.vx=-Math.abs(b.vx); else if(m===dr) b.vx=Math.abs(b.vx);
+        else if(m===dtp) b.vy=-Math.abs(b.vy); else b.vy=Math.abs(b.vy);
+        br.hp--; BK.score+=10*(br.max);
+        playSfx(br.hp<=0?"break":"hit");
+        if(br.hp<=0 && Math.random()<0.14){
+          const roll=Math.random();
+          BK.drops.push({ x:br.x+br.w/2, y:br.y+br.h, kind:(roll<0.4)?"wide":((roll<0.75)?"multi":"slow") });
+        }
+        break;
+      }
+    }
+  }
+  BK.balls=BK.balls.filter(b=>{
+    if(b.y>LOGH+30) return false;
+    return true;
+  });
+  if(!BK.balls.length){
+    BK.lives--;
+    if(BK.lives<=0){ BK.over=true; playSfx("lose");
+      try{ const bb=bkBest(); if(BK.score>bb.score) localStorage.setItem(BK_BEST_KEY, JSON.stringify({score:BK.score, stage:BK.stage})); }catch(e){}
+      return; }
+    playSfx("hit"); bkServe();
+  }
+  for(const d of BK.drops){ d.y+=170*dt;
+    if(d.y>LOGH-88 && d.y<LOGH-52 && Math.abs(d.x-BK.px)<BK.pw/2+16){
+      d.got=true; playSfx("powerup");
+      if(d.kind==="wide"){ BK.pw=190; BK.wideT=12; showToast("🟦 넓은 패들! (12초)"); }
+      else if(d.kind==="multi"){ const src=BK.balls[0]; if(src){ BK.balls.push({ x:src.x, y:src.y, vx:-src.vx, vy:-Math.abs(src.vy) }, { x:src.x, y:src.y, vx:src.vx*0.7, vy:-Math.abs(src.vy)*1.1 }); showToast("✨ 멀티볼!"); } }
+      else { BK.slowT=8; showToast("🐌 슬로우 볼! (8초)"); }
+    } }
+  BK.drops=BK.drops.filter(d=>!d.got && d.y<LOGH+20);
+  if(!BK.bricks.some(br=>br.hp>0)){
+    BK.score+=200; playSfx("clear");
+    if(BK.stage>=3){ BK.win=true; playSfx("win");
+      try{ const bb=bkBest(); if(BK.score>bb.score) localStorage.setItem(BK_BEST_KEY, JSON.stringify({score:BK.score, stage:3})); }catch(e){} }
+    else { BK.stage++; BK.bricks=bkBricks(BK.stage); BK.drops.length=0; bkServe(); showToast("🎉 스테이지 "+BK.stage+"!"); }
+  }
+}
+function bkRender(){
+  if(!BK) return;
+  ctx.fillStyle="#0c1226"; ctx.fillRect(0,0,LOGW,LOGH);
+  ctx.save();
+  for(let i=0;i<36;i++){ ctx.globalAlpha=0.35; ctx.fillStyle="#dfe6ff"; ctx.fillRect((i*167)%LOGW, (i*211)%LOGH, 2, 2); }
+  ctx.globalAlpha=1;
+  const COLORS=["#c58bff","#8fd9ff","#7dffb0","#ffd97d","#ff9a8a"];
+  for(const br of BK.bricks){
+    if(br.hp<=0) continue;
+    ctx.fillStyle=COLORS[br.r%COLORS.length];
+    ctx.globalAlpha=0.45+0.55*(br.hp/br.max);
+    roundRect(br.x, br.y, br.w, br.h, 8); ctx.fill();
+    ctx.globalAlpha=1;
+    if(br.r===0){ const img=getMonsterImage("bounce_bubble");
+      if(img) ctx.drawImage(img, br.x+br.w/2-16, br.y+br.h/2-16, 32, 32); }
+    if(br.hp<br.max){ ctx.strokeStyle="rgba(0,0,0,0.4)"; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(br.x+14,br.y+8); ctx.lineTo(br.x+30,br.y+22); ctx.lineTo(br.x+18,br.y+30); ctx.stroke(); }
+  }
+  for(const d of BK.drops){
+    const icon=(d.kind==="wide")?"🟦":((d.kind==="multi")?"✨":"🐌");
+    ctx.font="24px 'Malgun Gothic',sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText(icon, d.x, d.y);
+  }
+  // 패들(캐릭터가 위에 탑승)
+  ctx.fillStyle="#4f7dd0"; roundRect(BK.px-BK.pw/2, LOGH-76, BK.pw, 18, 9); ctx.fill();
+  ctx.fillStyle="#9fe0ff"; roundRect(BK.px-BK.pw/2, LOGH-76, BK.pw, 7, 9); ctx.fill();
+  ctx.save(); ctx.translate(BK.px, LOGH-78);
+  const drew=drawCharacterSprite(selectedCharacterId, 13, 0, { moving:false, attacking:false });
+  if(!drew){ ctx.fillStyle="#ffe14d"; ctx.beginPath(); ctx.arc(0,-8,9,0,Math.PI*2); ctx.fill(); }
+  ctx.restore();
+  for(const b of BK.balls) drawStar(b.x, b.y, 5, 12, 5.5, "#ffe14d");
+  ctx.restore();
+  ctx.save(); ctx.textBaseline="middle";
+  ctx.fillStyle="rgba(10,14,24,0.85)"; ctx.fillRect(0,0,LOGW,44);
+  ctx.textAlign="left"; ctx.fillStyle="#9fe6c8"; ctx.font="bold 17px 'Malgun Gothic',sans-serif";
+  ctx.fillText("🧱 별빛 벽돌깨기 (실험)", 16, 22);
+  ctx.textAlign="center"; ctx.fillStyle="#fff"; ctx.font="bold 18px 'Malgun Gothic',sans-serif";
+  ctx.fillText("점수 "+BK.score+"   ·   STAGE "+BK.stage+"/3   ·   🏆 "+Math.max(bkBest().score,BK.score), LOGW/2, 22);
+  ctx.textAlign="right"; ctx.fillStyle="#ff8a8a"; ctx.fillText("❤".repeat(Math.max(0,BK.lives)), LOGW-16, 22);
+  ctx.textAlign="center"; ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
+  ctx.fillText("←→ 패들 · 🟦넓게 ✨멀티볼 🐌슬로우 · P 정지 · Esc 나가기", LOGW/2, LOGH-14);
+  if(BK.paused){ ctx.fillStyle="rgba(8,10,22,0.6)"; ctx.fillRect(0,0,LOGW,LOGH);
+    ctx.fillStyle="#fff"; ctx.font="bold 40px 'Malgun Gothic',sans-serif"; ctx.fillText("⏸ 일시정지 (P)", LOGW/2, LOGH/2); }
+  if(BK.over||BK.win){
+    ctx.fillStyle="rgba(8,10,22,0.78)"; ctx.fillRect(0,0,LOGW,LOGH);
+    ctx.font="bold 44px 'Malgun Gothic',sans-serif";
+    ctx.fillStyle=BK.win?"#7dffb0":"#ff8a8a";
+    ctx.fillText(BK.win?"🎉 벽돌 완전 정복!":"💧 별공이 떨어졌다...", LOGW/2, LOGH/2-52);
+    ctx.fillStyle="#dfe6ff"; ctx.font="18px 'Malgun Gothic',sans-serif";
+    ctx.fillText("점수 "+BK.score+" · 스테이지 "+BK.stage+" · 🏆 "+Math.max(bkBest().score,BK.score), LOGW/2, LOGH/2-4);
+    ctx.fillText("Enter 다시 · Esc 교사 패널", LOGW/2, LOGH/2+32);
+  }
+  ctx.restore();
+}
+/* ── ⑨ 🐍 별꼬리 — 스네이크(별조각 먹고 길어지기) ── */
+const SN_BEST_KEY="starArena.lab.snBest";
+const SN_COLS=26, SN_ROWS=13, SN_CELL=48, SN_OX=(1280-26*48)/2, SN_OY=60;
+let SN=null;
+function snBest(){ try{ return +localStorage.getItem(SN_BEST_KEY)||0; }catch(e){ return 0; } }
+function snPlaceFood(golden){
+  while(true){
+    const c=Math.floor(Math.random()*SN_COLS), r=Math.floor(Math.random()*SN_ROWS);
+    if(SN.body.some(b=>b.c===c&&b.r===r)) continue;
+    SN.food={ c:c, r:r, golden:!!golden };
+    return;
+  }
+}
+function snStart(){
+  SN={ body:[{c:6,r:6},{c:5,r:6},{c:4,r:6}], dir:{c:1,r:0}, nextDir:{c:1,r:0},
+       stepIv:0.15, stepT:0, score:0, eaten:0, over:false, paused:false, food:null };
+  snPlaceFood(false);
+  gameState=STATE.SNAKE;
+  showToast("🐍 별꼬리(실험) — 별조각을 먹고 길~어지자! 벽과 내 꼬리 조심!");
+}
+function snKey(code){
+  if(code==="Escape"){ SN=null; gameState=STATE.ADMIN; return; }
+  if(!SN) return;
+  if(code==="KeyR"){ snStart(); return; }
+  if(code==="KeyP"){ SN.paused=!SN.paused; return; }
+  if(SN.over){ if(code==="Enter"||code==="NumpadEnter") snStart(); return; }
+  const d=SN.dir;
+  if((code==="ArrowLeft"||code==="KeyA") && d.c!==1) SN.nextDir={c:-1,r:0};
+  else if((code==="ArrowRight"||code==="KeyD") && d.c!==-1) SN.nextDir={c:1,r:0};
+  else if((code==="ArrowUp"||code==="KeyW") && d.r!==1) SN.nextDir={c:0,r:-1};
+  else if((code==="ArrowDown"||code==="KeyS") && d.r!==-1) SN.nextDir={c:0,r:1};
+}
+function snUpdate(dt){
+  if(!SN||SN.over||SN.paused) return;
+  SN.stepT+=dt;
+  if(SN.stepT<SN.stepIv) return;
+  SN.stepT=0;
+  SN.dir=SN.nextDir;
+  const h=SN.body[0], nc=h.c+SN.dir.c, nr=h.r+SN.dir.r;
+  if(nc<0||nr<0||nc>=SN_COLS||nr>=SN_ROWS || SN.body.some((b,i)=>i<SN.body.length-1 && b.c===nc && b.r===nr)){
+    SN.over=true; playSfx("lose");
+    try{ if(SN.score>snBest()) localStorage.setItem(SN_BEST_KEY, ""+SN.score); }catch(e){}
+    return;
+  }
+  SN.body.unshift({c:nc, r:nr});
+  if(SN.food && nc===SN.food.c && nr===SN.food.r){
+    SN.eaten++;
+    if(SN.food.golden){ SN.score+=50; SN.body.push({...SN.body[SN.body.length-1]}, {...SN.body[SN.body.length-1]}); playSfx("powerup"); }
+    else { SN.score+=10; playSfx("buff"); }
+    SN.stepIv=Math.max(0.075, 0.15-SN.eaten*0.003);
+    snPlaceFood(SN.eaten%5===4);
+  } else SN.body.pop();
+}
+function snRender(){
+  if(!SN) return;
+  ctx.fillStyle="#0c1226"; ctx.fillRect(0,0,LOGW,LOGH);
+  ctx.save();
+  ctx.fillStyle="#10173a"; ctx.fillRect(SN_OX, SN_OY, SN_COLS*SN_CELL, SN_ROWS*SN_CELL);
+  ctx.strokeStyle="#3a4470"; ctx.lineWidth=3; ctx.strokeRect(SN_OX, SN_OY, SN_COLS*SN_CELL, SN_ROWS*SN_CELL);
+  ctx.fillStyle="rgba(90,110,180,0.08)";
+  for(let c=0;c<SN_COLS;c+=2) for(let r=0;r<SN_ROWS;r++) if((c+r)%2) ctx.fillRect(SN_OX+c*SN_CELL, SN_OY+r*SN_CELL, SN_CELL, SN_CELL);
+  if(SN.food){
+    const x=SN_OX+SN.food.c*SN_CELL+SN_CELL/2, y=SN_OY+SN.food.r*SN_CELL+SN_CELL/2;
+    const p=1+0.12*Math.sin(uiTime*6);
+    drawStar(x, y, 5, (SN.food.golden?17:12)*p, (SN.food.golden?8:5)*p, SN.food.golden?"#ffb63f":"#ffe14d");
+  }
+  for(let i=SN.body.length-1;i>=1;i--){
+    const b=SN.body[i], x=SN_OX+b.c*SN_CELL, y=SN_OY+b.r*SN_CELL;
+    const k=1-i/SN.body.length;
+    ctx.fillStyle="rgba("+Math.round(90+k*40)+","+Math.round(200+k*30)+","+Math.round(220)+",0.9)";
+    roundRect(x+5, y+5, SN_CELL-10, SN_CELL-10, 12); ctx.fill();
+  }
+  {
+    const h=SN.body[0], x=SN_OX+h.c*SN_CELL+SN_CELL/2, y=SN_OY+h.r*SN_CELL+SN_CELL/2;
+    ctx.save(); ctx.translate(x, y+SN_CELL*0.32);
+    const drew=drawCharacterSprite(selectedCharacterId, 15, SN.dir.c<0?Math.PI:0, { moving:true, attacking:false });
+    if(!drew){ ctx.fillStyle="#7ad0e0"; ctx.beginPath(); ctx.arc(0,-SN_CELL*0.32,SN_CELL*0.4,0,Math.PI*2); ctx.fill(); }
+    ctx.restore();
+  }
+  ctx.restore();
+  ctx.save(); ctx.textBaseline="middle"; ctx.textAlign="center";
+  ctx.fillStyle="rgba(10,14,24,0.85)"; ctx.fillRect(0,0,LOGW,44);
+  ctx.textAlign="left"; ctx.fillStyle="#9fe6c8"; ctx.font="bold 17px 'Malgun Gothic',sans-serif";
+  ctx.fillText("🐍 별꼬리 (실험)", 16, 22);
+  ctx.textAlign="center"; ctx.fillStyle="#fff"; ctx.font="bold 18px 'Malgun Gothic',sans-serif";
+  ctx.fillText("점수 "+SN.score+"   ·   길이 "+SN.body.length+"   ·   🏆 "+Math.max(snBest(),SN.score), LOGW/2, 22);
+  ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
+  ctx.fillText("화살표(WASD) 방향 · 5개마다 황금별(+50·+3칸) · P 정지 · Esc 나가기", LOGW/2, LOGH-16);
+  if(SN.paused){ ctx.fillStyle="rgba(8,10,22,0.6)"; ctx.fillRect(0,0,LOGW,LOGH);
+    ctx.fillStyle="#fff"; ctx.font="bold 40px 'Malgun Gothic',sans-serif"; ctx.fillText("⏸ 일시정지 (P)", LOGW/2, LOGH/2); }
+  if(SN.over){
+    ctx.fillStyle="rgba(8,10,22,0.78)"; ctx.fillRect(0,0,LOGW,LOGH);
+    ctx.fillStyle="#ff8a8a"; ctx.font="bold 44px 'Malgun Gothic',sans-serif"; ctx.fillText("💫 아이쿠!", LOGW/2, LOGH/2-52);
+    ctx.fillStyle="#dfe6ff"; ctx.font="18px 'Malgun Gothic',sans-serif";
+    ctx.fillText("점수 "+SN.score+" · 길이 "+SN.body.length+" · 🏆 최고 "+Math.max(snBest(),SN.score), LOGW/2, LOGH/2-4);
+    ctx.fillText("Enter 다시 · Esc 교사 패널", LOGW/2, LOGH/2+32);
+  }
+  ctx.restore();
+}
+/* ── ⑩ ⚫ 별빛 오델로 — 리버시(⭐별빛 vs ☁먹구름 AI) ── */
+const OT_WINS_KEY="starArena.lab.otWins";
+let OT=null;
+function otWins(){ try{ const s=JSON.parse(localStorage.getItem(OT_WINS_KEY)); if(s) return s; }catch(e){} return { w:0, l:0, d:0 }; }
+function otStart(){
+  const b=[];
+  for(let r=0;r<8;r++){ b.push(new Array(8).fill(0)); }
+  b[3][3]=2; b[4][4]=2; b[3][4]=1; b[4][3]=1;   // 1=⭐플레이어 2=☁AI
+  OT={ b:b, turn:1, cur:{c:2,r:3}, aiT:0, over:false, msg:"", passMsgT:0, lastMove:null };
+  gameState=STATE.OTHELLO;
+  showToast("⚫ 별빛 오델로(실험) — ⭐를 놓아 ☁먹구름을 뒤집자!");
+}
+function otFlips(b, c, r, who){
+  if(b[r][c]!==0) return [];
+  const opp=(who===1)?2:1, all=[];
+  for(const [dc,dr] of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]){
+    const line=[];
+    let cc=c+dc, rr=r+dr;
+    while(cc>=0&&cc<8&&rr>=0&&rr<8&&b[rr][cc]===opp){ line.push([cc,rr]); cc+=dc; rr+=dr; }
+    if(line.length && cc>=0&&cc<8&&rr>=0&&rr<8&&b[rr][cc]===who){ for(const p of line) all.push(p); }
+  }
+  return all;
+}
+function otMoves(b, who){
+  const out=[];
+  for(let r=0;r<8;r++) for(let c=0;c<8;c++){ if(otFlips(b,c,r,who).length) out.push({c:c,r:r}); }
+  return out;
+}
+function otCount(b){ let p=0,a=0; for(let r=0;r<8;r++) for(let c=0;c<8;c++){ if(b[r][c]===1)p++; else if(b[r][c]===2)a++; } return {p:p,a:a}; }
+function otPlace(c, r, who){
+  const fl=otFlips(OT.b, c, r, who);
+  if(!fl.length) return false;
+  OT.b[r][c]=who;
+  for(const [fc,fr] of fl) OT.b[fr][fc]=who;
+  OT.lastMove={c:c,r:r,who:who};
+  playSfx(who===1?"buff":"stomp");
+  // 다음 턴(패스 처리)
+  const opp=(who===1)?2:1;
+  if(otMoves(OT.b, opp).length) OT.turn=opp;
+  else if(otMoves(OT.b, who).length){ OT.turn=who; OT.passMsgT=1.4; OT.msg=(opp===1?"⭐ 둘 곳이 없어 패스!":"☁ 둘 곳이 없어 패스!"); }
+  else {
+    OT.over=true;
+    const s=otCount(OT.b);
+    try{ const w=otWins(); if(s.p>s.a) w.w++; else if(s.p<s.a) w.l++; else w.d++;
+      localStorage.setItem(OT_WINS_KEY, JSON.stringify(w)); }catch(e){}
+    playSfx(s.p>s.a?"win":(s.p<s.a?"lose":"clear"));
+  }
+  if(OT.turn===2) OT.aiT=0.75;
+  return true;
+}
+function otAiMove(){
+  const mv=otMoves(OT.b, 2);
+  if(!mv.length) return;
+  const CORN=[[0,0],[7,0],[0,7],[7,7]];
+  let best=null, bestScore=-1e9;
+  for(const m of mv){
+    let sc=otFlips(OT.b, m.c, m.r, 2).length;
+    if(CORN.some(([cc,rr])=>cc===m.c&&rr===m.r)) sc+=100;                       // 모서리 최우선
+    else if(m.c===0||m.c===7||m.r===0||m.r===7) sc+=8;                          // 변 선호
+    if((m.c===1||m.c===6)&&(m.r===1||m.r===6)) sc-=12;                          // X칸 회피
+    if(sc>bestScore){ bestScore=sc; best=m; }
+  }
+  if(best) otPlace(best.c, best.r, 2);
+}
+function otKey(code){
+  if(code==="Escape"){ OT=null; gameState=STATE.ADMIN; return; }
+  if(!OT) return;
+  if(code==="KeyR"){ otStart(); return; }
+  if(OT.over){ if(code==="Enter"||code==="NumpadEnter") otStart(); return; }
+  if(OT.turn!==1) return;
+  if(code==="ArrowLeft") OT.cur.c=(OT.cur.c+7)%8;
+  else if(code==="ArrowRight") OT.cur.c=(OT.cur.c+1)%8;
+  else if(code==="ArrowUp") OT.cur.r=(OT.cur.r+7)%8;
+  else if(code==="ArrowDown") OT.cur.r=(OT.cur.r+1)%8;
+  else if(code==="Enter"||code==="NumpadEnter"||code==="Space"){
+    if(!otPlace(OT.cur.c, OT.cur.r, 1)) showToast("거긴 못 놓아요! (뒤집을 수 있는 곳만)");
+  }
+}
+function otUpdate(dt){
+  if(!OT||OT.over) return;
+  if(OT.passMsgT>0) OT.passMsgT-=dt;
+  if(OT.turn===2){ OT.aiT-=dt; if(OT.aiT<=0) otAiMove(); }
+}
+function otRender(){
+  if(!OT) return;
+  ctx.fillStyle="#0c1226"; ctx.fillRect(0,0,LOGW,LOGH);
+  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
+  const cell=72, ox=LOGW/2-4*cell, oy=76;
+  ctx.fillStyle="#14224a"; roundRect(ox-14, oy-14, cell*8+28, cell*8+28, 14); ctx.fill();
+  ctx.strokeStyle="#3a4470"; ctx.lineWidth=3; roundRect(ox-14, oy-14, cell*8+28, cell*8+28, 14); ctx.stroke();
+  const legal=(OT.turn===1 && !OT.over)?otMoves(OT.b,1):[];
+  for(let r=0;r<8;r++) for(let c=0;c<8;c++){
+    const x=ox+c*cell, y=oy+r*cell;
+    ctx.fillStyle=((c+r)%2)?"#182a58":"#16264f"; ctx.fillRect(x, y, cell-2, cell-2);
+    if(legal.some(m=>m.c===c&&m.r===r)){
+      ctx.fillStyle="rgba(255,225,120,0.22)"; ctx.beginPath(); ctx.arc(x+cell/2, y+cell/2, 10, 0, Math.PI*2); ctx.fill();
+    }
+    const v=OT.b[r][c];
+    if(v===1){
+      ctx.fillStyle="#ffd23f"; ctx.beginPath(); ctx.arc(x+cell/2, y+cell/2, cell*0.36, 0, Math.PI*2); ctx.fill();
+      drawStar(x+cell/2, y+cell/2, 5, cell*0.2, cell*0.09, "#fff8d0");
+    } else if(v===2){
+      ctx.fillStyle="#8a7dd0"; ctx.beginPath(); ctx.arc(x+cell/2, y+cell/2, cell*0.36, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle="#e8e4ff"; ctx.font=Math.round(cell*0.34)+"px 'Malgun Gothic',sans-serif";
+      ctx.fillText("☁", x+cell/2, y+cell/2+1);
+    }
+    if(OT.lastMove && OT.lastMove.c===c && OT.lastMove.r===r){
+      ctx.strokeStyle="#ffffff"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(x+cell/2, y+cell/2, cell*0.42, 0, Math.PI*2); ctx.stroke();
+    }
+    (function(cc,rr){ uiHit(x, y, cell-2, cell-2, function(){ if(OT.turn===1 && !OT.over){ OT.cur={c:cc,r:rr}; if(!otPlace(cc,rr,1)) showToast("거긴 못 놓아요!"); } }); })(c,r);
+  }
+  if(OT.turn===1 && !OT.over){
+    const x=ox+OT.cur.c*cell, y=oy+OT.cur.r*cell;
+    ctx.strokeStyle="#7dffb0"; ctx.lineWidth=3; ctx.strokeRect(x+2, y+2, cell-6, cell-6);
+  }
+  const s=otCount(OT.b), w=otWins();
+  ctx.fillStyle="rgba(10,14,24,0.85)"; ctx.fillRect(0,0,LOGW,44);
+  ctx.textAlign="left"; ctx.fillStyle="#9fe6c8"; ctx.font="bold 17px 'Malgun Gothic',sans-serif";
+  ctx.fillText("⚫ 별빛 오델로 (실험)", 16, 22);
+  ctx.textAlign="center"; ctx.fillStyle="#fff"; ctx.font="bold 18px 'Malgun Gothic',sans-serif";
+  ctx.fillText("⭐ "+s.p+"  vs  ☁ "+s.a+"    ·    "+(OT.over?"게임 끝!":(OT.turn===1?"내 차례!":"☁ 생각 중...")), LOGW/2, 22);
+  ctx.textAlign="right"; ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
+  ctx.fillText("전적 "+w.w+"승 "+w.l+"패 "+w.d+"무", LOGW-16, 22);
+  ctx.textAlign="center"; ctx.fillStyle="#8893bb";
+  ctx.fillText("클릭 또는 화살표+Enter · 노란 점=놓을 수 있는 곳 · R 새 판 · Esc 나가기", LOGW/2, LOGH-16);
+  if(OT.passMsgT>0){ ctx.fillStyle="#ffd97d"; ctx.font="bold 22px 'Malgun Gothic',sans-serif"; ctx.fillText(OT.msg, LOGW/2, 60); }
+  if(OT.over){
+    const res=(s.p>s.a)?"🎉 별빛 승리!":((s.p<s.a)?"☁ 먹구름 승리...":"🤝 무승부!");
+    ctx.fillStyle="rgba(8,10,22,0.7)"; ctx.fillRect(0,LOGH/2-70,LOGW,140);
+    ctx.fillStyle=(s.p>s.a)?"#7dffb0":((s.p<s.a)?"#ff8a8a":"#ffd97d");
+    ctx.font="bold 42px 'Malgun Gothic',sans-serif"; ctx.fillText(res, LOGW/2, LOGH/2-18);
+    ctx.fillStyle="#dfe6ff"; ctx.font="17px 'Malgun Gothic',sans-serif";
+    ctx.fillText("⭐ "+s.p+" : "+s.a+" ☁   ·   Enter 새 판 · Esc 나가기", LOGW/2, LOGH/2+26);
+  }
+  ctx.restore();
+}
+/* ── 🧪 실험실 허브 — 10종 게임틀 한 화면(교사 전용) ── */
+const LAB_GAMES=[
+  { emoji:"🏰", name:"별빛 수비대",   desc:"길목에 탑을 지어 방어",   run:function(){ tdStart(); } },
+  { emoji:"🚀", name:"별빛 함대",     desc:"편대를 격추하는 슈팅",     run:function(){ shStart(); } },
+  { emoji:"🕶", name:"별빛 던전 3D",  desc:"1인칭 미로 탐험",         run:function(){ rayStart(); } },
+  { emoji:"⚔", name:"별빛 생존자",   desc:"5분 버티기(자동 공격)",    run:function(){ svStart(); } },
+  { emoji:"🥚", name:"별빛 알",       desc:"챕터1의 알을 부화시키자",  run:function(){ eggStart(); } },
+  { emoji:"🧩", name:"별조각 밀기",   desc:"소코반 두뇌 퍼즐",         run:function(){ pzStart(); } },
+  { emoji:"🏃", name:"별빛 러너",     desc:"자동 달리기·장애물 점프",  run:function(){ rnStart(); } },
+  { emoji:"🧱", name:"벽돌깨기",      desc:"별공 튕겨 벽돌 부수기",    run:function(){ bkStart(); } },
+  { emoji:"🐍", name:"별꼬리",        desc:"별을 먹고 길어지는 뱀",    run:function(){ snStart(); } },
+  { emoji:"⚫", name:"별빛 오델로",   desc:"먹구름 AI와 두뇌 대결",    run:function(){ otStart(); } } ];
+let LH=null;
+function lhStart(){ LH={ idx:0 }; gameState=STATE.LABHUB; }
+function lhKey(code){
+  if(code==="Escape"){ LH=null; gameState=STATE.ADMIN; return; }
+  if(!LH) return;
+  const cols=5;
+  if(code==="ArrowLeft"){ LH.idx=(LH.idx+LAB_GAMES.length-1)%LAB_GAMES.length; return; }
+  if(code==="ArrowRight"){ LH.idx=(LH.idx+1)%LAB_GAMES.length; return; }
+  if(code==="ArrowUp"||code==="ArrowDown"){ LH.idx=(LH.idx+cols)%LAB_GAMES.length; return; }
+  if(code==="Enter"||code==="NumpadEnter"||code==="Space"){ LAB_GAMES[LH.idx].run(); return; }
+  if(code.indexOf("Digit")===0){ const n=+code.slice(5); const i=(n===0)?9:(n-1); if(i>=0&&i<LAB_GAMES.length){ LAB_GAMES[i].run(); } return; }
+}
+function lhUpdate(dt){}
+function lhRecord(i){   // 카드에 보여줄 한 줄 기록
+  try{
+    if(i===0){ const b=tdBestLoad(); const n=Object.keys(b).length; return n?("★ 기록 "+n+"개 맵"):""; }
+    if(i===1){ const s=shBest(); return s?("🏆 "+s+"점"):""; }
+    if(i===2){ const b=JSON.parse(localStorage.getItem(RAY_BEST_KEY)||"null"); return b?("🏆 "+b.total+"초"):""; }
+    if(i===3){ const b=svBestLoad(); return b.bestT?("🏆 "+b.bestT+"초·승리 "+(b.wins||0)):""; }
+    if(i===4){ const e=eggLoad(); return "별빛 "+(e.xp||0); }
+    if(i===5){ const b=pzBestLoad(); const n=Object.keys(b).length; return n?("해결 "+n+"판"):""; }
+    if(i===6){ const b=rnBest(); return b?("🏆 "+b+"m"):""; }
+    if(i===7){ const b=bkBest(); return b.score?("🏆 "+b.score+"점"):""; }
+    if(i===8){ const b=snBest(); return b?("🏆 "+b+"점"):""; }
+    if(i===9){ const w=otWins(); return (w.w||w.l||w.d)?(w.w+"승 "+w.l+"패"):""; }
+  }catch(e){}
+  return "";
+}
+function lhRender(){
+  if(!LH) return;
+  ctx.fillStyle="#0e1230"; ctx.fillRect(0,0,LOGW,LOGH);
+  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillStyle="rgba(223,230,255,0.4)";
+  for(let i=0;i<40;i++){ ctx.globalAlpha=0.25+0.35*Math.abs(Math.sin(uiTime*0.7+i)); ctx.fillRect((i*167)%LOGW, (i*97)%LOGH, 2, 2); }
+  ctx.globalAlpha=1;
+  ctx.fillStyle="#9fe6c8"; ctx.font="bold 34px 'Malgun Gothic',sans-serif"; ctx.fillText("🧪 별빛 실험실", LOGW/2, 62);
+  ctx.fillStyle="#8893bb"; ctx.font="14px 'Malgun Gothic',sans-serif";
+  ctx.fillText("교사 전용 게임틀 10종 — 세계관·에셋 공유 실험. 마음에 들면 학생 개방!", LOGW/2, 96);
+  const cols=5, bw=224, bh=200;
+  for(let i=0;i<LAB_GAMES.length;i++){
+    const g=LAB_GAMES[i], col=i%cols, row=Math.floor(i/cols);
+    const bx=LOGW/2+(col-2)*(bw+14)-bw/2, by=130+row*(bh+18);
+    const sel=(i===LH.idx);
+    ctx.fillStyle=sel?"rgba(70,110,190,0.92)":"rgba(30,38,66,0.85)"; roundRect(bx,by,bw,bh,14); ctx.fill();
+    ctx.strokeStyle=sel?"#ffffff":"#56608a"; ctx.lineWidth=sel?3:1.5; roundRect(bx,by,bw,bh,14); ctx.stroke();
+    ctx.font="46px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#fff"; ctx.fillText(g.emoji, bx+bw/2, by+56);
+    ctx.font="bold 18px 'Malgun Gothic',sans-serif"; ctx.fillText(g.name, bx+bw/2, by+104);
+    ctx.font="12px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#aab4e0"; ctx.fillText(g.desc, bx+bw/2, by+130);
+    const rec=lhRecord(i);
+    ctx.fillStyle="#ffe14d"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.fillText(rec||"—", bx+bw/2, by+158);
+    ctx.fillStyle="#5f6a94"; ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.fillText("["+((i+1)%10)+"]", bx+bw/2, by+182);
+    (function(idx){ uiHit(bx,by,bw,bh,function(){ if(LH.idx===idx) LAB_GAMES[idx].run(); else LH.idx=idx; }); })(i);
+  }
+  ctx.fillStyle="#aab4e0"; ctx.font="14px 'Malgun Gothic',sans-serif";
+  ctx.fillText("←→↑↓ 고르기 · Enter/클릭 실행 · 숫자키 1~9,0 바로 실행 · Esc 교사 패널", LOGW/2, LOGH-24);
   ctx.restore();
 }
 
@@ -9442,6 +10194,11 @@ function handleAdminKey(code){
   if(code==="Digit4"){ svStart(); return; }    // LAB-3 실험: ⚔ 별빛 생존자(뱀서라이크)
   if(code==="Digit5"){ eggStart(); return; }   // LAB-3 실험: 🥚 별빛 알(펫)
   if(code==="Digit6"){ pzStart(); return; }    // LAB-3 실험: 🧩 별조각 밀기(소코반)
+  if(code==="Digit7"){ rnStart(); return; }    // LAB-4: 🏃 별빛 러너
+  if(code==="Digit8"){ bkStart(); return; }    // LAB-4: 🧱 벽돌깨기
+  if(code==="Digit9"){ snStart(); return; }    // LAB-4: 🐍 별꼬리
+  if(code==="Digit0"){ otStart(); return; }    // LAB-4: ⚫ 별빛 오델로
+  if(code==="KeyL"){ lhStart(); return; }      // LAB-4: 🧪 실험실 허브(10종 한 화면)
 }
 function adminCreateStudent(){
   let id=null,name=null,pin=null;
@@ -11439,6 +12196,11 @@ function update(dt){
   if(gameState===STATE.SURVIVOR){ svUpdate(dt); return; }
   if(gameState===STATE.EGG){ eggUpdate(dt); return; }
   if(gameState===STATE.PUZZLE){ pzUpdate(dt); return; }
+  if(gameState===STATE.RUNNER){ rnUpdate(dt); return; }
+  if(gameState===STATE.BREAKOUT){ bkUpdate(dt); return; }
+  if(gameState===STATE.SNAKE){ snUpdate(dt); return; }
+  if(gameState===STATE.OTHELLO){ otUpdate(dt); return; }
+  if(gameState===STATE.LABHUB){ lhUpdate(dt); return; }
   if(gameState!==STATE.PLAYING) return;
   matchElapsed+=dt;
   for(const f of allFighters()){ f.displayHp=lerp(f.displayHp, f.hp, Math.min(1,dt*8)); tickStatus(f,dt); applyTrapTo(f); }   // 함정/상태(둔화·버프) — 성능(코드감사): 두 루프 병합(allFighters 배열 생성 1회)
@@ -11571,6 +12333,11 @@ function render(){
   if(gameState===STATE.SURVIVOR){ svRender(); drawToast(); return; }
   if(gameState===STATE.EGG){ eggRender(); drawToast(); return; }
   if(gameState===STATE.PUZZLE){ pzRender(); drawToast(); return; }
+  if(gameState===STATE.RUNNER){ rnRender(); drawToast(); return; }
+  if(gameState===STATE.BREAKOUT){ bkRender(); drawToast(); return; }
+  if(gameState===STATE.SNAKE){ snRender(); drawToast(); return; }
+  if(gameState===STATE.OTHELLO){ otRender(); drawToast(); return; }
+  if(gameState===STATE.LABHUB){ lhRender(); drawToast(); return; }
   drawBackground();
   // v1.26 배경 정돈: 실제 게임 맵(바닥·가시·바위·수풀·격자)은 플레이/온라인 화면에서만 렌더.
   // 로비·로그인·상점 등 메뉴 화면은 잔잔한 별밤(starfield)만. (플레이 화면 맵 렌더는 기존 그대로)
@@ -11900,20 +12667,19 @@ function drawAdminScreen(){
   // 하단 액션 안내
   ctx.fillStyle="#d6cdee"; ctx.font="bold 15px 'Malgun Gothic',sans-serif";
   if(_adminPendingN<0 || uiTime-_adminPendingT>2){ _adminPendingN=loadEditorStore().pending.length; _adminPendingT=uiTime; }   // PERF-2: 프레임당 파싱 → 2초 캐시
-  ctx.fillText("단축키: A P R X S M · ↑↓ · Esc · 실험 게임틀 1~6  (아래 버튼은 탭으로도 실행)", rx+24, ry2+440);
+  ctx.fillText("단축키: A P R X S M · ↑↓ · Esc · L 실험실(게임틀 10종·숫자 1~9,0)  (아래 버튼은 탭으로도 실행)", rx+24, ry2+440);
   // LAB-1: 실험 게임틀 3종 — 교사 전용(학생 화면 미노출). 헤더 우상단 버튼 + 단축키 1/2/3
   {
-    const labs=[["🏰 수비대",function(){ tdStart(); }],["🚀 함대",function(){ shStart(); }],["🕶 던전3D",function(){ rayStart(); }],["⚔ 생존자",function(){ svStart(); }],["🥚 별빛알",function(){ eggStart(); }],["🧩 퍼즐",function(){ pzStart(); }]];
     ctx.textAlign="center"; ctx.textBaseline="middle";
-    for(let i=0;i<labs.length;i++){
-      const bw=86, bh=30, bx=LOGW-16-(labs.length-i)*(bw+7), by=26;
-      ctx.fillStyle="rgba(80,200,160,0.20)"; roundRect(bx,by,bw,bh,8); ctx.fill();
-      ctx.strokeStyle="#4fae8d"; ctx.lineWidth=1.5; roundRect(bx,by,bw,bh,8); ctx.stroke();
-      ctx.fillStyle="#9fe6c8"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.fillText(labs[i][0], bx+bw/2, by+bh/2+1);
-      uiHit(bx,by,bw,bh,labs[i][1]);
+    {
+      const bw=190, bh=34, bx=LOGW-20-bw, by=24;
+      ctx.fillStyle="rgba(80,200,160,0.22)"; roundRect(bx,by,bw,bh,10); ctx.fill();
+      ctx.strokeStyle="#4fae8d"; ctx.lineWidth=2; roundRect(bx,by,bw,bh,10); ctx.stroke();
+      ctx.fillStyle="#9fe6c8"; ctx.font="bold 15px 'Malgun Gothic',sans-serif"; ctx.fillText("🧪 별빛 실험실 — 10종 (L)", bx+bw/2, by+bh/2+1);
+      uiHit(bx,by,bw,bh,function(){ lhStart(); });
     }
     ctx.fillStyle="#5f8f7d"; ctx.font="11px 'Malgun Gothic',sans-serif";
-    ctx.fillText("🧪 실험 게임틀(교사 전용)", LOGW-16-((86+7)*6)/2-4, 68);
+    ctx.fillText("게임틀 10종 · 숫자 1~9,0 바로 실행", LOGW-20-95, 70);
     ctx.textAlign="left"; ctx.textBaseline="alphabetic";
   }
   ctx.fillStyle="#6f6a80"; ctx.font="12px 'Malgun Gothic',sans-serif";

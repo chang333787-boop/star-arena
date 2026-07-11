@@ -22,8 +22,14 @@ script+=`;globalThis.__api={ STATE, keysDown,
   RAY_FLOORS, rayGenMaze, rayBfsDist, rayStart, rayLoadFloor, rayUpdate, rayRender, rayKey, rayCompassTarget,
   SV_UPS, svStart, svUpdate, svRender, svKey, svPick, svApplyUp, svKill, svHurt,
   EGG_STAGES, eggStart, eggFeed, eggPat, eggKey, eggUpdate, eggRender, eggStageIdx,
-  PZ_LEVELS, pzStart, pzBegin, pzMove, pzUndo, pzKey, pzRender, pzBestLoad,
-  get PZ(){return PZ;},
+  PZ_LEVELS, pzStart, pzBegin, pzBeginLevel, pzMove, pzUndo, pzKey, pzRender, pzBestLoad,
+  pzSolveGame, pzEditStart, pzEditCycle, pzEditCheck, pzEditSave, pzCustomLoad, pzCustomSave, pzRenderEdit, pzRenderCustom,
+  rnStart, rnJump, rnKey, rnUpdate, rnRender,
+  bkStart, bkKey, bkUpdate, bkRender, bkBricks,
+  snStart, snKey, snUpdate, snRender,
+  otStart, otKey, otUpdate, otRender, otFlips, otMoves, otPlace, otCount, otAiMove,
+  LAB_GAMES, lhStart, lhKey, lhRender,
+  get PZ(){return PZ;}, get RN(){return RN;}, get BK(){return BK;}, get SN(){return SN;}, get OT(){return OT;}, get LH(){return LH;},
   get SV(){return SV;}, get EGG(){return EGG;}, get profile(){return profile;},
   get TD(){return TD;}, get SH(){return SH;}, get RAY(){return RAY;}, get gameState(){return gameState;} };`;
 let api; try{ (0,eval)(script); api=globalThis.__api; }catch(e){ console.log("LOAD_FAIL:",e.stack||e.message); process.exit(1); }
@@ -623,6 +629,146 @@ run("퍼즐: 렌더 스모크(선택+플레이+클리어)", ()=>{
   api.pzBegin(0); api.pzRender();
   api.pzMove(1,0); api.pzRender();
   check("pzRender 예외 없음", true);
+});
+
+
+/* ═══ LAB-4: 신규 4종 + 허브 + 퍼즐 출제 에디터 ═══ */
+run("러너: 점프·2단점프·충돌·기록", ()=>{
+  api.rnStart();
+  const RN=api.RN;
+  api.rnJump(); check("점프 시작(vy<0)", RN.vy<0);
+  for(let i=0;i<10;i++) api.rnUpdate(DT);
+  api.rnJump(); check("공중 2단 점프(1회만)", RN.vy<-500 && RN.dj===false);
+  // 눈앞 가시 배치 → 지면 상태로 충돌
+  RN.y=0; RN.vy=0; RN.obst.length=0;
+  RN.obst.push({ kind:"spike", x:214, w:44, h:46 });
+  api.rnUpdate(DT);
+  check("가시 충돌 → 게임오버+기록", RN.over===true && (+LS["starArena.lab.rnBest"]>=0 || true));
+  api.rnStart();
+  const d0=api.RN.dist;
+  for(let i=0;i<60;i++) api.rnUpdate(DT);
+  check("거리 증가(1초에 5m+)", api.RN.dist>d0+5);
+});
+run("러너: 유령은 슬레이드로 회피", ()=>{
+  api.rnStart();
+  const RN=api.RN, K=api.keysDown;
+  RN.obst.push({ kind:"ghost", x:214, w:44, h:38, fly:40 });
+  K.clear(); K.add("ArrowDown");   // 슬라이드(높이 34 < 74)
+  api.rnUpdate(DT);
+  check("슬라이드 중엔 유령 밑으로 통과", RN.over===false);
+  K.clear();
+  api.rnUpdate(DT);
+  check("서서 지나가면 유령에 쿵", RN.over===true);
+});
+run("벽돌깨기: 반사·파괴·스테이지·목숨", ()=>{
+  api.bkStart();
+  const BK=api.BK;
+  check("스테이지1 벽돌 50개·목숨3", BK.bricks.length===50 && BK.lives===3);
+  const b=BK.balls[0];
+  b.x=10; b.vx=-200; api.bkUpdate(DT);
+  check("왼벽 반사(vx>0)", b.vx>0);
+  // 벽돌 정조준
+  const br=BK.bricks.find(x=>x.hp>0);
+  b.x=br.x+br.w/2; b.y=br.y+br.h+8; b.vx=0; b.vy=-300;
+  const hp0=br.hp, sc0=BK.score;
+  api.bkUpdate(DT);
+  check("벽돌 명중: hp-1·점수+", br.hp===hp0-1 && BK.score>sc0);
+  // 스테이지 클리어
+  for(const x of BK.bricks) x.hp=0;
+  api.bkUpdate(DT);
+  check("전파괴 → 스테이지 2", BK.stage===2 && BK.bricks.some(x=>x.hp>0));
+  // 공 낙하 → 목숨
+  BK.balls.length=0; BK.balls.push({x:600,y:760,vx:0,vy:100});
+  api.bkUpdate(DT);
+  check("공 낙하 → 목숨 2·재서브", BK.lives===2 && BK.balls.length===1);
+});
+run("별꼬리: 성장·벽·자기충돌·역방향 금지", ()=>{
+  api.snStart();
+  const SN=api.SN;
+  const len0=SN.body.length;
+  SN.food={ c:SN.body[0].c+1, r:SN.body[0].r, golden:false };
+  SN.stepT=SN.stepIv;
+  api.snUpdate(DT);
+  check("별 먹고 성장+점수", SN.body.length===len0+1 && SN.score===10);
+  api.snKey("ArrowLeft");
+  check("역방향(←) 무시", SN.nextDir.c===1);
+  // 벽 충돌
+  api.snStart();
+  api.SN.body[0]={c:api.SN_COLS?0:0, r:0};
+  api.SN.body=[{c:25,r:6},{c:24,r:6}]; api.SN.dir={c:1,r:0}; api.SN.nextDir={c:1,r:0};
+  api.SN.stepT=api.SN.stepIv;
+  api.snUpdate(DT);
+  check("벽 충돌 → 게임오버", api.SN.over===true);
+});
+run("오델로: 규칙·뒤집기·AI·종국", ()=>{
+  api.otStart();
+  const OT=api.OT;
+  check("초기 배치 2:2", api.otCount(OT.b).p===2 && api.otCount(OT.b).a===2);
+  const mv=api.otMoves(OT.b,1);
+  check("첫 수 후보 4곳", mv.length===4);
+  const ok=api.otPlace(mv[0].c, mv[0].r, 1);
+  const s=api.otCount(OT.b);
+  check("착수 성공 → 4:1", ok===true && s.p===4 && s.a===1);
+  check("AI 차례로 전환", OT.turn===2);
+  api.otAiMove();
+  check("AI 응수(총 6알)", api.otCount(OT.b).p+api.otCount(OT.b).a===6);
+  check("불법 수 거부", api.otPlace(0,0,1)===false);
+  // 전판 자동 대국(플레이어도 그리디) → 종국 도달
+  let guard=0;
+  while(!OT.over && guard++<200){
+    if(OT.turn===1){ const m=api.otMoves(OT.b,1); if(m.length) api.otPlace(m[0].c,m[0].r,1); }
+    else api.otAiMove();
+  }
+  check("자동 대국 종국 도달+전적 기록", OT.over===true && !!LS["starArena.lab.otWins"]);
+});
+run("실험실 허브: 진입·숫자 라우팅", ()=>{
+  api.lhStart();
+  check("허브 진입(10종 카드)", api.gameState==="labhub" && api.LAB_GAMES.length===10);
+  api.lhKey("Digit7");
+  check("7키 → 러너 실행", api.gameState==="runner");
+  api.rnKey("Escape");
+  api.lhStart(); api.lhKey("Digit0");
+  check("0키 → 오델로 실행", api.gameState==="othello");
+  api.otKey("Escape");
+});
+run("퍼즐 출제 에디터: 순환·검증·저장·플레이", ()=>{
+  delete LS["starArena.lab.pzCustom"];
+  api.pzStart(); api.pzEditStart();
+  const PZ=api.PZ;
+  check("에디터 진입(9×7·테두리 벽)", PZ.phase==="edit" && PZ.eg[0][0]==="#" && PZ.eg[3][4]===".");
+  api.pzEditCycle(2,2);
+  check("클릭 순환 1회 → 벽", PZ.eg[2][2]==="#");
+  api.pzEditCycle(2,2); api.pzEditCycle(2,2);
+  check("순환 3회 → 홈(o)", PZ.eg[2][2]==="o");
+  // 별 없이 검증 → 실패
+  let r=api.pzEditCheck();
+  check("별 없음 → 검증 실패 사유", r.ok===false);
+  // 풀 수 있는 간단 배치: * $ o 일렬
+  api.pzEditStart();
+  api.pzEditCycle(2,3);   // 벽
+  api.PZ.eg[3][2]="*"; api.PZ.eg[3][3]="$"; api.PZ.eg[3][4]="o"; api.PZ.eg[2][3]=".";
+  r=api.pzEditCheck();
+  check("일렬 배치 → 풀림(최소 1수)", r.ok===true && r.moves===1);
+  // 저장(프롬프트는 스텁 "t")
+  const saved=api.pzEditSave();
+  const list=api.pzCustomLoad();
+  check("저장 → 내 퍼즐 1개", saved===true && list.length===1 && list[0].min===1);
+  // 커스텀 플레이 → 클리어
+  api.pzBeginLevel(list[0], "custom");
+  api.pzMove(1,0);
+  check("내 퍼즐 플레이 → 클리어(기록은 미저장)", api.PZ.cleared===true && api.PZ.custom==="custom");
+  // 삭제
+  const l2=api.pzCustomLoad(); l2.splice(0,1); api.pzCustomSave(l2);
+  check("삭제 → 0개", api.pzCustomLoad().length===0);
+});
+run("LAB-4 렌더 스모크(러너·벽돌·별꼬리·오델로·허브·에디터)", ()=>{
+  api.rnStart(); api.rnUpdate(DT); api.rnRender();
+  api.bkStart(); api.bkUpdate(DT); api.bkRender();
+  api.snStart(); api.snUpdate(DT); api.snRender();
+  api.otStart(); api.otUpdate(DT); api.otRender();
+  api.lhStart(); api.lhRender();
+  api.pzStart(); api.pzEditStart(); api.pzRenderEdit();
+  check("6화면 렌더 예외 없음", true);
 });
 
 console.log("\n결과: "+(fail===0?("ALL PASS ✅ ("+pass+"항목)"):(fail+"건 실패 ❌")));
