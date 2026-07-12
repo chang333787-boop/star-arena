@@ -1224,6 +1224,9 @@ run("생존자: v1.81 폭주 방지(비용 제곱·상자 쿨다운)", ()=>{
   sv.level=13; sv.xp=1; sv.xpNext=1;
   api.svUpdate(1/60); api.svKey("Digit1");
   check("14레벨 비용 = 제곱 가산(4+42+72=118)", sv.xpNext===118);
+  sv.level=2; sv.xpNext=10; sv.xp=200;   // 진공급 대량 입금 시뮬
+  api.svUpdate(1/60); api.svKey("Digit1");
+  check("이월 완충 60%: 대량 입금도 연쇄 1회로 제한", sv.level===3 && sv.xp<=Math.round(sv.xpNext*0.6));
   check("저레벨 곡선은 유지(레벨9 미만 선형)", (4+5*3+0)===19);
   const mr=Math.random; Math.random=()=>0.1;
   sv.chests.length=0; sv.chestCd=0;
