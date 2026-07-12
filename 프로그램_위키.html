@@ -54,7 +54,7 @@ details[open] summary{margin-bottom:8px;}
 <body>
 <div class="app">
 <nav class="side" id="side">
-  <div class="logo">⭐ 별빛 아레나 위키<small>현재 버전 <b style="color:#ffe14d">v1.76</b> · 2026-07-12</small></div>
+  <div class="logo">⭐ 별빛 아레나 위키<small>현재 버전 <b style="color:#ffe14d">v1.77</b> · 2026-07-12</small></div>
   <input id="wsearch" type="search" placeholder="🔎 검색 (예: 뭉게대왕, 조작)" style="width:100%;margin:10px 0 2px;padding:7px 10px;border-radius:9px;border:1px solid #2a3560;background:#0a0f28;color:#dfe6ff;font-family:inherit;font-size:13px;">
   <div id="sres" style="font-size:11.5px;color:#8893bb;padding:0 4px;"></div>
   <div class="grp">시작</div>
@@ -281,6 +281,7 @@ details[open] summary{margin-bottom:8px;}
 <h2>⬆ 강화 8종</h2>
 <table><tr><th>카드</th><th>효과</th></tr>
 <tr><td>🌟 별의 힘 / ⚡ 빠른 손</td><td>공격력 +40%(카드에 "젤리 몇 방→몇 방" 표시) / 공속 +20%</td></tr>
+<tr><td>💫 별가루</td><td>적을 잡으면 떨어지고 <b>알아서 따라와요</b> — 늦게 잡은 적일수록 더 값져요(1→2→3)</td></tr>
 <tr><td>⚡사슬 · 💥폭발 · ☄별똥별</td><td>튕기는 별줄기 · 처치 폭발 · 주기 폭격(경고 원 보고 피하는 적!)</td></tr>
 <tr><td>❄서리 오라 · 🛡보호막 · 🌀궤도 확장</td><td>주변 감속 · 주기 1회 방어 · 수호별 강화</td></tr>
 <tr><td>✨ 갈래 별 / 💫 수호 별</td><td>별줄기 +1개 / 빙글 도는 별 +1개</td></tr>
@@ -534,11 +535,12 @@ node -e 'const fs=require("fs");const h=fs.readFileSync("index.html","utf8");con
 
 <!-- ═════════ 일지 ═════════ -->
 <section class="page" id="p-log">
-<h1>📜 업데이트 일지 <span class="badge">현재 v1.76</span></h1>
+<h1>📜 업데이트 일지 <span class="badge">현재 v1.77</span></h1>
 <p class="tagline">v1.00(6-29 첫 버전)부터 이어온 버전 기록 — 전체 상세는 저장소 <code>PATCHNOTES.md</code>(67개 버전), 작업 맥락은 <code>작업현황_HANDOFF.md</code>.</p>
 <h2>최근 (v1.55 ~ v1.65)</h2>
 <table><tr><th>버전</th><th>날짜</th><th>내용</th></tr>
-<tr><td><b>v1.76</b></td><td>07-12</td><td><b>랭킹 본편 확장</b> — 🦘 캠페인 별조각 총합(선택 화면 👑)·계정 레벨(로비 상단 👑 칩)도 반 전체 공유</td></tr>
+<tr><td><b>v1.77</b></td><td>07-12</td><td><b>생존자 경제 대수술</b> — 시작 한 방·별가루 자동 추적·후반 가치 상승: 3분에 카드 10장 안팎(봇 실측), "피하기 게임" 탈출</td></tr>
+<tr><td>v1.76</td><td>07-12</td><td><b>랭킹 본편 확장</b> — 🦘 캠페인 별조각 총합(선택 화면 👑)·계정 레벨(로비 상단 👑 칩)도 반 전체 공유</td></tr>
 <tr><td>v1.75</td><td>07-12</td><td><b>별꼬리 2인 대결</b> — ⭐화살표 vs 🌙WASD 핫시트, 정면충돌 무승부·별 뺏어먹기, 랭킹은 혼자 모드만</td></tr>
 <tr><td>v1.74</td><td>07-12</td><td><b>학급 랭킹 + 오델로 2인전</b> — 10개 게임 전부 반 전체 TOP8 클라우드 공유(결과 화면 TOP3·광장 👑1위·등극 토스트), 오델로 둘이서 모드(T키/버튼)</td></tr>
 <tr><td>v1.73</td><td>07-12</td><td><b>생존자 대확장</b> — 특수효과 6종(사슬·폭발·별똥별·서리·보호막·궤도)·데미지 숫자·공격력 카드 "몇 방→몇 방" 계산 표시·3분판 압축</td></tr>

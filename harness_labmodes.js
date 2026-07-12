@@ -1063,5 +1063,31 @@ run("별꼬리: 👥 2인 대결(핫시트)", ()=>{
   api.snKey("Escape");
 });
 
+run("생존자: 레벨업 페이싱(v1.77 — '피하기 게임' 회귀 방지)", ()=>{
+  api.svStart();
+  const K=api.keysDown; let picks=0;
+  for(let f=0; f<60*60; f++){   // 60초: 카이팅 봇(전 적 반발+중앙 인력)으로 실플레이 근사
+    const sv=api.SV; if(!sv || sv.phase==="over") break;
+    if(sv.phase==="levelup"){ picks++; api.svKey("Digit1"); continue; }
+    const p=sv.p; let vx=0, vy=0;
+    for(const e of sv.foes){ const dx=p.x-e.x, dy=p.y-e.y, d=Math.hypot(dx,dy)||1;
+      if(d<340){ vx+=dx/d/(d*d); vy+=dy/d/(d*d); } }
+    { const l=Math.hypot(vx,vy); if(l>0){ vx/=l; vy/=l; } }
+    const cx=1200-p.x, cy=800-p.y, cl=Math.hypot(cx,cy)||1;
+    const edge=Math.min(p.x, p.y, 2400-p.x, 1600-p.y), cw=edge<220?1.1:0.4;
+    vx+=cx/cl*cw; vy+=cy/cl*cw;
+    const vl=Math.hypot(vx,vy)||1;
+    (vx/vl>0.3)?K.add("ArrowRight"):K.delete("ArrowRight");
+    (vx/vl<-0.3)?K.add("ArrowLeft"):K.delete("ArrowLeft");
+    (vy/vl>0.3)?K.add("ArrowDown"):K.delete("ArrowDown");
+    (vy/vl<-0.3)?K.add("ArrowUp"):K.delete("ArrowUp");
+    api.svUpdate(1/60);
+  }
+  K.delete("ArrowRight"); K.delete("ArrowLeft"); K.delete("ArrowDown"); K.delete("ArrowUp");
+  check("봇 60초 생존", api.SV && api.SV.phase!=="over");
+  check("60초까지 카드 2장 이상(루프 시동)", picks>=2);
+  check("60초에 6장 이하(인플레 방지)", picks<=6);
+});
+
 console.log("\n결과: "+(fail===0?("ALL PASS ✅ ("+pass+"항목)"):(fail+"건 실패 ❌")));
 process.exit(fail===0?0:1);

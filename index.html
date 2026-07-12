@@ -5225,7 +5225,7 @@ let SV=null;
 function svBestLoad(){ try{ const s=JSON.parse(localStorage.getItem(SV_BEST_KEY)); if(s&&typeof s==="object") return s; }catch(e){} return { bestT:0, wins:0 }; }
 function svStart(){
   SV={ p:{ x:SV_W/2, y:SV_H/2, hp:100, maxhp:100, spd:250, ifr:0, face:1 },
-       atk:{ dmg:10, cd:0.85, t:0.5, multi:1, orbit:0, orbitA:0, orbitTick:0, magnet:1, regen:0 },
+       atk:{ dmg:14, cd:0.78, t:0.5, multi:1, orbit:0, orbitA:0, orbitTick:0, magnet:1, regen:0 },   // v1.77: 시작 젤리 1방(루프 시동)
        foes:[], bolts:[], gems:[], fx:[], dnums:[], meteorWarn:null,
        t:0, kills:0, level:1, xp:0, xpNext:6,
        phase:"play", choices:null, paused:false, bossSpawned:false,
@@ -5298,7 +5298,7 @@ function svSpawn(){
   else if(t>90 && roll<0.4) type="ghost";
   else if(t>45 && roll<0.55) type="hop";
   const spec=SV_FOES[type];
-  const hpMul=1+t/42;
+  const hpMul=1+t/55;   // v1.77: 카드 수급 속도에 맞춘 완만화(42→55) — 중반 "안 죽는 벽" 방지
   // 화면 밖 가장자리 스폰(플레이어 기준 원)
   const a=Math.random()*Math.PI*2, R=560+Math.random()*120;
   const x=clamp(SV.p.x+Math.cos(a)*R, 20, SV_W-20), y=clamp(SV.p.y+Math.sin(a)*R, 20, SV_H-20);
@@ -5321,7 +5321,8 @@ function svKill(f, noBoom){
   f.alive=false; SV.kills++;
   playSfx("kill");
   const n=f.spec.boss?20:(f.elite?3:1);   // v1.73 정예 = 별가루 3개
-  for(let k=0;k<n;k++) SV.gems.push({ x:f.x+(k?((k%5)-2)*14:0), y:f.y+(k?Math.floor(k/5)*14-14:0), xp:f.spec.boss?1:f.spec.xp });
+  const gv=Math.max(1, Math.round((f.spec.boss?1:f.spec.xp)*(1+SV.t/60)));   // v1.77: 늦게 잡은 적일수록 별가루 가치↑(1→2→3)
+  for(let k=0;k<n;k++) SV.gems.push({ x:f.x+(k?((k%5)-2)*14:0), y:f.y+(k?Math.floor(k/5)*14-14:0), xp:gv });
   SV.fx.push({x:f.x,y:f.y,t:0,dur:0.35});
   if(SV.fx.length>60) SV.fx.shift();
   const a=SV.atk;
@@ -5469,15 +5470,16 @@ function svUpdate(dt){
     }
   }
   // 별가루(젬) 자석·수집·레벨업
-  const magR=70*a.magnet;
+  const magR=130*a.magnet;   // v1.77: 70→130 + 전역 드리프트 — 카이팅 중에도 별가루가 따라와 루프가 이어짐
   for(const g of SV.gems){
     const d=Math.hypot(p.x-g.x, p.y-g.y);
-    if(d<magR){ const pull=(magR-d)/magR*420+120; g.x+=(p.x-g.x)/(d||1)*pull*dt; g.y+=(p.y-g.y)/(d||1)*pull*dt; }
+    if(d<magR){ const pull=(magR-d)/magR*460+150; g.x+=(p.x-g.x)/(d||1)*pull*dt; g.y+=(p.y-g.y)/(d||1)*pull*dt; }
+    else { g.x+=(p.x-g.x)/(d||1)*58*dt; g.y+=(p.y-g.y)/(d||1)*58*dt; }
     if(d<26){ g.got=true; SV.xp+=g.xp; playSfx("buff"); }
   }
   SV.gems=SV.gems.filter(g=>!g.got);
   if(SV.xp>=SV.xpNext){
-    SV.xp-=SV.xpNext; SV.level++; SV.xpNext=5+SV.level*3;
+    SV.xp-=SV.xpNext; SV.level++; SV.xpNext=4+SV.level*3;   // v1.77: 페이싱(3분에 카드 8~11장 목표)
     SV.phase="levelup"; SV.choices=svRollChoices(); playSfx("powerup");
   }
   // 죽은 적 정리(멀리 있는 것도 컬링 없이 배열만 관리)
@@ -5602,7 +5604,7 @@ function svRender(){
       ctx.font="bold 22px 'Malgun Gothic',sans-serif"; ctx.fillText(c.n, bx+130, by+124);
       ctx.font="14px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#cbd4f5"; ctx.fillText(c.d, bx+130, by+152);
       if(c.k==="dmg"){   // v1.73: "몇 방→몇 방" 실시간 계산 — 먹을 가치가 보이게
-        const jh=14*(1+SV.t/42), b4=Math.ceil(jh/SV.atk.dmg), af=Math.ceil(jh/(SV.atk.dmg*1.4));
+        const jh=14*(1+SV.t/55), b4=Math.ceil(jh/SV.atk.dmg), af=Math.ceil(jh/(SV.atk.dmg*1.4));   // v1.77: 실제 스폰 체력 곡선과 동일 식
         ctx.font="bold 13px 'Malgun Gothic',sans-serif";
         ctx.fillStyle=(af<b4)?"#7dffb0":"#ffd97d";
         ctx.fillText((af<b4)?("지금 젤리 "+b4+"방 → "+af+"방!"):("지금 젤리 "+b4+"방 (누적하면 한 방!)"), bx+130, by+174);
