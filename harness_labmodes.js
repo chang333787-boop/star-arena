@@ -1218,6 +1218,28 @@ run("무쌍 v2: 🏅 랭크 성장·🔥 총력전", ()=>{
   check("마지막 30초 = 총력전 발동", ms.spurt===true);
   api.msKey("Escape");
 });
+run("생존자: v1.84 터렛 무적 차단 — 정예는 벽을 뚫는다", ()=>{
+  api.svStart();
+  const sv=api.SV; sv.spawnT=9999; sv.foes.length=0; sv.gems.length=0; sv.xpNext=999999;
+  api.svApplyUp("orbit");
+  sv.foes.push({ type:"jelly", spec:{hp:14,spd:0,dmg:6,xp:1,r:17}, x:sv.p.x+74, y:sv.p.y, hp:5000, maxHp:5000, alive:true, hitT:0, elite:false });
+  sv.foes.push({ type:"jelly", spec:{hp:14,spd:0,dmg:6,xp:1,r:17}, x:sv.p.x-74, y:sv.p.y, hp:5000, maxHp:5000, alive:true, hitT:0, elite:true });
+  for(let i=0;i<120;i++) api.svUpdate(1/60);   // 수호별 2초 회전
+  const dN=Math.hypot(sv.foes[0].x-sv.p.x, sv.foes[0].y-sv.p.y);
+  const dE=Math.hypot(sv.foes[1].x-sv.p.x, sv.foes[1].y-sv.p.y);
+  check("일반 젤리는 수호별에 밀려남", dN>80);
+  check("정예는 안 밀림(벽 파괴자)", dE<=80);
+  // 교사 재현 시나리오: 10장 광역 빌드 + 완전 방치 → 120초 안에 사망해야 함
+  api.svStart();
+  const sv2=api.SV;
+  for(const k of ["orbit","orbit","orbitx","orbitx","orbitx","frost","frost","frost","regen","dmg"]) api.svApplyUp(k);
+  for(let f=0; f<120*60 && sv2.phase!=="over"; f++){
+    if(sv2.phase==="levelup") api.svKey("Digit1");
+    else api.svUpdate(1/60);
+  }
+  check("광역 풀빌드도 방치하면 120초 내 사망(터렛 무적 없음)", sv2.phase==="over" && sv2.t<120);
+  api.svKey("Escape");
+});
 run("생존자: v1.83 장르 무결성 — 가만히 있으면 죽는다", ()=>{
   api.svStart();
   const sv=api.SV;

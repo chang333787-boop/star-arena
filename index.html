@@ -5332,7 +5332,7 @@ function svKill(f, noBoom){
   if(SV.fx.length>60) SV.fx.shift();
   const a=SV.atk;
   if(a.boom && !noBoom){   // v1.73 💥폭발 별: 처치 시 주변 폭발(연쇄는 1단만)
-    const R=80+22*a.boom, dmg=a.dmg*(0.45+0.15*a.boom);
+    const R=72+18*a.boom, dmg=a.dmg*(0.35+0.12*a.boom);   // v1.84: 광역 트림
     SV.fx.push({x:f.x,y:f.y,t:0,dur:0.3,boom:R});
     for(const f2 of SV.foes){ if(!f2.alive) continue;
       if(Math.hypot(f.x-f2.x,f.y-f2.y)<R){ f2.hp-=dmg; f2.hitT=0.12; svDnum(f2.x,f2.y-f2.spec.r,dmg,"#ff9a5a"); if(f2.hp<=0) svKill(f2,true); } }
@@ -5381,7 +5381,7 @@ function svUpdate(dt){
   for(const f of SV.foes){
     if(!f.alive) continue;
     const d=Math.hypot(p.x-f.x, p.y-f.y)||1;
-    const fmul=(frR && d<frR)?0.6:1;
+    const fmul=(frR && d<frR)?0.68:1;   // v1.84: 감속 완화 — 서리+수호별 완전 정지 벽 방지
     f.x+=(p.x-f.x)/d*f.spec.spd*fmul*dt; f.y+=(p.y-f.y)/d*f.spec.spd*fmul*dt;
     if(f.hitT>0) f.hitT-=dt;
     if(d<f.spec.r+16) svHurt(f.spec.dmg);
@@ -5410,7 +5410,7 @@ function svUpdate(dt){
     } else {
       SV.meteorT-=dt;
       if(SV.meteorT<=0){
-        SV.meteorT=Math.max(3.5, 6.5-1.5*(a.meteor-1));
+        SV.meteorT=Math.max(4.5, 7.5-1.5*(a.meteor-1));   // v1.84: 폭격 간격 +1초
         let tgt=null, best=1e9;
         for(const f2 of SV.foes){ if(!f2.alive) continue; const d2=Math.hypot(p.x-f2.x,p.y-f2.y); if(d2>60&&d2<520&&d2<best){ best=d2; tgt=f2; } }
         if(tgt) SV.meteorWarn={ x:tgt.x, y:tgt.y, t:0.55 };
@@ -5448,12 +5448,12 @@ function svUpdate(dt){
         if(a.chain){   // v1.73 ⚡전격 사슬: 옆 적에게 튕김(레벨=횟수, 60% 피해)
           let cur=f, hitList=[f];
           for(let j=0;j<a.chain;j++){
-            let nxt=null, nd=130;
+            let nxt=null, nd=110;
             for(const f2 of SV.foes){ if(!f2.alive||hitList.indexOf(f2)>=0) continue;
               const d2=Math.hypot(cur.x-f2.x, cur.y-f2.y); if(d2<nd){ nd=d2; nxt=f2; } }
             if(!nxt) break;
             SV.fx.push({x:nxt.x,y:nxt.y,t:0,dur:0.15,zapFrom:{x:cur.x,y:cur.y}});
-            svHitFoe(nxt, a.dmg*0.6, "#e6ff5a");
+            svHitFoe(nxt, a.dmg*0.5, "#e6ff5a");
             hitList.push(nxt); cur=nxt;
           }
           if(SV.fx.length>60) SV.fx.splice(0,SV.fx.length-60);
@@ -5475,7 +5475,7 @@ function svUpdate(dt){
           if(Math.hypot(ox-f.x,oy-f.y)<f.spec.r+14){
             f.hp-=a.dmg*0.6; f.hitT=0.12; hitAny=true;
             const kd=Math.hypot(f.x-p.x,f.y-p.y)||1;   // v1.72: 넉백 — 갈리는 맛
-            if(!f.spec.boss){ f.x+=(f.x-p.x)/kd*12; f.y+=(f.y-p.y)/kd*12; }
+            if(!f.spec.boss && !f.elite){ f.x+=(f.x-p.x)/kd*9; f.y+=(f.y-p.y)/kd*9; }   // v1.84: 정예는 벽을 뚫는다 — 터렛 무적 차단, 직접 피해야 함
             if(f.hp<=0) svKill(f);
           } }
         if(hitAny){ SV.fx.push({x:ox,y:oy,t:0,dur:0.18}); if(SV.fx.length>60) SV.fx.shift(); }   // 접점 스파크
