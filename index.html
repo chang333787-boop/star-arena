@@ -13557,20 +13557,20 @@ function drawCharacterCard(x,y,w,h,ch,wpn){
 // ── 시작 화면(v1.26) = 3층 IA: ①껍데기(상단바) ②섹션(홈·상점·수집) ③플레이(혼자/함께) ──
 function drawStartScreen(){
   drawTitle(50);
-  drawLobbyTopBar();      // ① 껍데기: 프로필칩 · 골드 · 온라인상태 · ⚙설정
-  drawLobbySections();    // ② 섹션: 🏠홈 · 🛒상점 · 📖수집
+  drawLobbyTopBar();      // 프로필칩 · 골드 · 온라인상태 · ⚙설정
+  drawLobbyCards();       // v1.66: 카드형 게임 선택(위키·실험실 허브와 같은 톤) — 로직(menuIndex)은 그대로
+  drawLobbyScope();       //        빠른 대전 설정 스트립(규칙·팀·맵·난이도)
+  drawLobbyChips();       //        상점·수집
   const ch=getCharacter(selectedCharacterId), w=getWeapon(selectedWeaponId);
-  drawLobbyMenu(ch, w);   // ③ 플레이: 혼자 하기(캠페인·빠른대전+스코프 설정) / 친구와(온라인)
   // 오른쪽: 내 캐릭터 카드(캐릭터 선택은 여기 + C 키가 담당)
   ctx.save(); ctx.textAlign="left"; ctx.textBaseline="alphabetic";
   ctx.fillStyle="#bfffad"; ctx.font="bold 15px 'Malgun Gothic',sans-serif"; ctx.fillText("⭐ 내 캐릭터", 800, 160); ctx.restore();
-  uiHit(800, 166, 286, 408, function(){ cycleCharacter(+1); });   // TOUCH-UI-1: 캐릭터 카드 탭=다음 캐릭터(그리기 전 등록 — 예외에 견고)
+  uiHit(800, 166, 286, 408, function(){ cycleCharacter(+1); });   // TOUCH-UI-1: 캐릭터 카드 탭=다음 캐릭터
   drawCharacterCard(800, 166, 286, 388, ch, w);
   ctx.save(); ctx.textAlign="center"; ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
   ctx.fillText("C · 카드 탭 → 캐릭터 변경 (도구·기술 자동)", 800+143, 574); ctx.restore();
-  // 하단 안내(짧게)
   ctx.save(); ctx.textAlign="center"; ctx.fillStyle="#aab4e0"; ctx.font="14px 'Malgun Gothic',sans-serif";
-  ctx.fillText("↑↓ 이동 · ←→ 값 변경 · Enter 실행 · Esc 설정", LOGW/2, LOGH-20); ctx.restore();
+  ctx.fillText("↑↓ 카드 이동 · ←→ 값 변경 · Enter 실행 · Esc 설정", LOGW/2, LOGH-16); ctx.restore();
   if(settingsOpen) drawSettingsOverlay();
 }
 // ① 상단바 칩(둥근 배지). selected면 하이라이트. 그린 뒤 오른쪽 끝 x를 돌려준다.
@@ -13609,79 +13609,67 @@ function drawLobbyTopBar(){
   ctx.fillText(status, setX-14, y+h/2+1);
   ctx.restore();
 }
-// ② 섹션 스트립: 홈(현재) · 상점(8행) · 수집(9행) — ↑↓로 진입, ←→로 가로 이동
-function drawLobbySections(){
-  const y=128, h=30; let x=272;
-  x=drawTopChip("🏠 홈", x, y, h, false)+8;
-  // 현재 탭 표시(홈 아래 밑줄)
-  ctx.save(); ctx.strokeStyle="#9fe0ff"; ctx.lineWidth=3;
-  ctx.beginPath(); ctx.moveTo(276, y+h+5); ctx.lineTo(x-14, y+h+5); ctx.stroke(); ctx.restore();
-  // 상점 비활성(SHOP_ENABLED=false) 동안엔 "준비 중"을 미리 표기 — 눌러도 토스트 안내(빈 화면 없음)
+/* ── v1.66 카드형 로비 ── 위키·실험실 허브와 같은 톤. 키보드 로직(menuIndex 0~13·activateMenuRow·changeMenuValue)은 무변경 */
+function lbCard(x,y,w,h,e){   // e:{i(메뉴행), em, name, d1, d2, color, badge}
+  const sel=(menuIndex===e.i);
+  ctx.save();
+  ctx.fillStyle=sel?"rgba(70,110,190,0.92)":"rgba(24,31,60,0.88)";
+  roundRect(x,y,w,h,14); ctx.fill();
+  if(sel){ const p=0.5+0.5*Math.sin(uiTime*6);
+    ctx.shadowColor="rgba(120,200,255,"+(0.35+p*0.4)+")"; ctx.shadowBlur=18; }
+  ctx.strokeStyle=sel?"#ffffff":(e.color||"#56608a"); ctx.lineWidth=sel?3:1.5;
+  roundRect(x,y,w,h,14); ctx.stroke(); ctx.shadowBlur=0;
+  ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.font="38px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#ffffff"; ctx.fillText(e.em, x+w/2, y+38);
+  ctx.font="bold 19px 'Malgun Gothic',sans-serif"; ctx.fillStyle=sel?"#ffe066":"#ffffff"; ctx.fillText(e.name, x+w/2, y+76);
+  ctx.font="12px 'Malgun Gothic',sans-serif"; ctx.fillStyle=sel?"#dfe8ff":"#8fa0d0";
+  if(e.d1) ctx.fillText(e.d1, x+w/2, y+100);
+  if(e.d2) ctx.fillText(e.d2, x+w/2, y+118);
+  if(e.badge){ ctx.fillStyle=e.color||"#ffe14d"; ctx.font="bold 11px 'Malgun Gothic',sans-serif"; ctx.fillText(e.badge, x+w/2, y+h-13); }
+  ctx.restore();
+  uiHit(x,y,w,h,function(){ menuIndex=e.i; activateMenuRow(e.i); });   // 탭=선택+실행
+}
+function drawLobbyCards(){
+  const X=64, W=224, H=148, G=12, Y1=166, Y2=Y1+H+G;
+  let pfClear=0; try{ const b=pfLoadBest(); for(const k in b){ if(k.indexOf("pfc_")===0) pfClear++; } }catch(e){}
+  const on=OnlineManager.available;
+  lbCard(X,         Y1, W, H, { i:0,  em:"⭐", name:"캠페인 도전", d1:"몬스터 군단 19판 격파", d2:"난이도: "+getDifficulty(selectedDifficultyId).name, color:"#ffd166", badge:"혼자 하기" });
+  lbCard(X+(W+G),   Y1, W, H, { i:2,  em:"▶",  name:"빠른 대전",   d1:getRule(selectedRuleId).name+" · "+getMode(selectedModeId).name, d2:getMap(selectedMapId).name, color:"#5fd0ff", badge:"혼자 하기" });
+  lbCard(X+(W+G)*2, Y1, W, H, { i:7,  em:"🦘", name:"별빛 점프",   d1:"캠페인 30판 · 친구 맵", d2:(pfClear?("클리어 "+pfClear+"/30"):"점프 대모험"), color:"#7dffb0", badge:"혼자 하기" });
+  lbCard(X,         Y2, W, H, { i:8,  em:"🌙", name:"별빛 마을",   d1:"혼자 하는 RPG 모험", d2:"농사 · 퀘스트 · 보스", color:"#ffce6b", badge:"혼자 하기" });
+  lbCard(X+(W+G),   Y2, W, H, { i:9,  em:"🌐", name:"온라인 센터", d1:"방 만들기 · 코드로 참가", d2:on?"● 접속 준비 완료":"○ 연결 확인 중…", color:"#c79bff", badge:"친구와" });
+  lbCard(X+(W+G)*2, Y2, W, H, { i:12, em:"🛠", name:"맵공방",      d1:"나만의 맵 만들기", d2:"승인되면 친구들과 공유", color:"#ffd97d", badge:"만들기" });
+}
+function lbStep(x,y,w,h,row,altRow,label,val){   // 미니 스테퍼 칩: 좌=◀ 우=▶
+  const sel=(menuIndex===row)||(altRow!==undefined&&menuIndex===altRow);
+  ctx.save();
+  ctx.fillStyle=sel?"rgba(95,160,255,0.25)":"rgba(16,22,52,0.85)";
+  roundRect(x,y,w,h,9); ctx.fill();
+  ctx.strokeStyle=sel?"#9fe0ff":"#39457a"; ctx.lineWidth=sel?2:1.2; roundRect(x,y,w,h,9); ctx.stroke();
+  ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillStyle="#7f8bb5"; ctx.font="10px 'Malgun Gothic',sans-serif"; ctx.fillText(label, x+w/2, y+11);
+  ctx.fillStyle=sel?"#ffe066":"#dfe6ff"; ctx.font="bold 13px 'Malgun Gothic',sans-serif";
+  ctx.fillText((sel?"◀ ":"")+val+(sel?" ▶":""), x+w/2, y+h-13);
+  ctx.restore();
+  uiHit(x, y, w/2, h, function(){ menuIndex=row; changeMenuValue(row,-1); });
+  uiHit(x+w/2, y, w/2, h, function(){ menuIndex=row; changeMenuValue(row,+1); });
+}
+function drawLobbyScope(){
+  const X=64, TOT=696, Y=500, H=40, G=8, W=(TOT-G*3)/4;
+  ctx.save(); ctx.textAlign="left"; ctx.textBaseline="middle";
+  ctx.fillStyle="#6f86bd"; ctx.font="bold 12px 'Malgun Gothic',sans-serif";
+  ctx.fillText("🎮 대전 설정 — ▶빠른 대전·⭐캠페인에 적용", X+2, Y-11);
+  ctx.restore();
+  lbStep(X,         Y, W, H, 3, undefined, "규칙", getRule(selectedRuleId).name);
+  lbStep(X+(W+G),   Y, W, H, 4, undefined, "팀", getMode(selectedModeId).name);
+  lbStep(X+(W+G)*2, Y, W, H, 5, undefined, "맵", getMap(selectedMapId).name);
+  lbStep(X+(W+G)*3, Y, W, H, 6, 1, "난이도", getDifficulty(selectedDifficultyId).name);
+}
+function drawLobbyChips(){
+  const y=556, h=32; let x=64;
   x=drawTopChip(SHOP_ENABLED?"🛒 상점":"🛒 상점 (준비 중)", x, y, h, menuIndex===10, function(){ menuIndex=10; openShop(); })+8;
   x=drawTopChip("📖 수집", x, y, h, menuIndex===11, function(){ menuIndex=11; collectionIndex=0; gameState=STATE.COLLECTION; })+8;
-  x=drawTopChip("🛠 맵공방", x, y, h, menuIndex===12, function(){ menuIndex=12; openEditor(); })+8;   /* OVERNIGHT-1 Phase 4 */
 }
-// ③ 플레이 메뉴: 혼자(캠페인 └난이도 · 빠른대전 └규칙·팀·맵·난이도) / 친구와(온라인 센터)
-function drawLobbyMenu(ch, w){
-  const x=300, W=440;
-  const entries=[
-    {type:"h", t:"혼자 하기"},
-    {type:"i", i:0, label:"⭐ 캠페인 도전", note:"20스테이지 몬스터전", color:"#ffd166"},
-    {type:"v", i:1, label:"난이도", val:getDifficulty(selectedDifficultyId).name},
-    {type:"i", i:2, label:"▶ 빠른 대전", note:"단판", color:"#5fd0ff"},
-    {type:"v", i:3, label:"규칙", val:getRule(selectedRuleId).name},
-    {type:"v", i:4, label:"팀", val:getMode(selectedModeId).name},
-    {type:"v", i:5, label:"맵", val:getMap(selectedMapId).name},
-    {type:"v", i:6, label:"난이도", val:getDifficulty(selectedDifficultyId).name},
-    {type:"i", i:7, label:"🦘 별빛 점프", note:"점프 맵 · 기록 도전", color:"#7dffb0"},
-    {type:"i", i:8, label:"🌙 별빛 마을", note:"혼자 하는 RPG 모험", color:"#ffce6b"},
-    {type:"h", t:"친구와"},
-    {type:"i", i:9, label:"🌐 온라인 센터", note:"방 만들기 · 참가", color:"#c79bff"}
-  ];
-  // 별밤 위 가독성을 위한 반투명 패널
-  ctx.save(); ctx.fillStyle="rgba(10,14,36,0.55)"; roundRect(x-28,166,W+56,456,16); ctx.fill();
-  ctx.strokeStyle="rgba(90,123,176,0.35)"; ctx.lineWidth=1.5; roundRect(x-28,166,W+56,456,16); ctx.stroke(); ctx.restore();
-  let y=186;
-  for(const e of entries){
-    if(e.type==="h"){
-      ctx.save(); ctx.textAlign="left"; ctx.textBaseline="alphabetic";
-      ctx.fillStyle="#6f86bd"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.fillText(e.t, x-8, y+13); ctx.restore();
-      y+=24; continue;
-    }
-    const sel=(menuIndex===e.i);
-    if(e.type==="v"){   // 스코프 설정 행(모드 밑 └ 들여쓰기)
-      const hh=26, cy=y+hh/2;
-      ctx.save();
-      if(sel){ ctx.fillStyle="rgba(95,160,255,0.20)"; roundRect(x+10,y,W-10,hh,6); ctx.fill();
-        ctx.strokeStyle="#9fe0ff"; ctx.lineWidth=1.5; roundRect(x+10,y,W-10,hh,6); ctx.stroke(); }
-      ctx.textBaseline="middle"; ctx.textAlign="left";
-      ctx.fillStyle=sel?"#ffe066":"#8fa2d6"; ctx.font="bold 14px 'Malgun Gothic',sans-serif";
-      ctx.fillText("└ "+e.label, x+22, cy);
-      ctx.textAlign="right"; ctx.fillStyle="#ffffff"; ctx.font="14px 'Malgun Gothic',sans-serif";
-      ctx.fillText((sel?"◀ ":"")+e.val+(sel?" ▶":""), x+W-16, cy);
-      ctx.restore();
-      (function(row){ const hw=(W-10)/2;   // TOUCH-UI-1: 값 행 좌=◀ 우=▶(단일 클릭으로 값 변경+선택)
-        uiHit(x+10, y, hw, hh, function(){ menuIndex=row; changeMenuValue(row,-1); });
-        uiHit(x+10+hw, y, hw, hh, function(){ menuIndex=row; changeMenuValue(row,+1); }); })(e.i);
-      y+=30; continue;
-    }
-    // 모드 행(캠페인·빠른대전·온라인)
-    const hh=38, cy=y+hh/2;
-    ctx.save();
-    if(sel){ ctx.fillStyle="rgba(95,160,255,0.26)"; roundRect(x-12,y,W+12,hh,8); ctx.fill();
-      const p=0.5+0.5*Math.sin(uiTime*6); ctx.strokeStyle=e.color||"#9fe0ff"; ctx.lineWidth=3;
-      ctx.shadowColor="rgba(120,200,255,"+(0.4+p*0.4)+")"; ctx.shadowBlur=16;
-      roundRect(x-12,y,W+12,hh,8); ctx.stroke(); ctx.shadowBlur=0; }
-    ctx.textBaseline="middle"; ctx.textAlign="left";
-    ctx.fillStyle=sel?"#ffe066":(e.color||"#dfe6ff"); ctx.font="bold 20px 'Malgun Gothic',sans-serif";
-    ctx.fillText(e.label, x, cy);
-    if(e.note){ ctx.textAlign="right"; ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif"; ctx.fillText(e.note, x+W-16, cy); }
-    ctx.restore();
-    (function(row){ uiHit(x-12, y, W+24, hh, function(){ menuIndex=row; activateMenuRow(row); }); })(e.i);   // TOUCH-UI-1: 모드 행 클릭=실행
-    y+=44;
-  }
-}
-// ⚙ 설정 오버레이(START 위 · 새 STATE 아님): 별명 변경 · 로그아웃 · 교사용 모드
 function drawSettingsOverlay(){
   dimScreen(0.6);
   uiHit(0, 0, LOGW, LOGH, function(){ settingsOpen=false; });   // TOUCH-UI-1: 배경 탭=닫기(버튼이 위층에서 우선)
