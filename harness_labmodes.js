@@ -1063,6 +1063,34 @@ run("별꼬리: 👥 2인 대결(핫시트)", ()=>{
   api.snKey("Escape");
 });
 
+run("생존자: 🎁 보급 상자·잭팟·진공(v1.78 도파민)", ()=>{
+  api.svStart();
+  let sv=api.SV; sv.xpNext=999999; sv.spawnT=9999; sv.foes.length=0;
+  const mr=Math.random;
+  Math.random=()=>0.5;   // 잭팟(12%) 미당첨 고정
+  sv.chests.push({ x:sv.p.x, y:sv.p.y, jack:false });
+  api.svUpdate(1/60); api.svUpdate(1/60);
+  check("상자 줍기 → 경험치 없이 카드 화면", sv.phase==="levelup" && sv.freeOpen===true);
+  api.svKey("Digit1");
+  api.svUpdate(1/60);
+  check("보통 상자는 1장으로 끝(연쇄 없음)", sv.phase==="play" && sv.freeCards===0);
+  sv.gems.push({ x:sv.p.x+700, y:sv.p.y, xp:1 });
+  sv.chests.push({ x:sv.p.x, y:sv.p.y, jack:true });
+  api.svUpdate(1/60);
+  const d0=Math.hypot(sv.p.x-(sv.gems[0]?sv.gems[0].x:sv.p.x), sv.p.y-(sv.gems[0]?sv.gems[0].y:sv.p.y));
+  check("잭팟 상자 → 진공 발동", sv.vacuumT>0);
+  let opens=0;   // 진공·연쇄를 한 루프에서 소화하며 카드 화면 횟수 집계
+  for(let i=0;i<70;i++){ if(sv.phase==="levelup"){ opens++; api.svKey("Digit1"); } api.svUpdate(1/60); }
+  check("먼 별가루(700px)도 진공에 빨려 수집", sv.gems.length===0 || Math.hypot(sv.p.x-sv.gems[0].x, sv.p.y-sv.gems[0].y)<d0-200);
+  check("잭팟 = 카드 3장 연쇄(파바바)", opens===3 && sv.freeCards===0 && sv.phase==="play");
+  Math.random=()=>0.1;   // 정예 드랍(22%) 당첨 고정
+  const f={ alive:true, elite:true, x:sv.p.x+300, y:sv.p.y, hp:0, spec:{ hp:14, xp:1, r:17 }, hitT:0 };
+  const nc=sv.chests.length;
+  api.svKill(f);
+  check("정예 처치 → 상자 드랍(22%)", sv.chests.length===nc+1);
+  Math.random=mr;
+  api.svKey("Escape");
+});
 run("생존자: 레벨업 페이싱(v1.77 — '피하기 게임' 회귀 방지)", ()=>{
   api.svStart();
   const K=api.keysDown; let picks=0;
@@ -1086,7 +1114,7 @@ run("생존자: 레벨업 페이싱(v1.77 — '피하기 게임' 회귀 방지)"
   K.delete("ArrowRight"); K.delete("ArrowLeft"); K.delete("ArrowDown"); K.delete("ArrowUp");
   check("봇 60초 생존", api.SV && api.SV.phase!=="over");
   check("60초까지 카드 2장 이상(루프 시동)", picks>=2);
-  check("60초에 6장 이하(인플레 방지)", picks<=6);
+  check("60초에 8장 이하(인플레 방지)", picks<=8);
 });
 
 console.log("\n결과: "+(fail===0?("ALL PASS ✅ ("+pass+"항목)"):(fail+"건 실패 ❌")));
