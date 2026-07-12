@@ -4436,9 +4436,12 @@ function shUpdate(dt){
   if(keysDown.has("ArrowRight")||keysDown.has("KeyD")) mx+=1;
   if(keysDown.has("ArrowUp")||keysDown.has("KeyW")) my-=1;
   if(keysDown.has("ArrowDown")||keysDown.has("KeyS")) my+=1;
-  p.x=clamp(p.x+mx*380*dt, 60, LOGW-60);
-  p.y=clamp(p.y+my*300*dt, LOGH-250, LOGH-70);
-  p.tilt=(p.tilt||0)+((mx*0.22)-(p.tilt||0))*Math.min(1,dt*10);   // v1.71 뱅킹
+  // v1.72: 즉발 속도 → 가속/감속(별빛점프式 관성 — 손맛)
+  p.vx=(p.vx||0)+((mx*380)-(p.vx||0))*Math.min(1, dt*(mx?13:9));
+  p.vy2=(p.vy2||0)+((my*300)-(p.vy2||0))*Math.min(1, dt*(my?13:9));
+  p.x=clamp(p.x+p.vx*dt, 60, LOGW-60);
+  p.y=clamp(p.y+p.vy2*dt, LOGH-250, LOGH-70);
+  p.tilt=(p.tilt||0)+(((p.vx/380)*0.24)-(p.tilt||0))*Math.min(1,dt*10);   // 뱅킹은 실제 속도 기준
   p.cd-=dt; if(p.inv>0) p.inv-=dt; if(p.spread>0) p.spread-=dt;
   if((keysDown.has("KeyZ")||keysDown.has("Space")) && p.cd<=0){
     p.cd=0.16;
@@ -5228,7 +5231,14 @@ function svUpdate(dt){
   if(keysDown.has("ArrowRight")||keysDown.has("KeyD")) mx+=1;
   if(keysDown.has("ArrowUp")||keysDown.has("KeyW")) my-=1;
   if(keysDown.has("ArrowDown")||keysDown.has("KeyS")) my+=1;
-  if(mx||my){ const L=Math.hypot(mx,my); p.x=clamp(p.x+mx/L*p.spd*dt, 20, SV_W-20); p.y=clamp(p.y+my/L*p.spd*dt, 20, SV_H-20); if(mx) p.face=(mx>0)?1:-1; }
+  {   // v1.72: 관성 이동(점프式) — 급출발·급정지 제거
+    const L=Math.hypot(mx,my)||1;
+    const tvx=(mx/L)*p.spd*((mx||my)?1:0), tvy=(my/L)*p.spd*((mx||my)?1:0);
+    p.vx=(p.vx||0)+((tvx)-(p.vx||0))*Math.min(1, dt*((mx||my)?12:9));
+    p.vy=(p.vy||0)+((tvy)-(p.vy||0))*Math.min(1, dt*((mx||my)?12:9));
+    p.x=clamp(p.x+p.vx*dt, 20, SV_W-20); p.y=clamp(p.y+p.vy*dt, 20, SV_H-20);
+    if(Math.abs(p.vx)>30) p.face=(p.vx>0)?1:-1;
+  }
   // 스폰(시간 갈수록 빡세게) + 보스
   SV.spawnT-=dt;
   if(SV.spawnT<=0){
@@ -5284,8 +5294,15 @@ function svUpdate(dt){
       for(let k=0;k<a.orbit;k++){
         const ang=a.orbitA+k*(Math.PI*2/a.orbit);
         const ox=p.x+Math.cos(ang)*74, oy=p.y+Math.sin(ang)*74;
-        for(const f of SV.foes){ if(!f.alive) continue;
-          if(Math.hypot(ox-f.x,oy-f.y)<f.spec.r+14){ f.hp-=a.dmg*0.6; f.hitT=0.1; if(f.hp<=0) svKill(f); } }
+        let hitAny=false;
+        for(const f of SV.foes){ if(!f.alive) continue;   // ★겹친 적 전원 동시 타격(break 없음)
+          if(Math.hypot(ox-f.x,oy-f.y)<f.spec.r+14){
+            f.hp-=a.dmg*0.6; f.hitT=0.12; hitAny=true;
+            const kd=Math.hypot(f.x-p.x,f.y-p.y)||1;   // v1.72: 넉백 — 갈리는 맛
+            if(!f.spec.boss){ f.x+=(f.x-p.x)/kd*12; f.y+=(f.y-p.y)/kd*12; }
+            if(f.hp<=0) svKill(f);
+          } }
+        if(hitAny){ SV.fx.push({x:ox,y:oy,t:0,dur:0.18}); if(SV.fx.length>60) SV.fx.shift(); }   // 접점 스파크
       }
     }
   }
@@ -5335,10 +5352,10 @@ function svRender(){
     if(!f.alive) continue;
     if(f.x<SV.camX-60||f.x>SV.camX+LOGW+60||f.y<SV.camY-60||f.y>SV.camY+LOGH+60) continue;
     const img=getMonsterImage(f.spec.asset), sz=f.spec.r*2.3;
-    if(f.hitT>0){ ctx.globalAlpha=0.6; }
     if(img) ctx.drawImage(img, f.x-sz/2, f.y-sz/2, sz, sz);
     else { ctx.fillStyle="#c58bff"; ctx.beginPath(); ctx.arc(f.x,f.y,f.spec.r,0,Math.PI*2); ctx.fill(); }
-    ctx.globalAlpha=1;
+    if(f.hitT>0){ ctx.globalAlpha=Math.min(0.65,f.hitT*6); ctx.fillStyle="#ffffff";   // v1.72: 흰 플래시(맞는 게 보임)
+      ctx.beginPath(); ctx.arc(f.x,f.y,f.spec.r*0.95,0,Math.PI*2); ctx.fill(); ctx.globalAlpha=1; }
     if(f.spec.boss){ const bw=90, hpw=bw*Math.max(0,f.hp/f.maxHp);
       ctx.fillStyle="rgba(0,0,0,0.55)"; ctx.fillRect(f.x-bw/2, f.y-f.spec.r-16, bw, 7);
       ctx.fillStyle="#ff8a8a"; ctx.fillRect(f.x-bw/2, f.y-f.spec.r-16, hpw, 7); }
@@ -6073,6 +6090,7 @@ function rnUpdate(dt){
   RN.dist+=RN.spd*dt/56;   // 미터(타일) 단위
   if(RN.dist>=150 && !RN.rewarded){ RN.rewarded=true; labReward("rn", 15); }   // v1.70: 150m 목표
   RN.slide=(keysDown.has("ArrowDown")||keysDown.has("KeyS"))?1:0;
+  RN.slideA=(RN.slideA||0)+((RN.slide)-(RN.slideA||0))*Math.min(1, dt*16);   // v1.72: 판정은 즉시, 자세만 스무스
   // 중력
   RN.vy+=2400*dt; RN.y+=RN.vy*dt;
   if(RN.y>0){ RN.y=0; RN.vy=0; }
@@ -6140,7 +6158,7 @@ function rnRender(){
     const px=210, py=RN.groundY+RN.y;
     const bounce=(RN.y===0 && !RN.slide)?Math.abs(Math.sin(RN.t*11))*5:0;
     ctx.save(); ctx.translate(px, py-bounce);
-    if(RN.slide){ ctx.scale(1.25, 0.55); }
+    const sA=RN.slideA||0; if(sA>0.01) ctx.scale(1+0.25*sA, 1-0.45*sA);
     const drew=drawCharacterSprite(selectedCharacterId, 20, 0, { moving:true, attacking:false });
     if(!drew){ ctx.fillStyle="#ffe14d"; ctx.beginPath(); ctx.arc(0,-24,20,0,Math.PI*2); ctx.fill(); }
     ctx.restore();
@@ -6204,7 +6222,8 @@ function bkUpdate(dt){
   let mx=0;
   if(keysDown.has("ArrowLeft")||keysDown.has("KeyA")) mx-=1;
   if(keysDown.has("ArrowRight")||keysDown.has("KeyD")) mx+=1;
-  BK.px=clamp(BK.px+mx*520*dt, BK.pw/2+10, LOGW-BK.pw/2-10);
+  BK.pvx=(BK.pvx||0)+((mx*560)-(BK.pvx||0))*Math.min(1, dt*(mx?15:11));   // v1.72 관성 패들
+  BK.px=clamp(BK.px+BK.pvx*dt, BK.pw/2+10, LOGW-BK.pw/2-10);
   const mul=(BK.slowT>0)?0.62:1;
   for(const b of BK.balls){
     b.x+=b.vx*mul*dt; b.y+=b.vy*mul*dt;
@@ -6333,7 +6352,7 @@ function snPlaceFood(golden){
   }
 }
 function snStart(){
-  SN={ body:[{c:6,r:6},{c:5,r:6},{c:4,r:6}], rend:[], dir:{c:1,r:0}, nextDir:{c:1,r:0},
+  SN={ body:[{c:6,r:6},{c:5,r:6},{c:4,r:6}], prev:[{c:6,r:6},{c:5,r:6},{c:4,r:6}], dir:{c:1,r:0}, nextDir:{c:1,r:0},
        stepIv:0.15, stepT:0, score:0, eaten:0, over:false, paused:false, food:null };
   snPlaceFood(false);
   gameState=STATE.SNAKE;
@@ -6355,7 +6374,9 @@ function snUpdate(dt){
   if(!SN||SN.over||SN.paused) return;
   SN.stepT+=dt;
   if(SN.stepT<SN.stepIv) return;
-  SN.stepT=0;
+  SN.stepT-=SN.stepIv;   // v1.72: 잔여 시간 보존(프레임 경계에서도 등속 유지)
+  if(SN.stepT<0||SN.stepT>SN.stepIv) SN.stepT=0;
+  SN.prev=SN.body.map(function(b){ return {c:b.c, r:b.r}; });   // 직전 칸(렌더 보간 기준)
   SN.dir=SN.nextDir;
   const h=SN.body[0], nc=h.c+SN.dir.c, nr=h.r+SN.dir.r;
   if(nc<0||nr<0||nc>=SN_COLS||nr>=SN_ROWS || SN.body.some((b,i)=>i<SN.body.length-1 && b.c===nc && b.r===nr)){
@@ -6386,22 +6407,18 @@ function snRender(){
     const p=1+0.12*Math.sin(uiTime*6);
     drawStar(x, y, 5, (SN.food.golden?17:12)*p, (SN.food.golden?8:5)*p, SN.food.golden?"#ffb63f":"#ffe14d");
   }
-  // v1.71 쾌적성: 칸 단위 순간이동 → 렌더 보간(부드러운 미끄러짐)
-  while(SN.rend.length<SN.body.length) SN.rend.push({ x:SN_OX+SN.body[SN.rend.length].c*SN_CELL, y:SN_OY+SN.body[SN.rend.length].r*SN_CELL });
-  if(SN.rend.length>SN.body.length) SN.rend.length=SN.body.length;
-  const _k=SN.over?1:0.38;
-  for(let i=0;i<SN.body.length;i++){
-    const tx=SN_OX+SN.body[i].c*SN_CELL, ty=SN_OY+SN.body[i].r*SN_CELL;
-    SN.rend[i].x+=(tx-SN.rend[i].x)*_k; SN.rend[i].y+=(ty-SN.rend[i].y)*_k;
-  }
+  // v1.72 쾌적성: 스텝 진행률 보간 — 직전 칸→현재 칸을 등속으로 활주(멈칫 제로, 요즘 스네이크 흐름)
+  const _t=SN.over?1:clamp(SN.stepT/SN.stepIv, 0, 1);
+  function _sx(i){ const c=SN.body[i], p=(SN.prev&&SN.prev[i])||c; return SN_OX+(p.c+(c.c-p.c)*_t)*SN_CELL; }
+  function _sy(i){ const c=SN.body[i], p=(SN.prev&&SN.prev[i])||c; return SN_OY+(p.r+(c.r-p.r)*_t)*SN_CELL; }
   for(let i=SN.body.length-1;i>=1;i--){
-    const x=SN.rend[i].x, y=SN.rend[i].y;
+    const x=_sx(i), y=_sy(i);
     const k=1-i/SN.body.length;
     ctx.fillStyle="rgba("+Math.round(90+k*40)+","+Math.round(200+k*30)+","+Math.round(220)+",0.9)";
     roundRect(x+5, y+5, SN_CELL-10, SN_CELL-10, 12); ctx.fill();
   }
   {
-    const x=SN.rend[0].x+SN_CELL/2, y=SN.rend[0].y+SN_CELL/2;
+    const x=_sx(0)+SN_CELL/2, y=_sy(0)+SN_CELL/2;
     ctx.save(); ctx.translate(x, y+SN_CELL*0.32);
     const drew=drawCharacterSprite(selectedCharacterId, 15, SN.dir.c<0?Math.PI:0, { moving:true, attacking:false });
     if(!drew){ ctx.fillStyle="#7ad0e0"; ctx.beginPath(); ctx.arc(0,-SN_CELL*0.32,SN_CELL*0.4,0,Math.PI*2); ctx.fill(); }

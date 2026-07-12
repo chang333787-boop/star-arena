@@ -481,6 +481,19 @@ run("생존자: 보스 등장(240s)·승리(300s)", ()=>{
   for(let i=0;i<60 && SV.phase==="play";i++) api.svUpdate(DT);
   check("300초 생존 → 승리+기록", SV.phase==="win" && JSON.parse(LS["starArena.lab.svBest"]).wins>=1);
 });
+run("생존자: 수호별 — 겹친 적 전원 동시 타격+넉백(v1.72)", ()=>{
+  api.svStart();
+  const SV=api.SV, p=SV.p, a=SV.atk;
+  a.orbit=1; a.orbitA=0; a.orbitTick=0.01;   // 다음 틱 임박, 궤도별 위치=(p.x+74, p.y)
+  const mk=(dx,dy)=>({ type:"jelly", spec:{ asset:"soft_jelly", hp:50, spd:0, dmg:0, xp:1, r:17 }, x:p.x+74+dx, y:p.y+dy, hp:50, maxHp:50, alive:true, hitT:0 });
+  const f1=mk(-6,-8), f2=mk(8,6), far=mk(300,0);   // 두 마리 겹침 + 한 마리 밖
+  SV.foes.push(f1,f2,far);
+  api.svUpdate(1/60);
+  check("겹친 2마리 같은 틱에 동시 피해", f1.hp<50 && f2.hp<50 && f1.hp===f2.hp);
+  check("범위 밖은 무피해", far.hp===50);
+  check("넉백(플레이어 반대쪽으로 밀림)", f1.x>p.x+74-6 || f2.x>p.x+74+8);
+  check("피격 플래시 부여", f1.hitT>0 && f2.hitT>0);
+});
 run("생존자: 봇 90초 생존(도망+자동공격)", ()=>{
   api.svStart();
   const SV=api.SV, K=api.keysDown;
