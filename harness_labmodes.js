@@ -28,6 +28,7 @@ script+=`;globalThis.__api={ STATE, keysDown,
   bkStart, bkKey, bkUpdate, bkRender, bkBricks,
   snStart, snKey, snUpdate, snRender,
   otStart, otKey, otUpdate, otRender, otFlips, otMoves, otPlace, otCount, otAiMove,
+  msStart, msKey, msUpdate, msRender, msSwing, msUlt, msSpawnFoe, msBest, MS_FOES, get MS(){return MS;},
   LAB_GAMES, lhStart, lhKey, lhRender, lhList,
   LabOpenStore, labToggle, labOpenCount, labBack, drawLobbyMiniBanner, activateMenuRow, handleAdminKey,
   get labOpen(){return labOpen;}, get labFrom(){return labFrom;}, setLabFrom:v=>{labFrom=v;}, setState:(s)=>{ gameState=s; },
@@ -778,7 +779,7 @@ run("오델로: 규칙·뒤집기·AI·종국", ()=>{
 });
 run("실험실 허브: 진입·숫자 라우팅", ()=>{
   api.lhStart();
-  check("허브 진입(10종 카드)", api.gameState==="labhub" && api.LAB_GAMES.length===10);
+  check("허브 진입(11종 카드)", api.gameState==="labhub" && api.LAB_GAMES.length===11);
   api.lhKey("Digit7");
   check("7키 → 러너 실행", api.gameState==="runner");
   api.rnKey("Escape");
@@ -852,7 +853,7 @@ run("학생 허브: 개방된 게임만 + Esc 귀환 라우팅", ()=>{
 });
 run("교사 허브: 전체 10종 + O키 개방 토글", ()=>{
   api.lhStart("teacher");
-  check("교사 모드: 10종 전부", api.lhList().length===10 && api.labFrom==="teacherhub");
+  check("교사 모드: 11종 전부", api.lhList().length===11 && api.labFrom==="teacherhub");
   const k=api.LAB_GAMES[0].key, before=!!api.labOpen[k];
   api.lhKey("KeyO");
   check("O키 → 선택 게임 개방 토글", !!api.labOpen[k]===!before);
@@ -1063,6 +1064,82 @@ run("별꼬리: 👥 2인 대결(핫시트)", ()=>{
   api.snKey("Escape");
 });
 
+run("무쌍: 진입·개막 포위진·11번째 게임 등록", ()=>{
+  check("LAB_GAMES 11종 + ms 키", api.LAB_GAMES.length===11 && api.LAB_GAMES[10].key==="ms");
+  api.msStart();
+  check("진입=musou·개막 46기 포위", api.gameState==="musou" && api.MS.foes.length>=40);
+  check("3분 시간제·게이지 0 시작", api.MS.phase==="play" && api.MS.gauge===0);
+});
+run("무쌍: 휘두르기 — 부채꼴 다중 타격·콤보·게이지", ()=>{
+  const ms=api.MS;
+  ms.foes.length=0; ms.squadT=9999; ms.officerT=9999;   // 격리
+  ms.p.face={x:1,y:0};
+  for(let i=0;i<8;i++) api.msSpawnFoe(ms.p.x+55+i*9, ms.p.y+(i%3-1)*30, "jelly");   // 전방 뭉침
+  api.msSpawnFoe(ms.p.x-70, ms.p.y, "jelly");   // 뒤쪽 1기(부채꼴 밖)
+  const k0=ms.kills;
+  api.msSwing();
+  check("한 번에 여러 마리 격파(무쌍 맛)", ms.kills-k0>=5);
+  check("뒤쪽은 안 맞음(부채꼴 판정)", ms.foes.some(f=>f.alive && f.x<ms.p.x));
+  check("콤보·게이지 상승", ms.comboN>=5 && ms.gauge>0);
+  check("×N HIT 텍스트", ms.texts.length>=1);
+});
+run("무쌍: 3타째 회전베기(360°)·콤보 리셋", ()=>{
+  const ms=api.MS;
+  ms.swingCd=0; ms.chainT=0.5; ms.swing=1;   // 다음이 3타(spin)
+  const back=ms.foes.find(f=>f.alive && f.x<ms.p.x);
+  api.msSwing();
+  check("회전베기는 뒤쪽도 타격", !back.alive || back.hp<back.spec.hp);
+  ms.comboT=0.01; api.msUpdate(0.02);
+  check("콤보 시간 끝 → 0으로", ms.comboN===0);
+});
+run("무쌍: X 별빛 폭발 — 광역 격파·게이지 소모·슬로모", ()=>{
+  const ms=api.MS;
+  ms.foes.length=0;
+  for(let i=0;i<12;i++) api.msSpawnFoe(ms.p.x+Math.cos(i)*260, ms.p.y+Math.sin(i)*260, "jelly");
+  api.msSpawnFoe(ms.p.x+600, ms.p.y, "jelly");   // 사거리(440) 밖
+  ms.gauge=99; api.msUlt();
+  check("게이지 100 미만이면 불발", ms.gauge===99);
+  ms.gauge=100; const k0=ms.kills;
+  api.msUlt();
+  check("폭발: 반경 내 전부 격파", ms.kills-k0>=12);
+  check("사거리 밖 1기 생존", ms.foes.some(f=>f.alive));
+  check("게이지 소모·슬로모 발동", ms.gauge===0 && ms.slowT>0);
+});
+run("무쌍: 적장 — 등장·처치 보상(+25 격파·게이지)", ()=>{
+  const ms=api.MS;
+  ms.officerT=0.01; ms.squadT=9999; ms.slowT=0;   // 앞 테스트 슬로모 격리
+  for(let i=0;i<20 && !ms.officer;i++) api.msUpdate(0.05);
+  check("적장 등장(이름 명패)", !!ms.officer && ms.officer.name.indexOf("먹구름")===0);
+  ms.officer.hp=1; ms.officer.x=ms.p.x+60; ms.officer.y=ms.p.y; ms.p.face={x:1,y:0};
+  ms.swingCd=0; ms.gauge=0;
+  const k0=ms.kills;
+  api.msSwing();
+  check("적장 처치=+25 격파·게이지 대충전", ms.kills-k0>=25 && ms.gauge>=40 && ms.officer===null);
+});
+run("무쌍: 쓰러짐=소프트 부활(실패 스트레스 없음)", ()=>{
+  const ms=api.MS;
+  ms.foes.length=0; ms.squadT=9999; ms.officerT=9999;
+  ms.p.hp=1; ms.p.ifr=0; ms.comboN=33;
+  api.msSpawnFoe(ms.p.x+5, ms.p.y, "jelly");
+  for(let i=0;i<10 && ms.p.downT<=0;i++) api.msUpdate(1/30);
+  check("접촉 → 쓰러짐(게임오버 아님)", ms.p.downT>0 && ms.phase==="play");
+  check("콤보만 리셋", ms.comboN===0);
+  for(let i=0;i<200 && ms.p.downT>0;i++) api.msUpdate(1/30);
+  check("3초 뒤 부활(HP60·무적)", ms.p.hp===60 && ms.p.ifr>0);
+});
+run("무쌍: 종료 → 결과·학급 랭킹 제출·기록 저장", ()=>{
+  const ms=api.MS;
+  delete api.labRank.ms;
+  ms.kills=777; ms.maxCombo=150; ms.t=179.99;
+  api.msUpdate(0.02);
+  check("3분 종료 → 결과 화면", ms.phase==="result");
+  check("학급 랭킹 ms=격파 수", (api.labRank.ms||[])[0] && api.labRank.ms[0].s===777);
+  const b=api.msBest();
+  check("개인 최고 저장", b.kills>=777 && b.combo>=150);
+  api.msRender();
+  check("결과 렌더 예외 없음", true);
+  api.msKey("Escape");
+});
 run("생존자: 🎁 보급 상자·잭팟·진공(v1.78 도파민)", ()=>{
   api.svStart();
   let sv=api.SV; sv.xpNext=999999; sv.spawnT=9999; sv.foes.length=0;

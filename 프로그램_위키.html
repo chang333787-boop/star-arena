@@ -54,7 +54,7 @@ details[open] summary{margin-bottom:8px;}
 <body>
 <div class="app">
 <nav class="side" id="side">
-  <div class="logo">⭐ 별빛 아레나 위키<small>현재 버전 <b style="color:#ffe14d">v1.78</b> · 2026-07-12</small></div>
+  <div class="logo">⭐ 별빛 아레나 위키<small>현재 버전 <b style="color:#ffe14d">v1.79</b> · 2026-07-12</small></div>
   <input id="wsearch" type="search" placeholder="🔎 검색 (예: 뭉게대왕, 조작)" style="width:100%;margin:10px 0 2px;padding:7px 10px;border-radius:9px;border:1px solid #2a3560;background:#0a0f28;color:#dfe6ff;font-family:inherit;font-size:13px;">
   <div id="sres" style="font-size:11.5px;color:#8893bb;padding:0 4px;"></div>
   <div class="grp">시작</div>
@@ -76,6 +76,7 @@ details[open] summary{margin-bottom:8px;}
   <button class="nav-btn" data-p="brick">🧱 벽돌깨기</button>
   <button class="nav-btn" data-p="snake">🐍 별꼬리</button>
   <button class="nav-btn" data-p="othello">⚫ 별빛 오델로</button>
+  <button class="nav-btn" data-p="musou">🗡 별빛 무쌍</button>
   <div class="grp">만들기 · 관리</div>
   <button class="nav-btn" data-p="maker">🛠 만들기 도구</button>
   <button class="nav-btn" data-p="assets">🎨 에셋 도감</button>
@@ -109,6 +110,7 @@ details[open] summary{margin-bottom:8px;}
 <div class="gcard" data-p="brick"><div class="em">🧱</div><div class="nm">벽돌깨기</div><div class="ds">아케이드</div></div>
 <div class="gcard" data-p="snake"><div class="em">🐍</div><div class="nm">별꼬리</div><div class="ds">스네이크</div></div>
 <div class="gcard" data-p="othello"><div class="em">⚫</div><div class="nm">별빛 오델로</div><div class="ds">AI와 보드 대결</div></div>
+<div class="gcard" data-p="musou"><div class="em">🗡</div><div class="nm">별빛 무쌍</div><div class="ds">천 명을 쓸어담는 액션</div></div>
 </div>
 <h2>🚪 들어가는 법</h2>
 <ul>
@@ -397,6 +399,24 @@ details[open] summary{margin-bottom:8px;}
 <li>전적 <code>starArena.lab.otWins</code> · 2인 대전(핫시트) v1.74 구현 — AI전만 전적/랭킹 반영</li></ul></details>
 </section>
 
+<!-- ═════════ 무쌍 ═════════ -->
+<section class="page" id="p-musou">
+<h1>🗡 별빛 무쌍 <span class="badge">실험 11 · 한 명이 천 명을</span></h1>
+<p class="tagline">먹구름 대군 속으로 뛰어들어 한 번에 스무 마리씩 — 콤보 숫자가 치솟는 액션!</p>
+<h2>🎮 조작</h2>
+<ul><li>이동 <kbd>화살표</kbd>/<kbd>WASD</kbd> · <kbd>Z</kbd>(꾹 눌러도 OK) 휘두르기 — <b>3타째는 빙글 회전베기(360°)!</b></li>
+<li>때릴수록 <b>별빛 게이지</b>가 차요 → 꽉 차면 <kbd>X</kbd> = 💥<b>별빛 폭발</b>(주변 싹쓸이 + 잠깐 슬로모)</li>
+<li>쓰러져도 끝이 아니에요 — <b>3초 뒤 그 자리에서 부활</b>(콤보만 리셋). 마음껏 돌격!</li></ul>
+<h2>🔥 도파민 포인트</h2>
+<ul><li><b>콤보</b>: 2.6초 안에 계속 때리면 숫자가 쭉쭉 — 50·100·200… 돌파마다 보너스 게이지!</li>
+<li><b>👑 적장</b>: 30초마다 "먹구름 백부장" 같은 대장 등장 — 쓰러뜨리면 <b>+25 격파 & 게이지 대충전</b>. 돌진 예고선(빨간 줄)은 피하기!</li>
+<li>3분 동안 몇 명? <b>300격파 ★ · 650 ★★ · 1000 ★★★</b>(1000이면 진짜 "천 명 베기" 달성!) · 300격파부터 +30G</li></ul>
+<p>격파 수는 🏫 우리 반 랭킹으로 공유돼요!</p>
+<details><summary>🔧 관리자 노트</summary>
+<ul><li>수치: <code>MS_FOES</code>(젤리 12·방울 26·방패 52hp) · 부대 3.6→2.2s 간격 · 동시 230기 상한(성능) · 적장 <code>300×(1+n×0.55)</code>hp</li>
+<li>설계: 실패 스트레스 없는 파워 판타지(소프트 부활) — 별빛 폭발은 전체 플래시 금지, 확장 링+가장자리 비네트(눈편안 규칙)</li></ul></details>
+</section>
+
 <!-- ═════════ 몬스터 도감 ═════════ -->
 <section class="page" id="p-dex">
 <h1>👾 먹구름단 몬스터 도감</h1>
@@ -435,6 +455,7 @@ details[open] summary{margin-bottom:8px;}
 <tr><td>🏃 러너 / 🧱 벽돌 / 🐍 별꼬리</td><td>거리 / 점수 / 점수</td></tr>
 <tr><td>⚫ 오델로</td><td>AI전 승수(둘이서 모드는 제외)</td></tr>
 <tr><td>🥚 별빛알</td><td>모은 별빛</td></tr>
+<tr><td>🗡 별빛 무쌍</td><td>격파 수(적장은 +25!) — 3분 동안 몇 명 쓸었나</td></tr>
 <tr><td>🦘 별빛 점프</td><td>캠페인 별조각 총합(선택 화면 우상단 👑) — 친구 맵은 제외</td></tr>
 <tr><td>⭐ 계정 레벨</td><td>레벨 업 순간 자동 반영 — 로비 상단 "👑 반 1위" 칩</td></tr></table>
 <p>같은 이름은 <b>최고 기록 하나만</b> 올라가요. 반 1위가 되는 순간 👑 토스트가 떠요!</p>
@@ -504,7 +525,7 @@ node -e 'const fs=require("fs");const h=fs.readFileSync("index.html","utf8");con
 <p><code>node harness_이름.js</code> — 초록(exit 0)이어야 배포.</p>
 <table>
 <tr><th>분야</th><th>하네스</th></tr>
-<tr><td>실험실 10종</td><td><b>labmodes</b>(201항목: 수비대 봇 완주·퍼즐 솔버·오델로 자동대국/2인전·공방 3종 제출→승인→공유·생존자 14강화·학급 랭킹 병합)</td></tr>
+<tr><td>실험실 11종</td><td><b>labmodes</b>(241항목: 수비대 봇 완주·퍼즐 솔버·오델로/별꼬리 2인전·공방 3종·생존자 14강화+보급상자·무쌍 콤보/폭발/적장·학급 랭킹 병합)</td></tr>
 <tr><td>별빛 점프</td><td><b>pfcamp</b>(캠페인 30판 봇 클리어 — 스테이지 추가 시 필수) · platformer · edtest · studentmaps</td></tr>
 <tr><td>RPG</td><td>rpg(챕터1 완주 시뮬)</td></tr>
 <tr><td>아레나·전투</td><td>abilities · balance · pve · sim_pve · fixed_loadout · genre · camera · controls · touchui · boot_maps · checkpoint◇ · campaign◇</td></tr>
@@ -536,11 +557,12 @@ node -e 'const fs=require("fs");const h=fs.readFileSync("index.html","utf8");con
 
 <!-- ═════════ 일지 ═════════ -->
 <section class="page" id="p-log">
-<h1>📜 업데이트 일지 <span class="badge">현재 v1.78</span></h1>
+<h1>📜 업데이트 일지 <span class="badge">현재 v1.79</span></h1>
 <p class="tagline">v1.00(6-29 첫 버전)부터 이어온 버전 기록 — 전체 상세는 저장소 <code>PATCHNOTES.md</code>(67개 버전), 작업 맥락은 <code>작업현황_HANDOFF.md</code>.</p>
 <h2>최근 (v1.55 ~ v1.65)</h2>
 <table><tr><th>버전</th><th>날짜</th><th>내용</th></tr>
-<tr><td><b>v1.78</b></td><td>07-12</td><td><b>생존자 도파민 패치</b> — 🎁보급 상자(공짜 카드)·🎰잭팟 3연속·별가루 진공 흡입·보스=잭팟 확정: "잘 풀리면 파바바바"</td></tr>
+<tr><td><b>v1.79</b></td><td>07-12</td><td><b>🗡 별빛 무쌍 신작(실험 11호)</b> — Z 3연격·콤보·별빛 폭발·적장·소프트 부활: 3분에 1000+ 격파하는 파워 판타지 (봇 실측 1,170격파)</td></tr>
+<tr><td>v1.78</td><td>07-12</td><td><b>생존자 도파민 패치</b> — 🎁보급 상자(공짜 카드)·🎰잭팟 3연속·별가루 진공 흡입·보스=잭팟 확정: "잘 풀리면 파바바바"</td></tr>
 <tr><td>v1.77</td><td>07-12</td><td><b>생존자 경제 대수술</b> — 시작 한 방·별가루 자동 추적·후반 가치 상승: 3분에 카드 10장 안팎(봇 실측), "피하기 게임" 탈출</td></tr>
 <tr><td>v1.76</td><td>07-12</td><td><b>랭킹 본편 확장</b> — 🦘 캠페인 별조각 총합(선택 화면 👑)·계정 레벨(로비 상단 👑 칩)도 반 전체 공유</td></tr>
 <tr><td>v1.75</td><td>07-12</td><td><b>별꼬리 2인 대결</b> — ⭐화살표 vs 🌙WASD 핫시트, 정면충돌 무승부·별 뺏어먹기, 랭킹은 혼자 모드만</td></tr>

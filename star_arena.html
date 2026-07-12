@@ -1928,7 +1928,8 @@ const STATE = { START:"start", SHOP:"shop",
   RPG:"rpg", RPG_REVIEW:"rpg_review",                 /* RPG모드_PRD §1.1·§7.4: 별빛 마을 + 교사 콘텐츠 승인 */
   TD:"td", SHOOTER:"shooter", RAY3D:"ray3d",          /* LAB-1: 관리자 실험 게임틀(수비대·함대·던전3D) — 교사 패널 전용 진입 */
   SURVIVOR:"survivor", EGG:"egg", PUZZLE:"puzzle",     /* LAB-3: 실험 ④생존자 ⑤별빛알 ⑥별조각밀기 */
-  RUNNER:"runner", BREAKOUT:"breakout", SNAKE:"snake", OTHELLO:"othello", LABHUB:"labhub" };   /* LAB-4: ⑦러너 ⑧벽돌 ⑨별꼬리 ⑩오델로 + 허브 */
+  RUNNER:"runner", BREAKOUT:"breakout", SNAKE:"snake", OTHELLO:"othello", LABHUB:"labhub",
+  MUSOU:"musou" };   /* v1.79: ⑪⚔ 별빛 무쌍 */   /* LAB-4: ⑦러너 ⑧벽돌 ⑨별꼬리 ⑩오델로 + 허브 */
 let gameState = STATE.SPLASH;
 let splashTimer = 0;
 let loginMsg = "";          // 로그인 안내/오류
@@ -2289,6 +2290,7 @@ function handleKeyPress(code){
   if(gameState === STATE.RUNNER){ rnKey(code); return; }    // LAB-4 실험: 별빛 러너
   if(gameState === STATE.BREAKOUT){ bkKey(code); return; }  // LAB-4 실험: 벽돌깨기
   if(gameState === STATE.SNAKE){ snKey(code); return; }     // LAB-4 실험: 별꼬리
+  if(gameState === STATE.MUSOU){ msKey(code); return; }     // v1.79: 별빛 무쌍
   if(gameState === STATE.OTHELLO){ otKey(code); return; }   // LAB-4 실험: 별빛 오델로
   if(gameState === STATE.LABHUB){ lhKey(code); return; }    // LAB-4: 실험실 허브
   if(gameState === STATE.EDITOR){ handleEditorKey(code); return; }        // OVERNIGHT-1: 맵공방
@@ -6923,6 +6925,372 @@ function otRender(){
   ctx.restore();
 }
 /* ── 🧪 실험실 허브 — 10종 게임틀 한 화면(교사 전용) ── */
+/* ── ⑪ ⚔ 별빛 무쌍 — 한 명이 천 명을! (v1.79)
+   도파민 설계: 한 번 휘두르면 떼로 날아감(×N HIT) → 콤보 숫자가 치솟음 → 게이지 만땅 X = 별빛 폭발.
+   실패 스트레스 없음: 쓰러져도 3초 뒤 그 자리 부활(콤보만 리셋) — 무쌍은 파워 판타지.
+   눈편안: 전체화면 플래시 금지 — 폭발은 확장 링+가장자리 비네트, 콤보 팝 스케일 ≤1.25. */
+const MS_W=2000, MS_H=1300, MS_TIME=180;
+const MS_BEST_KEY="starArena.lab.msBest";
+const MS_FOES={
+  jelly: { asset:"soft_jelly",    hp:12, spd:66, dmg:5,  r:15 },
+  bubble:{ asset:"bounce_bubble", hp:26, spd:52, dmg:6,  r:17 },
+  shieldy:{asset:"shield_block",  hp:52, spd:40, dmg:8,  r:19 } };
+const MS_OFFICERS=["먹구름 백부장","먹구름 천부장","먹구름 만부장","먹구름 대장군"];
+const MS_MILES=[50,100,200,300,500,800,1200];
+let MS=null;
+function msBest(){ try{ const s=JSON.parse(localStorage.getItem(MS_BEST_KEY)); if(s) return s; }catch(e){} return { kills:0, combo:0 }; }
+function msStart(){
+  MS={ p:{ x:MS_W/2, y:MS_H/2, vx:0, vy:0, hp:100, maxhp:100, spd:265, face:{x:1,y:0}, ifr:0, downT:0, lastHurt:99 },
+       foes:[], fly:[], fx:[], picks:[], texts:[],
+       kills:0, comboN:0, comboT:0, maxCombo:0, comboPop:0, milestone:0,
+       gauge:0, ultT:0, slowT:0,
+       swing:0, swingCd:0, chainT:0,
+       officer:null, officerT:25, officerN:0,
+       squadT:2.6, t:0, phase:"play", paused:false, rewarded:false,
+       camX:MS_W/2-LOGW/2, camY:MS_H/2-LOGH/2, best:msBest() };
+  for(let i=0;i<46;i++){ const a=Math.PI*2*i/46, R=250+(i%3)*72;   // 개막 포위진 — 시작하자마자 쓸어담기
+    msSpawnFoe(MS_W/2+Math.cos(a)*R, MS_H/2+Math.sin(a)*R, (i%9===0)?"bubble":"jelly"); }
+  gameState=STATE.MUSOU;
+  showToast("⚔ 별빛 무쌍 — Z 연타로 휘두르고, 게이지 차면 X 별빛 폭발!");
+}
+function msSpawnFoe(x,y,type){
+  const spec=MS_FOES[type];
+  MS.foes.push({ x:clamp(x,24,MS_W-24), y:clamp(y,24,MS_H-24), type:type, spec:spec, hp:spec.hp, alive:true, hitT:0, kvx:0, kvy:0 });
+}
+function msAliveN(){ let n=0; for(const f of MS.foes) if(f.alive) n++; return n; }
+function msSquad(){   // 부대 단위 돌격(무쌍의 "제N진")
+  if(msAliveN()>230) return;   // PERF 상한 — 이 이상은 어차피 화면 밖
+  const n=14+Math.min(14, Math.floor(MS.t/22)), side=Math.floor(Math.random()*4);
+  const bx=(side===0)?60:(side===1)?MS_W-60:clamp(MS.p.x+(Math.random()*800-400),80,MS_W-80);
+  const by=(side===2)?60:(side===3)?MS_H-60:clamp(MS.p.y+(Math.random()*600-300),80,MS_H-80);
+  for(let i=0;i<n;i++){
+    const a=Math.random()*Math.PI*2, R=Math.random()*95;
+    let type="jelly";
+    const roll=Math.random();
+    if(MS.t>60 && roll<0.14) type="shieldy"; else if(MS.t>20 && roll<0.34) type="bubble";
+    msSpawnFoe(bx+Math.cos(a)*R, by+Math.sin(a)*R, type);
+  }
+}
+function msAddCombo(hits, noGauge){
+  MS.comboN+=hits; MS.comboT=2.6; MS.comboPop=1;
+  if(MS.comboN>MS.maxCombo) MS.maxCombo=MS.comboN;
+  if(!noGauge) MS.gauge=Math.min(100, MS.gauge+hits*1.3);   // 폭발 자체 히트로는 재충전 금지
+  while(MS.milestone<MS_MILES.length && MS.comboN>=MS_MILES[MS.milestone]){
+    showToast("🔥 콤보 "+MS_MILES[MS.milestone]+" 돌파!!"); MS.gauge=Math.min(100, MS.gauge+8); MS.milestone++; playSfx("buff");
+  }
+}
+function msKillFoe(f, dirx, diry){
+  if(!f.alive) return;
+  f.alive=false;
+  MS.kills+=(f.officer?25:1);
+  if(MS.fly.length<60) MS.fly.push({ x:f.x, y:f.y, vx:dirx*420+(Math.random()*120-60), vy:diry*420-90, rot:Math.random()*6, vr:(Math.random()<0.5?-7:7), asset:f.spec.asset, r:f.spec.r, t:0 });
+  if(f.officer){
+    MS.officer=null; MS.officerT=30; MS.gauge=Math.min(100, MS.gauge+40);
+    showToast("⚔ "+f.name+" 격파! +25 격파 · 게이지 대충전!"); playSfx("win");
+  } else if(Math.random()<0.07){
+    MS.picks.push({ x:f.x, y:f.y, kind:(Math.random()<0.5)?"hp":"gauge" });
+  }
+}
+function msSwing(){
+  if(!MS || MS.phase!=="play" || MS.p.downT>0 || MS.swingCd>0) return;
+  if(MS.chainT>0) MS.swing=(MS.swing+1)%3; else MS.swing=0;
+  MS.chainT=1.15; MS.swingCd=(MS.swing===2)?0.34:0.22;
+  const spin=(MS.swing===2), R=spin?122:100, dmg=spin?15:12, kb=spin?330:200;
+  const fx=MS.p.face.x, fy=MS.p.face.y, fa=Math.atan2(fy,fx);
+  let hits=0;
+  const all=MS.officer?MS.foes.concat([MS.officer]):MS.foes;
+  for(const f of all){
+    if(!f.alive) continue;
+    const dx=f.x-MS.p.x, dy=f.y-MS.p.y, d=Math.hypot(dx,dy);
+    if(d>R+f.spec.r) continue;
+    if(!spin){ let ad=Math.atan2(dy,dx)-fa; while(ad>Math.PI)ad-=Math.PI*2; while(ad<-Math.PI)ad+=Math.PI*2; if(Math.abs(ad)>1.2) continue; }
+    f.hp-=dmg; f.hitT=0.12; hits++;
+    const ux=dx/(d||1), uy=dy/(d||1);
+    f.kvx+=ux*kb; f.kvy+=uy*kb;
+    if(f.hp<=0) msKillFoe(f, ux, uy);
+  }
+  MS.fx.push({ kind:"arc", ang:fa, spin:spin, t:0, dur:0.16 });
+  if(MS.fx.length>24) MS.fx.shift();
+  if(hits>0){
+    msAddCombo(hits);
+    if(MS.texts.length<12) MS.texts.push({ x:MS.p.x+fx*82, y:MS.p.y+fy*82-26, txt:"×"+hits, big:hits>=10, t:0 });
+    playSfx(spin?"break":"hit");
+  } else playSfx("click");
+}
+function msUlt(){
+  if(!MS || MS.phase!=="play" || MS.p.downT>0 || MS.gauge<100) return;
+  MS.gauge=0; MS.ultT=0.55; MS.slowT=0.8;
+  let hits=0;
+  const all=MS.officer?MS.foes.concat([MS.officer]):MS.foes;
+  for(const f of all){
+    if(!f.alive) continue;
+    const dx=f.x-MS.p.x, dy=f.y-MS.p.y, d=Math.hypot(dx,dy);
+    if(d>440) continue;
+    f.hp-=(f.officer?130:70); f.hitT=0.2; hits++;
+    const ux=dx/(d||1), uy=dy/(d||1);
+    f.kvx+=ux*560; f.kvy+=uy*560;
+    if(f.hp<=0) msKillFoe(f, ux, uy);
+  }
+  if(hits>0) msAddCombo(hits, true);
+  MS.fx.push({ kind:"ult", t:0, dur:0.55 });
+  playSfx("ult"); showToast("💥 별빛 폭발!! ("+hits+"명 강타)");
+}
+function msEnd(){
+  MS.phase="result";
+  const b=msBest();
+  b.kills=Math.max(b.kills, MS.kills); b.combo=Math.max(b.combo, MS.maxCombo);
+  try{ localStorage.setItem(MS_BEST_KEY, JSON.stringify(b)); }catch(e){}
+  MS.best=b;
+  if(MS.kills>=300 && !MS.rewarded){ MS.rewarded=true; labReward("ms", 30); }
+  LabRankStore.submit("ms", MS.kills);
+  playSfx("win");
+}
+function msKey(code){
+  if(code==="Escape"){ MS=null; labBack(); return; }
+  if(!MS) return;
+  if(code==="KeyR"){ msStart(); return; }
+  if(MS.phase==="result"){ if(code==="Enter"||code==="NumpadEnter") msStart(); return; }
+  if(code==="KeyP"){ MS.paused=!MS.paused; return; }
+  if(code==="KeyZ"||code==="Space") msSwing();
+  else if(code==="KeyX") msUlt();
+}
+function msUpdate(dt){
+  if(!MS || MS.paused || MS.phase!=="play") return;
+  const p=MS.p;
+  MS.t+=dt;
+  if(MS.t>=MS_TIME){ msEnd(); return; }
+  const slow=(MS.slowT>0); MS.slowT-=dt;
+  const fdt=dt*(slow?0.35:1);   // 별빛 폭발 슬로모: 적만 느려짐(내가 시간을 지배)
+  if(MS.swingCd>0) MS.swingCd-=dt;
+  if(MS.chainT>0) MS.chainT-=dt;
+  if(MS.ultT>0) MS.ultT-=dt;
+  if(p.ifr>0) p.ifr-=dt;
+  p.lastHurt+=dt;
+  if(p.lastHurt>4 && p.hp<p.maxhp) p.hp=Math.min(p.maxhp, p.hp+3*dt);
+  if(MS.comboPop>0) MS.comboPop-=dt*3;
+  if(MS.comboT>0){ MS.comboT-=dt; if(MS.comboT<=0 && MS.comboN>0){ MS.comboN=0; MS.milestone=0; } }
+  // 쓰러짐 → 부활(3초): 콤보만 잃음
+  if(p.downT>0){ p.downT-=dt;
+    if(p.downT<=0){ p.hp=60; p.ifr=2.2;
+      for(const f of MS.foes){ if(!f.alive) continue; const dx=f.x-p.x, dy=f.y-p.y, d=Math.hypot(dx,dy);
+        if(d<260){ f.kvx+=dx/(d||1)*430; f.kvy+=dy/(d||1)*430; } }   // 기상 밀치기 — 일어나자마자 또 맞지 않게
+      showToast("✨ 다시 일어났다! (콤보만 리셋)"); }
+  } else {
+    // 이동(관성 — SV와 동일 감각)
+    let mx=0,my=0;
+    if(keysDown.has("ArrowLeft")||keysDown.has("KeyA")) mx-=1;
+    if(keysDown.has("ArrowRight")||keysDown.has("KeyD")) mx+=1;
+    if(keysDown.has("ArrowUp")||keysDown.has("KeyW")) my-=1;
+    if(keysDown.has("ArrowDown")||keysDown.has("KeyS")) my+=1;
+    const L=Math.hypot(mx,my)||1;
+    const tvx=(mx/L)*p.spd*((mx||my)?1:0), tvy=(my/L)*p.spd*((mx||my)?1:0);
+    p.vx=(p.vx||0)+(tvx-(p.vx||0))*Math.min(1, dt*((mx||my)?13:9));
+    p.vy=(p.vy||0)+(tvy-(p.vy||0))*Math.min(1, dt*((mx||my)?13:9));
+    p.x=clamp(p.x+p.vx*dt, 22, MS_W-22); p.y=clamp(p.y+p.vy*dt, 22, MS_H-22);
+    if(mx||my){ p.face={x:mx/L, y:my/L}; }
+    if((keysDown.has("KeyZ")||keysDown.has("Space")) && MS.swingCd<=0) msSwing();   // 꾹 눌러도 연속 베기(저학년)
+  }
+  // 부대 돌격
+  MS.squadT-=fdt;
+  if(MS.squadT<=0){ MS.squadT=Math.max(2.2, 3.6-MS.t/90); msSquad(); }
+  // 적장
+  if(!MS.officer){ MS.officerT-=fdt;
+    if(MS.officerT<=0){
+      const nm=MS_OFFICERS[Math.min(MS.officerN, MS_OFFICERS.length-1)];
+      const a=Math.random()*Math.PI*2;
+      MS.officer={ x:clamp(p.x+Math.cos(a)*620,60,MS_W-60), y:clamp(p.y+Math.sin(a)*620,60,MS_H-60),
+        officer:true, name:nm, spec:{ asset:"boss_king", r:30, spd:58, dmg:10 },
+        hp:300*(1+MS.officerN*0.55), maxhp:300*(1+MS.officerN*0.55), alive:true, hitT:0, kvx:0, kvy:0, chargeT:4, dashT:0, aim:null };
+      MS.officerN++;
+      showToast("⚠ "+nm+" 등장! 쓰러뜨리면 게이지 대충전!"); playSfx("spawn");
+    } }
+  // 적 이동(+접촉 피해)
+  for(const f of MS.foes){
+    if(!f.alive) continue;
+    const dx=p.x-f.x, dy=p.y-f.y, d=Math.hypot(dx,dy)||1;
+    f.x+=dx/d*f.spec.spd*fdt + f.kvx*fdt; f.y+=dy/d*f.spec.spd*fdt + f.kvy*fdt;
+    f.kvx*=Math.max(0, 1-6*fdt); f.kvy*=Math.max(0, 1-6*fdt);
+    f.x=clamp(f.x,20,MS_W-20); f.y=clamp(f.y,20,MS_H-20);
+    if(f.hitT>0) f.hitT-=dt;
+    if(d<f.spec.r+15 && p.ifr<=0 && p.downT<=0){ p.hp-=f.spec.dmg; p.ifr=0.7; p.lastHurt=0; playSfx("hit");
+      if(p.hp<=0){ p.hp=0; p.downT=2.6; MS.comboN=0; MS.milestone=0; showToast("💫 쓰러졌다... 3초 뒤 부활!"); } }
+  }
+  MS.foes=MS.foes.filter(f=>f.alive);
+  // 적장 이동/돌진
+  const o=MS.officer;
+  if(o && o.alive){
+    if(o.hitT>0) o.hitT-=dt;
+    if(o.dashT>0){ o.dashT-=fdt; o.x+=o.aim.x*520*fdt; o.y+=o.aim.y*520*fdt; }
+    else {
+      o.chargeT-=fdt;
+      const dx=p.x-o.x, dy=p.y-o.y, d=Math.hypot(dx,dy)||1;
+      if(o.chargeT<=0 && o.chargeT>-0.62){ o.aim={x:dx/d, y:dy/d}; }   // 0.62초 조준 예고
+      else if(o.chargeT<=-0.62){ o.dashT=0.5; o.chargeT=4.5; playSfx("fire"); }
+      else { o.x+=dx/d*o.spec.spd*fdt; o.y+=dy/d*o.spec.spd*fdt; }
+      o.x+=o.kvx*fdt; o.y+=o.kvy*fdt; o.kvx*=Math.max(0,1-6*fdt); o.kvy*=Math.max(0,1-6*fdt);
+    }
+    o.x=clamp(o.x,40,MS_W-40); o.y=clamp(o.y,40,MS_H-40);
+    const d2=Math.hypot(p.x-o.x, p.y-o.y);
+    if(d2<o.spec.r+16 && p.ifr<=0 && p.downT<=0){ p.hp-=o.spec.dmg; p.ifr=0.8; p.lastHurt=0; playSfx("hit");
+      if(p.hp<=0){ p.hp=0; p.downT=2.6; MS.comboN=0; MS.milestone=0; showToast("💫 쓰러졌다... 3초 뒤 부활!"); } }
+  }
+  // 픽업
+  for(const g of MS.picks){
+    const dx=p.x-g.x, dy=p.y-g.y, d=Math.hypot(dx,dy)||1;
+    if(d<110){ g.x+=dx/d*320*dt; g.y+=dy/d*320*dt; }
+    if(d<26){ g.got=true;
+      if(g.kind==="hp"){ p.hp=Math.min(p.maxhp, p.hp+10); showToast("💛 회복 +10"); }
+      else { MS.gauge=Math.min(100, MS.gauge+12); }
+      playSfx("pick"); }
+  }
+  MS.picks=MS.picks.filter(g=>!g.got);
+  // 연출체(날아가는 몸·베기 궤적·텍스트)
+  for(const b of MS.fly){ b.t+=dt; b.x+=b.vx*dt; b.y+=b.vy*dt; b.vy+=560*dt; b.rot+=b.vr*dt; }
+  MS.fly=MS.fly.filter(b=>b.t<0.55);
+  for(const e of MS.fx) e.t+=dt;
+  MS.fx=MS.fx.filter(e=>e.t<e.dur);
+  for(const tx of MS.texts) tx.t+=dt;
+  MS.texts=MS.texts.filter(tx=>tx.t<0.6);
+  // 카메라(v1.38 교훈: 부드럽게, 급반전 없음)
+  const tx2=clamp(p.x-LOGW/2, 0, MS_W-LOGW), ty2=clamp(p.y-LOGH/2, 0, MS_H-LOGH);
+  MS.camX+=(tx2-MS.camX)*Math.min(1, dt*7); MS.camY+=(ty2-MS.camY)*Math.min(1, dt*7);
+}
+function msRender(){
+  if(!MS) return;
+  const p=MS.p;
+  ctx.fillStyle="#101430"; ctx.fillRect(0,0,LOGW,LOGH);
+  ctx.save(); ctx.translate(-MS.camX, -MS.camY);
+  // 벌판(결정적 무늬)
+  ctx.strokeStyle="rgba(90,110,180,0.10)"; ctx.lineWidth=1;
+  for(let gx=0; gx<=MS_W; gx+=124){ ctx.beginPath(); ctx.moveTo(gx,0); ctx.lineTo(gx,MS_H); ctx.stroke(); }
+  for(let gy=0; gy<=MS_H; gy+=124){ ctx.beginPath(); ctx.moveTo(0,gy); ctx.lineTo(MS_W,gy); ctx.stroke(); }
+  ctx.fillStyle="rgba(223,230,255,0.35)";
+  for(let i=0;i<50;i++) ctx.fillRect((i*419)%MS_W, (i*233)%MS_H, 2, 2);
+  ctx.strokeStyle="#3a4470"; ctx.lineWidth=4; ctx.strokeRect(2,2,MS_W-4,MS_H-4);
+  ctx.textAlign="center"; ctx.textBaseline="middle";
+  // 픽업
+  for(const g of MS.picks){ ctx.font="16px 'Malgun Gothic',sans-serif"; ctx.fillText(g.kind==="hp"?"💛":"⭐", g.x, g.y); }
+  // 적(화면 밖 컬링)
+  for(const f of MS.foes){
+    if(f.x<MS.camX-50||f.x>MS.camX+LOGW+50||f.y<MS.camY-50||f.y>MS.camY+LOGH+50) continue;
+    const img=getMonsterImage(f.spec.asset), sz=f.spec.r*2.25;
+    if(img) ctx.drawImage(img, f.x-sz/2, f.y-sz/2, sz, sz);
+    else { ctx.fillStyle="#8a7dd0"; ctx.beginPath(); ctx.arc(f.x,f.y,f.spec.r,0,Math.PI*2); ctx.fill(); }
+    if(f.hitT>0){ ctx.globalAlpha=Math.min(0.6, f.hitT*5); ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(f.x,f.y,f.spec.r,0,Math.PI*2); ctx.fill(); ctx.globalAlpha=1; }
+  }
+  // 날아가는 몸(격파 연출 — 이게 무쌍 맛)
+  for(const b of MS.fly){
+    const img=getMonsterImage(b.asset), sz=b.r*2.25, al=1-b.t/0.55;
+    ctx.save(); ctx.globalAlpha=al*0.9; ctx.translate(b.x,b.y); ctx.rotate(b.rot);
+    if(img) ctx.drawImage(img, -sz/2, -sz/2, sz, sz);
+    ctx.restore();
+  }
+  // 적장
+  const o=MS.officer;
+  if(o && o.alive){
+    const img=getMonsterImage(o.spec.asset), sz=o.spec.r*2.4;
+    if(o.aim && o.chargeT<=0 && o.dashT<=0){   // 돌진 예고선
+      ctx.strokeStyle="rgba(255,120,120,0.55)"; ctx.lineWidth=5;
+      ctx.beginPath(); ctx.moveTo(o.x,o.y); ctx.lineTo(o.x+o.aim.x*430, o.y+o.aim.y*430); ctx.stroke();
+    }
+    if(img) ctx.drawImage(img, o.x-sz/2, o.y-sz/2, sz, sz);
+    if(o.hitT>0){ ctx.globalAlpha=Math.min(0.6,o.hitT*5); ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(o.x,o.y,o.spec.r,0,Math.PI*2); ctx.fill(); ctx.globalAlpha=1; }
+    ctx.fillStyle="#ffd3d3"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.fillText("👑 "+o.name, o.x, o.y-o.spec.r-22);
+    ctx.fillStyle="rgba(20,24,44,0.8)"; ctx.fillRect(o.x-34, o.y-o.spec.r-14, 68, 7);
+    ctx.fillStyle="#ff8a8a"; ctx.fillRect(o.x-34, o.y-o.spec.r-14, 68*Math.max(0,o.hp/o.maxhp), 7);
+  }
+  // 플레이어(쓰러짐 = 깜빡·기울임)
+  ctx.save(); ctx.translate(p.x, p.y+8);
+  if(p.downT>0){ ctx.globalAlpha=0.55; ctx.rotate(1.2); }
+  else if(p.ifr>0 && Math.floor(uiTime*8)%2===0) ctx.globalAlpha=0.55;   // ≤8Hz 점멸 규정 내
+  const drew=drawCharacterSprite(selectedCharacterId, 18, p.face.x<0?Math.PI:0, { moving:Math.hypot(p.vx,p.vy)>40, attacking:MS.swingCd>0.08 });
+  if(!drew){ ctx.fillStyle="#ffe14d"; ctx.beginPath(); ctx.arc(0,-8,16,0,Math.PI*2); ctx.fill(); }
+  ctx.restore();
+  // 베기 궤적/폭발 링
+  for(const e of MS.fx){
+    const k=e.t/e.dur;
+    if(e.kind==="arc"){
+      ctx.strokeStyle="rgba(255,225,77,"+(0.75*(1-k))+")"; ctx.lineWidth=7*(1-k)+2;
+      ctx.beginPath();
+      if(e.spin) ctx.arc(p.x, p.y, 108, e.ang+k*4, e.ang+k*4+4.6);
+      else ctx.arc(p.x, p.y, 88, e.ang-1.15+k*0.7, e.ang+1.15+k*0.7);
+      ctx.stroke();
+    } else if(e.kind==="ult"){
+      const R=60+k*400;
+      ctx.strokeStyle="rgba(255,225,77,"+(0.8*(1-k))+")"; ctx.lineWidth=10*(1-k)+2;
+      ctx.beginPath(); ctx.arc(p.x, p.y, R, 0, Math.PI*2); ctx.stroke();
+      ctx.strokeStyle="rgba(140,220,255,"+(0.5*(1-k))+")"; ctx.lineWidth=4;
+      ctx.beginPath(); ctx.arc(p.x, p.y, R*0.72, 0, Math.PI*2); ctx.stroke();
+    }
+  }
+  // ×N 히트 텍스트
+  for(const tx of MS.texts){
+    const k=tx.t/0.6;
+    ctx.globalAlpha=1-k;
+    ctx.fillStyle=tx.big?"#ffb63f":"#ffe14d"; ctx.font="bold "+(tx.big?26:19)+"px 'Malgun Gothic',sans-serif";
+    ctx.fillText(tx.txt+" HIT", tx.x, tx.y-k*34);
+    ctx.globalAlpha=1;
+  }
+  ctx.restore();
+  // ── HUD ──
+  ctx.save(); ctx.textBaseline="middle";
+  // 좌상: HP·게이지
+  ctx.fillStyle="rgba(10,14,28,0.72)"; roundRect(14,12,252,64,10); ctx.fill();
+  ctx.fillStyle="#39406b"; ctx.fillRect(26,26,228,12);
+  ctx.fillStyle=(p.hp<30)?"#ff8a8a":"#7dffb0"; ctx.fillRect(26,26,228*Math.max(0,p.hp/p.maxhp),12);
+  ctx.fillStyle="#39406b"; ctx.fillRect(26,48,228,12);
+  const full=MS.gauge>=100;
+  ctx.fillStyle=full?"#ffe14d":"#8fb0ff"; ctx.fillRect(26,48,228*MS.gauge/100,12);
+  ctx.textAlign="left"; ctx.font="bold 11px 'Malgun Gothic',sans-serif";
+  ctx.fillStyle="#cbd4f5"; ctx.fillText("HP", 27, 20);
+  ctx.fillStyle=full?"#ffe14d":"#9fb4ff";
+  ctx.fillText(full?("💥 X — 별빛 폭발 준비 완료!"):("별빛 게이지 "+Math.floor(MS.gauge)+"%"), 27, 70);
+  // 중앙 상단: 콤보(치솟는 숫자 = 도파민 미터)
+  if(MS.comboN>0){
+    const pop=1+Math.max(0,MS.comboPop)*0.22;
+    ctx.save(); ctx.translate(LOGW/2, 74); ctx.scale(pop,pop);
+    ctx.textAlign="center";
+    ctx.fillStyle=(MS.comboN>=100)?"#ffb63f":"#ffe14d";
+    ctx.font="bold "+(30+Math.min(22, MS.comboN*0.1))+"px 'Malgun Gothic',sans-serif";
+    ctx.fillText(MS.comboN+" COMBO", 0, 0);
+    ctx.restore();
+    const w2=170;
+    ctx.fillStyle="rgba(255,225,77,0.85)"; ctx.fillRect(LOGW/2-w2/2, 100, w2*Math.min(1,MS.comboT/2.6), 4);
+  }
+  // 우상: 격파·시간
+  ctx.textAlign="right"; ctx.fillStyle="#fff"; ctx.font="bold 19px 'Malgun Gothic',sans-serif";
+  ctx.fillText("⚔ 격파 "+MS.kills, LOGW-18, 26);
+  ctx.fillStyle="#9fb4ff"; ctx.font="bold 15px 'Malgun Gothic',sans-serif";
+  ctx.fillText("⏱ "+Math.max(0,Math.ceil(MS_TIME-MS.t))+"초", LOGW-18, 50);
+  ctx.fillStyle="#8893bb"; ctx.font="12px 'Malgun Gothic',sans-serif";
+  ctx.fillText("🏆 "+MS.best.kills+" 격파·"+MS.best.combo+" 콤보", LOGW-18, 70);
+  // 하단 도움말
+  ctx.textAlign="center";
+  ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
+  ctx.fillText("이동 화살표/WASD · Z(꾹) 휘두르기 — 3타째 회전베기! · X 별빛 폭발 · P 정지 · Esc 나가기", LOGW/2, LOGH-14);
+  // 별빛 폭발 비네트(전체 플래시 금지 — 가장자리만)
+  if(MS.ultT>0){
+    const k=MS.ultT/0.55;
+    const gd=ctx.createRadialGradient(LOGW/2,LOGH/2,LOGH*0.42,LOGW/2,LOGH/2,LOGH*0.75);
+    gd.addColorStop(0,"rgba(255,225,77,0)"); gd.addColorStop(1,"rgba(255,225,77,"+(0.28*k)+")");
+    ctx.fillStyle=gd; ctx.fillRect(0,0,LOGW,LOGH);
+  }
+  if(MS.paused){ ctx.fillStyle="rgba(8,10,22,0.6)"; ctx.fillRect(0,0,LOGW,LOGH);
+    ctx.fillStyle="#fff"; ctx.font="bold 40px 'Malgun Gothic',sans-serif"; ctx.fillText("⏸ 일시정지 (P)", LOGW/2, LOGH/2); }
+  if(MS.phase==="result"){
+    ctx.fillStyle="rgba(8,10,22,0.82)"; ctx.fillRect(0,0,LOGW,LOGH);
+    const st=(MS.kills>=1000)?"★★★":(MS.kills>=650)?"★★☆":(MS.kills>=300)?"★☆☆":"☆☆☆";
+    ctx.fillStyle="#ffe14d"; ctx.font="bold 46px 'Malgun Gothic',sans-serif"; ctx.fillText("⚔ 무쌍 종료!", LOGW/2, LOGH/2-96);
+    ctx.font="bold 34px 'Malgun Gothic',sans-serif"; ctx.fillText(st, LOGW/2, LOGH/2-52);
+    ctx.fillStyle="#dfe6ff"; ctx.font="20px 'Malgun Gothic',sans-serif";
+    ctx.fillText("⚔ 격파 "+MS.kills+"명 · 🔥 최고 콤보 "+MS.maxCombo+" · 👑 적장 "+MS.officerN+"명", LOGW/2, LOGH/2-8);
+    ctx.font="15px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#9fb4ff";
+    ctx.fillText("🏆 내 기록: "+MS.best.kills+" 격파 · "+MS.best.combo+" 콤보"+(MS.kills>=300?"   ·   💰 +30G!":"   ·   300격파 도전!"), LOGW/2, LOGH/2+24);
+    labRankDraw("ms", LOGW/2+340, LOGH/2-96, "격파");
+    ctx.fillStyle="#8893bb"; ctx.fillText("Enter 다시 · Esc 나가기", LOGW/2, LOGH/2+58);
+  }
+  ctx.restore();
+}
 const LAB_GAMES=[
   { key:"td", emoji:"🏰", name:"별빛 수비대",   desc:"길목에 탑을 지어 방어",   run:function(){ tdStart(); } },
   { key:"fleet", emoji:"🚀", name:"별빛 함대",     desc:"편대를 격추하는 슈팅",     run:function(){ shOpen(); } },
@@ -6933,7 +7301,8 @@ const LAB_GAMES=[
   { key:"rn", emoji:"🏃", name:"별빛 러너",     desc:"자동 달리기·장애물 점프",  run:function(){ rnStart(); } },
   { key:"bk", emoji:"🧱", name:"벽돌깨기",      desc:"별공 튕겨 벽돌 부수기",    run:function(){ bkStart(); } },
   { key:"sn", emoji:"🐍", name:"별꼬리",        desc:"별을 먹고 길어지는 뱀",    run:function(){ snStart(); } },
-  { key:"ot", emoji:"⚫", name:"별빛 오델로",   desc:"먹구름 AI와 두뇌 대결",    run:function(){ otStart(); } } ];
+  { key:"ot", emoji:"⚫", name:"별빛 오델로",   desc:"먹구름 AI와 두뇌 대결",    run:function(){ otStart(); } },
+  { key:"ms", emoji:"🗡", name:"별빛 무쌍",     desc:"천 명을 쓸어담는 액션",    run:function(){ msStart(); } } ];
 let LH=null;
 function lhList(){   // 현재 허브에 보이는 게임 인덱스 목록(학생=개방된 것만)
   if(!LH || LH.mode!=="student") return LAB_GAMES.map(function(g,i){ return i; });
@@ -6975,6 +7344,7 @@ function lhRecordCalc(i){   // 카드에 보여줄 한 줄 기록
     if(i===7){ const b=bkBest(); return b.score?("🏆 "+b.score+"점"):""; }
     if(i===8){ const b=snBest(); return b?("🏆 "+b+"점"):""; }
     if(i===9){ const w=otWins(); return (w.w||w.l||w.d)?(w.w+"승 "+w.l+"패"):""; }
+    if(i===10){ const b=msBest(); return b.kills?("🏆 "+b.kills+"격파·"+b.combo+"콤보"):""; }
   }catch(e){}
   return "";
 }
@@ -6990,7 +7360,7 @@ function lhRender(){
   ctx.fillStyle="#9fe6c8"; ctx.font="bold 34px 'Malgun Gothic',sans-serif";
   ctx.fillText(stu?"🎮 별빛 미니게임 광장":"🧪 별빛 실험실", LOGW/2, 62);
   ctx.fillStyle="#8893bb"; ctx.font="14px 'Malgun Gothic',sans-serif";
-  ctx.fillText(stu?"선생님이 열어 준 게임들이에요 — 기록에 도전해 봐요!":"게임틀 10종 — O키/🔓버튼으로 학생 로비에 열고 닫기 ("+labOpenCount()+"/10 개방)", LOGW/2, 96);
+  ctx.fillText(stu?"선생님이 열어 준 게임들이에요 — 기록에 도전해 봐요!":"게임틀 "+LAB_GAMES.length+"종 — O키/🔓버튼으로 학생 로비에 열고 닫기 ("+labOpenCount()+"/"+LAB_GAMES.length+" 개방)", LOGW/2, 96);
   const list=lhList();
   if(LH.idx>=list.length) LH.idx=Math.max(0,list.length-1);
   if(!list.length){
@@ -6999,7 +7369,7 @@ function lhRender(){
     ctx.fillText("Esc 로비로", LOGW/2, LOGH/2+34);
     ctx.restore(); return;
   }
-  const cols=5, bw=224, bh=200, rows=Math.ceil(list.length/cols);
+  const cols=(list.length>10)?6:5, bw=(list.length>10)?196:224, bh=200, rows=Math.ceil(list.length/cols);   // v1.79: 11종은 6열(720px 안에)
   for(let k=0;k<list.length;k++){
     const i=list[k], g=LAB_GAMES[i], col=k%cols, row=Math.floor(k/cols);
     const rowN=Math.min(cols, list.length-row*cols);   // 마지막 줄 중앙 정렬
@@ -7016,7 +7386,7 @@ function lhRender(){
     const top1=labRankTop(g.key)[0];
     ctx.fillStyle="#c9a6ff"; ctx.font="11px 'Malgun Gothic',sans-serif";
     ctx.fillText(top1?("👑 "+top1.n+" "+top1.s):"👑 —", bx+bw/2, by+166);
-    ctx.fillStyle="#5f6a94"; ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.fillText("["+((k+1)%10)+"]", bx+bw/2, by+182);
+    if(k<10){ ctx.fillStyle="#5f6a94"; ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.fillText("["+((k+1)%10)+"]", bx+bw/2, by+182); }
     (function(idx){ uiHit(bx,by,bw,bh,function(){ if(LH.idx===idx) LAB_GAMES[list[idx]].run(); else LH.idx=idx; }); })(k);
     if(!stu){   // 교사: 개방 토글 배지(카드 우상단 — 카드 클릭과 별개 히트)
       const tw=64, th=24, tx=bx+bw-tw-8, ty=by+8;
@@ -13034,6 +13404,7 @@ function update(dt){
   if(gameState===STATE.RUNNER){ rnUpdate(dt); return; }
   if(gameState===STATE.BREAKOUT){ bkUpdate(dt); return; }
   if(gameState===STATE.SNAKE){ snUpdate(dt); return; }
+  if(gameState===STATE.MUSOU){ msUpdate(dt); return; }
   if(gameState===STATE.OTHELLO){ otUpdate(dt); return; }
   if(gameState===STATE.LABHUB){ lhUpdate(dt); return; }
   if(gameState!==STATE.PLAYING) return;
@@ -13171,6 +13542,7 @@ function render(){
   if(gameState===STATE.RUNNER){ rnRender(); drawToast(); return; }
   if(gameState===STATE.BREAKOUT){ bkRender(); drawToast(); return; }
   if(gameState===STATE.SNAKE){ snRender(); drawToast(); return; }
+  if(gameState===STATE.MUSOU){ msRender(); drawToast(); return; }
   if(gameState===STATE.OTHELLO){ otRender(); drawToast(); return; }
   if(gameState===STATE.LABHUB){ lhRender(); drawToast(); return; }
   drawBackground();
@@ -13525,11 +13897,11 @@ function drawAdminScreen(){
     ctx.fillStyle="rgba(22,36,44,0.92)"; roundRect(rx,gy,rw,gh,14); ctx.fill();
     ctx.strokeStyle="#3f6a5c"; ctx.lineWidth=1.5; roundRect(rx,gy,rw,gh,14); ctx.stroke();
     ctx.fillStyle="#9fe6c8"; ctx.font="bold 14px 'Malgun Gothic',sans-serif";
-    ctx.fillText("🎮 미니게임 개방 — 켜면 학생 로비 광장에 등장 ("+labOpenCount()+"/10)", rx+18, gy+24);
+    ctx.fillText("🎮 미니게임 개방 — 켜면 학생 로비 광장에 등장 ("+labOpenCount()+"/"+LAB_GAMES.length+")", rx+18, gy+24);
     ctx.textAlign="center"; ctx.textBaseline="middle";
-    const cw=138, chh=30, gap=8;
+    const cw=112, chh=30, gap=6;   // v1.79: 11종 → 6열
     for(let i=0;i<LAB_GAMES.length;i++){
-      const g=LAB_GAMES[i], col=i%5, row=Math.floor(i/5);
+      const g=LAB_GAMES[i], col=i%6, row=Math.floor(i/6);
       const cx=rx+18+col*(cw+gap), cy=gy+38+row*(chh+8);
       const open=!!labOpen[g.key];
       ctx.fillStyle=open?"rgba(80,200,160,0.30)":"rgba(40,46,74,0.85)"; roundRect(cx,cy,cw,chh,9); ctx.fill();
