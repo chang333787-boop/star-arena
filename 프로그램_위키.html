@@ -54,7 +54,7 @@ details[open] summary{margin-bottom:8px;}
 <body>
 <div class="app">
 <nav class="side" id="side">
-  <div class="logo">⭐ 별빛 아레나 위키<small>현재 버전 <b style="color:#ffe14d">v1.70</b> · 2026-07-12</small></div>
+  <div class="logo">⭐ 별빛 아레나 위키<small>현재 버전 <b style="color:#ffe14d">v1.71</b> · 2026-07-12</small></div>
   <input id="wsearch" type="search" placeholder="🔎 검색 (예: 뭉게대왕, 조작)" style="width:100%;margin:10px 0 2px;padding:7px 10px;border-radius:9px;border:1px solid #2a3560;background:#0a0f28;color:#dfe6ff;font-family:inherit;font-size:13px;">
   <div id="sres" style="font-size:11.5px;color:#8893bb;padding:0 4px;"></div>
   <div class="grp">시작</div>
@@ -429,7 +429,8 @@ details[open] summary{margin-bottom:8px;}
 <tr><td>🛠 맵공방 (별빛 점프)</td><td>플랫포머 맵 — 기믹 26종 + 시간·별 조건</td><td>제작→테스트 클리어→제출→승인→"친구들이 만든 맵" 탭</td><td class="ok">운영 중</td></tr>
 <tr><td>📓 RPG 도감 파이프라인</td><td>몬스터·아이템·퀘스트 데이터</td><td>학습지/시트→JSON→교사 <kbd>K</kbd> 승인</td><td class="ok">운영 중</td></tr>
 <tr><td>🧩 퍼즐 출제 공방</td><td>소코반 퍼즐</td><td>배치→<b>컴퓨터 자동 검증</b>→저장→내 퍼즐 목록</td><td class="ok">신규!</td></tr>
-<tr><td>🏰 수비대 메이커</td><td>길·웨이브 디자인</td><td>(구상) 별빛점프 공방 방식 이식</td><td class="mid">후속 1순위</td></tr></table>
+<tr><td>🏰 수비대 길 공방</td><td>먹구름이 걸어올 방어길</td><td>그리기→<b>연결 자동 검증</b>→제출→승인→"친구들 맵"</td><td class="ok">신규!</td></tr>
+<tr><td>🚀 함대 편대 공방</td><td>적 편대 배치(6~40기)</td><td>배치→검증→제출→승인→"친구들 편대" 격파전</td><td class="ok">신규!</td></tr></table>
 <div class="tip"><b>승인 파이프라인 공통 원칙</b>: 학생 제작 → (자동 검증 가능하면 기계가 먼저) → 교사 승인 → 반 전체 공개. 확장안: 친구 2명 검수단 → 이주의 큐레이터.</div>
 </section>
 
@@ -515,11 +516,12 @@ node -e 'const fs=require("fs");const h=fs.readFileSync("index.html","utf8");con
 
 <!-- ═════════ 일지 ═════════ -->
 <section class="page" id="p-log">
-<h1>📜 업데이트 일지 <span class="badge">현재 v1.70</span></h1>
+<h1>📜 업데이트 일지 <span class="badge">현재 v1.71</span></h1>
 <p class="tagline">v1.00(6-29 첫 버전)부터 이어온 버전 기록 — 전체 상세는 저장소 <code>PATCHNOTES.md</code>(67개 버전), 작업 맥락은 <code>작업현황_HANDOFF.md</code>.</p>
 <h2>최근 (v1.55 ~ v1.65)</h2>
 <table><tr><th>버전</th><th>날짜</th><th>내용</th></tr>
-<tr><td><b>v1.70</b></td><td>07-12</td><td><b>미니게임 일일 보상</b>(첫 성취 +15~30G, 하루 1회) + 로비 ℹ능력 보기 오버레이</td></tr>
+<tr><td><b>v1.71</b></td><td>07-12</td><td><b>쾌적성 대패스</b>(글로우 교체·보간 이동·뒤집기 애니) + <b>공방 3종</b>: 수비대 길·함대 편대·퍼즐 — 만들기→검증→제출→승인→친구 작품</td></tr>
+<tr><td>v1.70</td><td>07-12</td><td><b>미니게임 일일 보상</b>(첫 성취 +15~30G, 하루 1회) + 로비 ℹ능력 보기 오버레이</td></tr>
 <tr><td>v1.69</td><td>07-12</td><td><b>유기성 감사 2차</b> — 캠페인 판수 표기(19→20)·"(실험)" 꼬리표 16곳 제거·프레임당 기록 파싱 5곳 캐시·로그인 씬 통일</td></tr>
 <tr><td>v1.68</td><td>07-12</td><td><b>로비 게임 화면화</b> — 성운·행성·별똥별·마을 언덕 씬 + 포디움 캐릭터 쇼케이스 + 그라디언트 카드</td></tr>
 <tr><td>v1.67</td><td>07-12</td><td><b>미니게임 교사 개방제</b> — 실험실 게임을 선생님이 🔓열면 학생 로비 광장에 실시간 등장(클라우드) + 교사 콘솔 전면 개편(개방 위젯·그룹 타일)</td></tr>

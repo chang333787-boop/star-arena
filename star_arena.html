@@ -3534,6 +3534,20 @@ const LabOpenStore={
     if(this.ready()){ try{ const o={}; o[key]=!!val; this._ref().update(o); }catch(e){} }
   }
 };
+const LAB_MAKER_MODES={ puzzle:"🧩 별조각 밀기", tdpath:"🏰 수비대 길", fleet:"🚀 함대 편대" };   // v1.71 공방 3종
+function labShared(mode){   // 승인된 친구 작품(모드별)
+  try{ return loadEditorStore().approved.filter(r=>r.mode===mode && !r.disabled); }catch(e){ return []; }
+}
+function labSubmit(rec){   // 공방 공용 제출(edSubmit 패턴 — pending+클라우드+캐시 무효화)
+  const st=loadEditorStore();
+  st.pending.push(rec);
+  saveEditorStore(st);
+  try{ MapStore.pushRec("pending", rec, function(ok){
+    if(ok){ const cur=loadEditorStore(); const hit=cur.pending.find(x=>x.id===rec.id); if(hit){ hit._synced=true; saveEditorStore(cur); } } }); }catch(e){}
+  _reviewSt=null; _adminPendingN=-1;
+  showToast("📮 제출 완료! 선생님 승인을 기다려요");
+  playSfx("clear");
+}
 function labOpenCount(){ let n=0; for(const g of LAB_GAMES){ if(labOpen[g.key]) n++; } return n; }
 function labToggle(key){
   const g=LAB_GAMES.find(x=>x.key===key); if(!g) return;
@@ -3670,10 +3684,106 @@ function tdStartWave(){
   TD.countT=3;   // LAB-3: 3초 카운트다운(준비 여유)
   TD.phase="wave"; TD.waveLoss=false; TD.autoT=0; playSfx("spring");
 }
+/* ── v1.71 수비대 길 공방: 그리드에 길 그리기 → 연결 검증 → 제출 → 승인되면 "친구들 맵" ── */
+function tdEditStart(){
+  const eg=[]; for(let r=0;r<TD_ROWS;r++){ eg.push(new Array(TD_COLS).fill(false)); }
+  TD={ phase:"edit", eg:eg, checked:null, editMsg:"칸을 클릭해 길을 그려요 — 왼쪽 끝에서 오른쪽 끝까지!", mapIdx:0, diff:1, time:0 };
+  gameState=STATE.TD;
+}
+function tdEditCheck(){
+  if(!TD||TD.phase!=="edit") return null;
+  const eg=TD.eg;
+  let starts=[], ends=[];
+  for(let r=0;r<TD_ROWS;r++){ if(eg[r][0]) starts.push(r); if(eg[r][TD_COLS-1]) ends.push(r); }
+  let res=null;
+  if(!starts.length) res={ ok:false, why:"왼쪽 끝(1열)에 길이 닿아야 해요" };
+  else if(!ends.length) res={ ok:false, why:"오른쪽 끝(마지막 열)에 길이 닿아야 해요" };
+  else {
+    const prev={}, q=[[0,starts[0]]], seen={}; seen["0,"+starts[0]]=1;
+    let goal=null;
+    while(q.length){
+      const [c,r]=q.shift();
+      if(c===TD_COLS-1){ goal=[c,r]; break; }
+      for(const [dc,dr] of [[1,0],[-1,0],[0,1],[0,-1]]){
+        const nc=c+dc, nr=r+dr, k=nc+","+nr;
+        if(nc<0||nr<0||nc>=TD_COLS||nr>=TD_ROWS||!eg[nr][nc]||seen[k]) continue;
+        seen[k]=1; prev[k]=c+","+r; q.push([nc,nr]);
+      }
+    }
+    if(!goal) res={ ok:false, why:"길이 왼쪽에서 오른쪽까지 이어지지 않았어요" };
+    else {
+      const cells=[]; let cur=goal[0]+","+goal[1];
+      while(cur){ const [c,r]=cur.split(",").map(Number); cells.unshift([c,r]); cur=prev[cur]; }
+      if(cells.length<16) res={ ok:false, why:"길이 너무 짧아요(16칸 이상) — 지금 "+cells.length+"칸" };
+      else res={ ok:true, cells:cells, len:cells.length };
+    }
+  }
+  TD.checked=res;
+  TD.editMsg=res.ok?("✅ 연결! 길 "+res.len+"칸 — 📮 제출할 수 있어요"):("❌ "+res.why);
+  playSfx(res.ok?"clear":"hit");
+  return res;
+}
+function tdEditRows(){ return TD.eg.map(function(row){ return row.map(function(v){ return v?"P":"."; }).join(""); }); }
+function tdSubmit(){
+  if(!TD||TD.phase!=="edit") return false;
+  if(!TD.checked||!TD.checked.ok){ showToast("먼저 🔍 검증을 통과해야 제출돼요!"); return false; }
+  let name=null; try{ name=window.prompt("맵 이름 (2~10자)","내 방어길"); }catch(e){}
+  if(!name) return false; name=(""+name).trim().slice(0,10); if(name.length<2){ showToast("이름은 2자 이상!"); return false; }
+  labSubmit({ id:"tdp_"+Date.now().toString(36)+Math.floor(Math.random()*100), mode:"tdpath",
+    name:name, author:profile.nickname||"학생", size:[TD_COLS,TD_ROWS], floor:"tile_floor",
+    cellsLeft:tdEditRows(), createdAt:Date.now(), len:TD.checked.len });
+  tdStart();
+  return true;
+}
+function tdCellsToWps(cells){
+  const wps=[[-1, cells[0][1]]];
+  let dir=null;
+  for(let i=0;i<cells.length;i++){
+    const p=cells[i], n=cells[i+1];
+    if(!n){ wps.push([p[0], p[1]]); break; }
+    const d=(n[0]-p[0])+","+(n[1]-p[1]);
+    if(dir!==null && d!==dir) wps.push([p[0], p[1]]);
+    dir=d;
+  }
+  wps.push([TD_COLS, cells[cells.length-1][1]]);
+  return wps;
+}
+function tdBeginShared(rec){
+  const eg=rec.cellsLeft.map(function(s){ return s.split("").map(function(ch){ return ch==="P"; }); });
+  const bak=TD; TD={ phase:"edit", eg:eg, checked:null };
+  const chk=tdEditCheck();
+  TD=bak;
+  if(!chk||!chk.ok){ showToast("이 맵은 열 수 없어요(길 오류)"); return; }
+  const map={ name:rec.name, emoji:"🌟", paths:[ tdCellsToWps(chk.cells) ] };
+  tdBegin(0, 1);
+  TD.customName=rec.name+" · ✍"+(rec.author||"친구");
+  TD.custom=true;
+  TD.pcs=tdPathCells(map);
+  TD.pathsPx=map.paths.map(function(path){ return path.map(function(w){ return [ TD_OX+(w[0]+0.5)*TD_TILE, TD_OY+(w[1]+0.5)*TD_TILE ]; }); });
+  showToast("🌟 "+rec.name+" — 친구가 만든 길을 지켜라!");
+}
 function tdKey(code){
   if(code==="Escape"){ TD=null; labBack(); return; }
   if(!TD) return;
+  if(TD.phase==="edit"){
+    if(code==="Escape"){ tdStart(); return; }
+    if(code==="KeyV"){ tdEditCheck(); return; }
+    if(code==="KeyS"){ tdSubmit(); return; }
+    if(code==="KeyN"){ tdEditStart(); return; }
+    return;
+  }
+  if(TD.phase==="shared"){
+    const list=labShared("tdpath");
+    if(code==="Escape"){ tdStart(); return; }
+    if(!list.length) return;
+    if(code==="ArrowUp"){ TD.sidx=((TD.sidx||0)+list.length-1)%list.length; return; }
+    if(code==="ArrowDown"){ TD.sidx=((TD.sidx||0)+1)%list.length; return; }
+    if(code==="Enter"||code==="NumpadEnter"){ tdBeginShared(list[TD.sidx||0]); return; }
+    return;
+  }
   if(TD.phase==="select"){
+    if(code==="KeyE"){ tdEditStart(); return; }
+    if(code==="KeyF"){ TD.phase="shared"; TD.sidx=0; return; }
     if(code==="ArrowLeft"){ TD.mapIdx=(TD.mapIdx+TD_MAPS.length-1)%TD_MAPS.length; return; }
     if(code==="ArrowRight"){ TD.mapIdx=(TD.mapIdx+1)%TD_MAPS.length; return; }
     if(code==="ArrowUp"||code==="ArrowDown"){ TD.diff=(TD.diff+(code==="ArrowDown"?1:2))%3; return; }
@@ -3694,6 +3804,11 @@ function tdKey(code){
 }
 function tdMouse(p){
   if(!TD) return;
+  if(TD.phase==="edit"){
+    const c=Math.floor((p.x-TD_OX)/TD_TILE), r=Math.floor((p.y-TD_OY)/TD_TILE);
+    if(c>=0&&c<TD_COLS&&r>=0&&r<TD_ROWS){ TD.eg[r][c]=!TD.eg[r][c]; TD.checked=null; TD.editMsg="그리는 중… 다 되면 🔍 검증!"; playSfx("click"); }
+    return;
+  }
   if(TD.phase!=="build" && TD.phase!=="wave") return;
   const c=Math.floor((p.x-TD_OX)/TD_TILE), r=Math.floor((p.y-TD_OY)/TD_TILE);
   if(p.x>=TD_PANEL_X || p.y<TD_OY || r>=TD_ROWS){ return; }
@@ -3741,12 +3856,13 @@ function tdSim(dt){
       const em=elite?2.4:1;
       TD.enemies.push({ type:type, spec:spec, hp:spec.hp*hpMul*em, maxHp:spec.hp*hpMul*em,
                         x:TD.pathsPx[pi][0][0], y:TD.pathsPx[pi][0][1], wi:1, pi:pi, trav:0,
-                        slowT:0, healT:0, alive:true, elite:elite });
+                        slowT:0, healT:0, alive:true, elite:elite, inA:0 });   // v1.71 스폰 등장 애니
       if(spec.boss){ TD.bannerT=2.2; TD.bannerTxt="⚠ "+spec.name+" 등장!"; playSfx("ult"); }
     }
   }
   for(const e of TD.enemies){
     if(!e.alive) continue;
+    if(e.inA<1) e.inA=Math.min(1, (e.inA||0)+dt*3.5);
     if(e.slowT>0) e.slowT-=dt;
     const wps=TD.pathsPx[e.pi];
     const spd=e.spec.spd*(e.slowT>0?0.55:1)*(e.elite?0.92:1);
@@ -3819,9 +3935,11 @@ function tdSim(dt){
       labReward("td", 30);   // v1.70 일일 보상
       const ratio=TD.lives/TD.livesMax;
       TD.stars=(ratio>=0.8)?3:((ratio>=0.4)?2:1);
-      const best=tdBestLoad(), k="m"+TD.mapIdx, prev=best[k];
-      if(!prev || TD.stars>prev.stars || (TD.stars===prev.stars && TD.lives>prev.lives)){
-        best[k]={ stars:TD.stars, lives:TD.lives, diff:TD.diff }; tdBestSave(best);
+      if(!TD.custom){
+        const best=tdBestLoad(), k="m"+TD.mapIdx, prev=best[k];
+        if(!prev || TD.stars>prev.stars || (TD.stars===prev.stars && TD.lives>prev.lives)){
+          best[k]={ stars:TD.stars, lives:TD.lives, diff:TD.diff }; tdBestSave(best);
+        }
       }
     } else {
       let bonus=25+TD.wave*5;
@@ -3897,15 +4015,57 @@ function tdDrawSelect(){
     (function(dd){ uiHit(bx,by,190,64,function(){ TD.diff=dd; }); })(d);
   }
   drawButton("🌊 시작! ("+TD_MAPS[TD.mapIdx].name+" · "+TD_DIFFS[TD.diff].name+")", LOGW/2, 500, 480, 52, true, function(){ tdBegin(TD.mapIdx, TD.diff); });
+  drawButton("🛠 길 만들기 (E)", LOGW/2-330, 566, 280, 40, false, function(){ tdEditStart(); });
   drawButton("🚪 나가기 (Esc)", LOGW/2, 566, 300, 40, false, function(){ TD=null; labBack(); });
+  drawButton("🌟 친구들 맵 (F) "+labShared("tdpath").length, LOGW/2+330, 566, 280, 40, false, function(){ TD.phase="shared"; TD.sidx=0; });
   ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
   ctx.fillText("탑 6종 · 15웨이브 · 중간보스 · F 2배속 · A 자동웨이브 · P 일시정지 · T 타겟모드", LOGW/2, 626);
+  ctx.restore();
+}
+function tdRenderShared(){
+  const list=labShared("tdpath");
+  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillStyle="#9fe6c8"; ctx.font="bold 30px 'Malgun Gothic',sans-serif"; ctx.fillText("🌟 친구들이 만든 방어길", LOGW/2, 60);
+  ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
+  ctx.fillText("선생님이 승인한 우리 반 맵 — Enter/클릭 도전(보통 난이도) · Esc 목록", LOGW/2, 92);
+  if(!list.length){ ctx.fillStyle="#aab4e0"; ctx.font="17px 'Malgun Gothic',sans-serif";
+    ctx.fillText("아직 승인된 친구 맵이 없어요 — [🛠 길 만들기]로 첫 지도를!", LOGW/2, LOGH/2); ctx.restore(); return; }
+  for(let i=0;i<list.length && i<11;i++){
+    const bx=LOGW/2-280, by=120+i*44, sel=(i===(TD.sidx||0));
+    ctx.fillStyle=sel?"rgba(70,110,190,0.92)":"rgba(30,38,66,0.85)"; roundRect(bx,by,560,38,9); ctx.fill();
+    ctx.strokeStyle=sel?"#fff":"#56608a"; ctx.lineWidth=sel?2.5:1.2; roundRect(bx,by,560,38,9); ctx.stroke();
+    ctx.fillStyle="#fff"; ctx.font="bold 15px 'Malgun Gothic',sans-serif";
+    ctx.fillText("🌟 "+list[i].name+" · ✍"+(list[i].author||"친구")+" (길 "+(list[i].len||"?")+"칸)", LOGW/2, by+19);
+    (function(idx){ uiHit(bx,by,560,38,function(){ TD.sidx=idx; tdBeginShared(list[idx]); }); })(i);
+  }
+  ctx.restore();
+}
+function tdRenderEdit(){
+  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillStyle="#9fe6c8"; ctx.font="bold 26px 'Malgun Gothic',sans-serif"; ctx.fillText("🛠 방어길 만들기 — 먹구름이 걸어올 길을 그려요", LOGW/2, 30);
+  for(let r=0;r<TD_ROWS;r++) for(let c=0;c<TD_COLS;c++){
+    const x=TD_OX+c*TD_TILE, y=TD_OY+r*TD_TILE;
+    if(TD.eg[r][c]){ ctx.fillStyle="#7a5a34"; ctx.fillRect(x,y,TD_TILE,TD_TILE); ctx.fillStyle="rgba(255,220,160,0.10)"; ctx.fillRect(x,y,TD_TILE,6); }
+    else { ctx.fillStyle=((c+r)%2)?"#16241a":"#141f18"; ctx.fillRect(x,y,TD_TILE,TD_TILE); }
+    ctx.strokeStyle="rgba(90,110,150,0.10)"; ctx.strokeRect(x,y,TD_TILE,TD_TILE);
+  }
+  ctx.fillStyle="#7dffb0"; ctx.font="bold 14px 'Malgun Gothic',sans-serif";
+  ctx.fillText("◀ 입구", 60, TD_OY+8);
+  ctx.fillText("출구 ▶", LOGW-160, TD_OY+8);
+  ctx.fillStyle=(TD.checked&&TD.checked.ok)?"#7dffb0":"#ffd97d"; ctx.font="bold 15px 'Malgun Gothic',sans-serif";
+  ctx.fillText(TD.editMsg||"", LOGW/2, TD_OY+TD_ROWS*TD_TILE+16);
+  drawButton("🔍 검증 (V)", LOGW/2-390, LOGH-26, 240, 40, false, function(){ tdEditCheck(); });
+  drawButton("📮 선생님께 제출 (S)", LOGW/2-130, LOGH-26, 260, 40, !!(TD.checked&&TD.checked.ok), function(){ tdSubmit(); });
+  drawButton("🧹 새로 (N)", LOGW/2+130, LOGH-26, 220, 40, false, function(){ tdEditStart(); });
+  drawButton("🚪 목록 (Esc)", LOGW/2+370, LOGH-26, 200, 40, false, function(){ tdStart(); });
   ctx.restore();
 }
 function tdRender(){
   if(!TD) return;
   ctx.fillStyle="#101a12"; ctx.fillRect(0,0,LOGW,LOGH);
   if(TD.phase==="select"){ tdDrawSelect(); return; }
+  if(TD.phase==="shared"){ tdRenderShared(); return; }
+  if(TD.phase==="edit"){ tdRenderEdit(); return; }
   ctx.save();
   for(let r=0;r<TD_ROWS;r++) for(let c=0;c<TD_COLS;c++){
     const x=TD_OX+c*TD_TILE, y=TD_OY+r*TD_TILE;
@@ -3931,9 +4091,12 @@ function tdRender(){
     if(e.spec.boss) bossE=e;
     if(e.elite){ ctx.strokeStyle="rgba(200,120,255,0.85)"; ctx.lineWidth=3;
       ctx.beginPath(); ctx.arc(e.x,e.y,e.spec.r+5,0,Math.PI*2); ctx.stroke(); }
-    const img=getMonsterImage(e.spec.asset), sz=e.spec.r*2.3;
+    const inA=(e.inA===undefined)?1:e.inA;
+    const img=getMonsterImage(e.spec.asset), sz=e.spec.r*2.3*(0.45+0.55*inA);
+    if(inA<1) ctx.globalAlpha=inA;
     if(img){ ctx.drawImage(img, e.x-sz/2, e.y-sz/2, sz, sz); }
-    else { ctx.fillStyle="#c58bff"; ctx.beginPath(); ctx.arc(e.x,e.y,e.spec.r,0,Math.PI*2); ctx.fill(); }
+    else { ctx.fillStyle="#c58bff"; ctx.beginPath(); ctx.arc(e.x,e.y,e.spec.r*(0.45+0.55*inA),0,Math.PI*2); ctx.fill(); }
+    ctx.globalAlpha=1;
     if(e.slowT>0){ ctx.fillStyle="rgba(140,220,255,0.35)"; ctx.beginPath(); ctx.arc(e.x,e.y,e.spec.r+3,0,Math.PI*2); ctx.fill(); }
     const bw=Math.max(26,e.spec.r*2), hpw=bw*Math.max(0,e.hp/e.maxHp);
     ctx.fillStyle="rgba(0,0,0,0.55)"; ctx.fillRect(e.x-bw/2, e.y-e.spec.r-12, bw, 5);
@@ -3958,7 +4121,7 @@ function tdRender(){
   ctx.save(); ctx.textBaseline="middle";
   ctx.fillStyle="rgba(10,14,24,0.85)"; ctx.fillRect(0,0,LOGW,TD_OY);
   ctx.textAlign="left"; ctx.fillStyle="#9fe6c8"; ctx.font="bold 18px 'Malgun Gothic',sans-serif";
-  ctx.fillText("🏰 "+TD_MAPS[TD.mapIdx].name+" ("+TD_DIFFS[TD.diff].name+")", 16, 26);
+  ctx.fillText("🏰 "+(TD.custom?TD.customName:(TD_MAPS[TD.mapIdx].name+" ("+TD_DIFFS[TD.diff].name+")")), 16, 26);
   ctx.textAlign="center"; ctx.fillStyle="#ffffff"; ctx.font="bold 18px 'Malgun Gothic',sans-serif";
   ctx.fillText("💰 "+TD.gold+"   ·   ❤ "+TD.lives+"   ·   🌊 "+TD.wave+" / "+TD_WAVES.length+(TD.speed>1?"   ·   ⏩×2":"")+(TD.auto?"   ·   ▶자동":""), LOGW/2-60, 26);
   ctx.textAlign="right"; ctx.font="bold 15px 'Malgun Gothic',sans-serif";
@@ -4126,12 +4289,91 @@ function shNextWave(){
   else { SH.phase="win"; SH.rank=shRankAdd(SH.score, SH.wave-1); labReward("fleet", 30); playSfx("win"); return; }
   SH.msg="WAVE "+SH.wave; SH.msgT=1.4; playSfx("spring");
 }
+/* ── v1.71 함대 편대 공방: 메뉴(도전/만들기/친구 편대) + 그리드 배치 → 검증 → 제출 ── */
+const SH_ED_COLS=10, SH_ED_ROWS=5, SH_ED_TYPES=[".","d","b","g","s"];
+const SH_ED_INFO={ d:{n:"드론",spec:"drone"}, b:{n:"벌레",spec:"bug"}, g:{n:"유령",spec:"ghost"}, s:{n:"실드",spec:"shield"} };
+function shOpen(){   // 허브/광장/패널 경유 진입 = 메뉴(하네스·직접 호출 shStart는 기존처럼 즉시 12웨이브)
+  SH={ phase:"menu", midx:0, time:0, score:0, wave:0, foes:[], eshots:[], shots:[], drops:[], warns:[], fx:[],
+       p:{ x:LOGW/2, y:LOGH-110, lives:3, inv:0, cd:0, spread:0, barrier:false }, paused:false };
+  gameState=STATE.SHOOTER;
+}
+function shEditStart(){
+  const eg=[]; for(let r=0;r<SH_ED_ROWS;r++){ eg.push(new Array(SH_ED_COLS).fill(".")); }
+  SH={ phase:"edit", eg:eg, checked:null, editMsg:"칸을 클릭해 적을 배치해요: 빈칸→드론→벌레→유령→실드", time:0,
+       foes:[], eshots:[], shots:[], drops:[], warns:[], fx:[], p:{x:LOGW/2,y:LOGH-110,lives:3,inv:0,cd:0}, paused:false };
+  gameState=STATE.SHOOTER;
+}
+function shEditCount(){ let n=0; for(const row of SH.eg){ for(const ch of row){ if(ch!==".") n++; } } return n; }
+function shEditCheck(){
+  if(!SH||SH.phase!=="edit") return null;
+  const n=shEditCount();
+  let res;
+  if(n<6) res={ ok:false, why:"적이 너무 적어요(6기 이상) — 지금 "+n+"기" };
+  else if(n>40) res={ ok:false, why:"적이 너무 많아요(40기 이하) — 지금 "+n+"기" };
+  else res={ ok:true, n:n };
+  SH.checked=res;
+  SH.editMsg=res.ok?("✅ 편대 "+n+"기 — 📮 제출할 수 있어요"):("❌ "+res.why);
+  playSfx(res.ok?"clear":"hit");
+  return res;
+}
+function shSubmit(){
+  if(!SH||SH.phase!=="edit") return false;
+  if(!SH.checked||!SH.checked.ok){ showToast("먼저 🔍 검증을 통과해야 제출돼요!"); return false; }
+  let name=null; try{ name=window.prompt("편대 이름 (2~10자)","내 편대"); }catch(e){}
+  if(!name) return false; name=(""+name).trim().slice(0,10); if(name.length<2){ showToast("이름은 2자 이상!"); return false; }
+  labSubmit({ id:"flt_"+Date.now().toString(36)+Math.floor(Math.random()*100), mode:"fleet",
+    name:name, author:profile.nickname||"학생", size:[SH_ED_COLS,SH_ED_ROWS], floor:"tile_floor",
+    cellsLeft:SH.eg.map(function(r){ return r.join(""); }), createdAt:Date.now(), foeN:SH.checked.n });
+  shOpen();
+  return true;
+}
+function shBeginShared(rec){   // 친구 편대 1웨이브 격파전(랭킹·노피격 보너스 없음, 일일보상은 fleet 공용)
+  shStart();
+  SH.custom=true; SH.customName=rec.name+" · ✍"+(rec.author||"친구");
+  SH.wave=1; SH.foes.length=0; SH.eshots.length=0; SH.warns.length=0; SH.spawner=null; SH.boss=null;
+  const gapX=70, gapY=54, x0=LOGW/2-(SH_ED_COLS-1)*gapX/2, y0=96;
+  for(let r=0;r<SH_ED_ROWS;r++) for(let c=0;c<SH_ED_COLS;c++){
+    const ch=rec.cellsLeft[r][c]; if(ch===".") continue;
+    const spec=SH_FOES[SH_ED_INFO[ch]?SH_ED_INFO[ch].spec:"drone"];
+    SH.foes.push({ kind:"grid", type:SH_ED_INFO[ch]?SH_ED_INFO[ch].spec:"drone", spec:spec, bx:x0+c*gapX, by:y0+r*gapY, hp:spec.hp, alive:true });
+  }
+  SH.msg="🌟 "+rec.name; SH.msgT=1.6;
+  showToast("🌟 친구 편대 격파전 — 전멸시키면 승리!");
+}
 function shKey(code){
+  if(!SH){ labBack(); return; }
+  if(SH.phase==="menu"){
+    if(code==="Escape"){ SH=null; labBack(); return; }
+    const items=3;
+    if(code==="ArrowUp"){ SH.midx=(SH.midx+items-1)%items; return; }
+    if(code==="ArrowDown"){ SH.midx=(SH.midx+1)%items; return; }
+    if(code==="Enter"||code==="NumpadEnter"||code==="Space"){
+      if(SH.midx===0) shStart();
+      else if(SH.midx===1) shEditStart();
+      else { SH.phase="shared"; SH.sidx=0; }
+      return; }
+    return;
+  }
+  if(SH.phase==="edit"){
+    if(code==="Escape"){ shOpen(); return; }
+    if(code==="KeyV"){ shEditCheck(); return; }
+    if(code==="KeyS"){ shSubmit(); return; }
+    if(code==="KeyN"){ shEditStart(); return; }
+    return;
+  }
+  if(SH.phase==="shared"){
+    const list=labShared("fleet");
+    if(code==="Escape"){ shOpen(); return; }
+    if(!list.length) return;
+    if(code==="ArrowUp"){ SH.sidx=((SH.sidx||0)+list.length-1)%list.length; return; }
+    if(code==="ArrowDown"){ SH.sidx=((SH.sidx||0)+1)%list.length; return; }
+    if(code==="Enter"||code==="NumpadEnter"){ shBeginShared(list[SH.sidx||0]); return; }
+    return;
+  }
   if(code==="Escape"){ SH=null; labBack(); return; }
-  if(!SH) return;
-  if(code==="KeyR"){ shStart(); return; }
-  if(code==="KeyP"){ SH.paused=!SH.paused; return; }   // LAB-3 일시정지
-  if(code==="KeyB"||code==="KeyX"){ shBomb(); return; }   // LAB-3 폭탄
+  if(code==="KeyR"){ if(SH.custom) shOpen(); else shStart(); return; }
+  if(code==="KeyP"){ SH.paused=!SH.paused; return; }
+  if(code==="KeyB"||code==="KeyX"){ shBomb(); return; }
 }
 function shBomb(){   // LAB-3 폭탄: 게이지 가득 → 화면 정리
   if(!SH || SH.phase!=="play" || SH.bombG<SH_BOMB_MAX) return;
@@ -4176,6 +4418,7 @@ function shHurtPlayer(){
 }
 function shUpdate(dt){
   if(!SH) return;
+  if(SH.phase==="menu"||SH.phase==="edit"||SH.phase==="shared") return;
   if(SH.paused) return;   // LAB-3 일시정지
   SH.time+=dt;
   if(SH.phase!=="play") return;
@@ -4195,6 +4438,7 @@ function shUpdate(dt){
   if(keysDown.has("ArrowDown")||keysDown.has("KeyS")) my+=1;
   p.x=clamp(p.x+mx*380*dt, 60, LOGW-60);
   p.y=clamp(p.y+my*300*dt, LOGH-250, LOGH-70);
+  p.tilt=(p.tilt||0)+((mx*0.22)-(p.tilt||0))*Math.min(1,dt*10);   // v1.71 뱅킹
   p.cd-=dt; if(p.inv>0) p.inv-=dt; if(p.spread>0) p.spread-=dt;
   if((keysDown.has("KeyZ")||keysDown.has("Space")) && p.cd<=0){
     p.cd=0.16;
@@ -4298,7 +4542,7 @@ function shUpdate(dt){
     if(s.dead) continue;
     for(const f of SH.foes){ if(!f.alive) continue;
       if(Math.abs(s.x-f.x)<f.spec.r+5 && Math.abs(s.y-f.y)<f.spec.r+8){
-        s.dead=true; f.hp--; if(f.hp<=0) shKillFoe(f); break; } }
+        s.dead=true; f.hp--; f.flashT=0.09; if(f.hp<=0) shKillFoe(f); break; } }
     if(!s.dead && SH.boss && SH.boss.alive){
       const b=SH.boss;
       if(Math.abs(s.x-b.x)<b.spec.r && Math.abs(s.y-b.y)<b.spec.r){
@@ -4315,12 +4559,80 @@ function shUpdate(dt){
   }
   const anyFoe=SH.foes.some(f=>f.alive) || (SH.boss&&SH.boss.alive) || (SH.spawner&&SH.spawner.left>0&&SH.spawner.left<90) || SH.warns.length>0;
   if(!anyFoe){
+    if(SH.custom){ SH.phase="win"; labReward("fleet", 15); playSfx("win"); return; }   // v1.71 친구 편대 격파
     if(!SH.waveHit && SH.wave>0){ SH.score+=500; showToast("🛡 노피격 보너스 +500!"); }
     SH.foes.length=0; SH.eshots.length=0; shNextWave();
   }
 }
+function shRenderMenu(){
+  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillStyle="#9fe6c8"; ctx.font="bold 34px 'Malgun Gothic',sans-serif"; ctx.fillText("🚀 별빛 함대", LOGW/2, 140);
+  ctx.fillStyle="#8893bb"; ctx.font="14px 'Malgun Gothic',sans-serif";
+  ctx.fillText("종이비행기 편대를 격추하라! — ↑↓ 고르고 Enter", LOGW/2, 176);
+  const items=[["▶ 12웨이브 도전","보스 2명 · 명예의 전당"],["🛠 편대 만들기","적을 배치해 선생님께 제출"],["🌟 친구들 편대 ("+labShared("fleet").length+")","승인된 우리 반 편대 격파전"]];
+  for(let i=0;i<3;i++){
+    const sel=(SH.midx===i), by=240+i*96;
+    ctx.fillStyle=sel?"rgba(70,110,190,0.92)":"rgba(30,38,66,0.85)"; roundRect(LOGW/2-260,by,520,80,14); ctx.fill();
+    if(sel){ const p=0.5+0.5*Math.sin(uiTime*6); glowRect(LOGW/2-260,by,520,80,14,"rgba(120,200,255,1)",0.5+p*0.4); }
+    ctx.strokeStyle=sel?"#fff":"#56608a"; ctx.lineWidth=sel?2.5:1.5; roundRect(LOGW/2-260,by,520,80,14); ctx.stroke();
+    ctx.fillStyle=sel?"#ffe066":"#fff"; ctx.font="bold 21px 'Malgun Gothic',sans-serif"; ctx.fillText(items[i][0], LOGW/2, by+30);
+    ctx.fillStyle="#8fa0d0"; ctx.font="13px 'Malgun Gothic',sans-serif"; ctx.fillText(items[i][1], LOGW/2, by+56);
+    (function(idx){ uiHit(LOGW/2-260,by,520,80,function(){ if(SH.midx===idx){ shKey("Enter"); } else SH.midx=idx; }); })(i);
+  }
+  ctx.fillStyle="#aab4e0"; ctx.font="14px 'Malgun Gothic',sans-serif"; ctx.fillText("Esc 나가기", LOGW/2, 590);
+  ctx.restore();
+}
+function shRenderEdit(){
+  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillStyle="#9fe6c8"; ctx.font="bold 26px 'Malgun Gothic',sans-serif"; ctx.fillText("🛠 편대 만들기 — 칸을 눌러 적 배치(6~40기)", LOGW/2, 40);
+  const gapX=70, gapY=54, x0=LOGW/2-(SH_ED_COLS-1)*gapX/2, y0=110;
+  for(let r=0;r<SH_ED_ROWS;r++) for(let c=0;c<SH_ED_COLS;c++){
+    const cx=x0+c*gapX, cy=y0+r*gapY, ch=SH.eg[r][c];
+    ctx.fillStyle="rgba(30,38,66,0.6)"; roundRect(cx-30,cy-24,60,48,10); ctx.fill();
+    ctx.strokeStyle="rgba(90,110,150,0.4)"; ctx.lineWidth=1; roundRect(cx-30,cy-24,60,48,10); ctx.stroke();
+    if(ch!=="."){
+      const spec=SH_FOES[SH_ED_INFO[ch].spec], img=getMonsterImage(spec.asset), sz=40;
+      if(img) ctx.drawImage(img, cx-sz/2, cy-sz/2, sz, sz);
+      else { ctx.fillStyle="#c58bff"; ctx.beginPath(); ctx.arc(cx,cy,16,0,Math.PI*2); ctx.fill(); }
+    }
+    (function(cc,rr){ uiHit(cx-30,cy-24,60,48,function(){
+      const cur=SH.eg[rr][cc], i=SH_ED_TYPES.indexOf(cur);
+      SH.eg[rr][cc]=SH_ED_TYPES[(i+1)%SH_ED_TYPES.length];
+      SH.checked=null; SH.editMsg="배치 중… 다 되면 🔍 검증!"; playSfx("click"); }); })(c,r);
+  }
+  ctx.fillStyle="#8fa0d0"; ctx.font="13px 'Malgun Gothic',sans-serif";
+  ctx.fillText("순환: 빈칸 → 드론 → 벌레 → 유령 → 실드(6발)", LOGW/2, y0+SH_ED_ROWS*gapY+16);
+  ctx.fillStyle=(SH.checked&&SH.checked.ok)?"#7dffb0":"#ffd97d"; ctx.font="bold 15px 'Malgun Gothic',sans-serif";
+  ctx.fillText(SH.editMsg||"", LOGW/2, y0+SH_ED_ROWS*gapY+44);
+  drawButton("🔍 검증 (V)", LOGW/2-390, LOGH-60, 240, 44, false, function(){ shEditCheck(); });
+  drawButton("📮 선생님께 제출 (S)", LOGW/2-130, LOGH-60, 260, 44, !!(SH.checked&&SH.checked.ok), function(){ shSubmit(); });
+  drawButton("🧹 새로 (N)", LOGW/2+130, LOGH-60, 220, 44, false, function(){ shEditStart(); });
+  drawButton("🚪 메뉴 (Esc)", LOGW/2+370, LOGH-60, 200, 44, false, function(){ shOpen(); });
+  ctx.restore();
+}
+function shRenderShared(){
+  const list=labShared("fleet");
+  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillStyle="#9fe6c8"; ctx.font="bold 30px 'Malgun Gothic',sans-serif"; ctx.fillText("🌟 친구들의 편대", LOGW/2, 60);
+  ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
+  ctx.fillText("전멸시키면 승리! — Enter/클릭 도전 · Esc 메뉴", LOGW/2, 92);
+  if(!list.length){ ctx.fillStyle="#aab4e0"; ctx.font="17px 'Malgun Gothic',sans-serif";
+    ctx.fillText("아직 승인된 친구 편대가 없어요 — [🛠 편대 만들기]에서 첫 함대를!", LOGW/2, LOGH/2); ctx.restore(); return; }
+  for(let i=0;i<list.length && i<11;i++){
+    const bx=LOGW/2-260, by=120+i*44, sel=(i===(SH.sidx||0));
+    ctx.fillStyle=sel?"rgba(70,110,190,0.92)":"rgba(30,38,66,0.85)"; roundRect(bx,by,520,38,9); ctx.fill();
+    ctx.strokeStyle=sel?"#fff":"#56608a"; ctx.lineWidth=sel?2.5:1.2; roundRect(bx,by,520,38,9); ctx.stroke();
+    ctx.fillStyle="#fff"; ctx.font="bold 15px 'Malgun Gothic',sans-serif";
+    ctx.fillText("🌟 "+list[i].name+" · ✍"+(list[i].author||"친구")+" ("+(list[i].foeN||"?")+"기)", LOGW/2, by+19);
+    (function(idx){ uiHit(bx,by,520,38,function(){ SH.sidx=idx; shBeginShared(list[idx]); }); })(i);
+  }
+  ctx.restore();
+}
 function shRender(){
   if(!SH) return;
+  if(SH.phase==="menu"){ ctx.fillStyle="#070a1e"; ctx.fillRect(0,0,LOGW,LOGH); shRenderMenu(); return; }
+  if(SH.phase==="edit"){ ctx.fillStyle="#070a1e"; ctx.fillRect(0,0,LOGW,LOGH); shRenderEdit(); return; }
+  if(SH.phase==="shared"){ ctx.fillStyle="#070a1e"; ctx.fillRect(0,0,LOGW,LOGH); shRenderShared(); return; }
   ctx.fillStyle="#070a1e"; ctx.fillRect(0,0,LOGW,LOGH);
   ctx.save();
   ctx.globalAlpha=0.14;
@@ -4341,8 +4653,11 @@ function shRender(){
   }
   for(const f of SH.foes){
     if(!f.alive) continue;
+    if(f.flashT>0) f.flashT-=1/60;
     const img=getMonsterImage(f.spec.asset), sz=f.spec.r*2.3;
     if(img) ctx.drawImage(img, f.x-sz/2, f.y-sz/2, sz, sz);
+    if(f.flashT>0){ ctx.globalAlpha=Math.min(0.7,f.flashT*8); ctx.fillStyle="#ffffff";
+      ctx.beginPath(); ctx.arc(f.x,f.y,f.spec.r*0.9,0,Math.PI*2); ctx.fill(); ctx.globalAlpha=1; }
     else { ctx.fillStyle="#c58bff"; ctx.beginPath(); ctx.arc(f.x,f.y,f.spec.r,0,Math.PI*2); ctx.fill(); }
     if(f.type==="shield" && f.hp>3){ ctx.strokeStyle="rgba(160,220,255,0.7)"; ctx.lineWidth=2;
       ctx.beginPath(); ctx.arc(f.x,f.y,f.spec.r+4,0,Math.PI*2); ctx.stroke(); }
@@ -4375,6 +4690,7 @@ function shRender(){
     ctx.beginPath(); ctx.arc(SH.p.x, SH.p.y, 60+k*900, 0, Math.PI*2); ctx.stroke(); ctx.globalAlpha=1; }
   {
     const p=SH.p;
+    ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.tilt||0); ctx.translate(-p.x, -p.y);
     if(p.inv>0 && Math.floor(p.inv*8)%2===0) ctx.globalAlpha=0.4;   // LAB-3 점멸 12→8Hz(눈편안)
     if(p.barrier){ ctx.strokeStyle="rgba(140,220,255,"+(0.5+0.3*Math.sin(uiTime*6))+")"; ctx.lineWidth=3;
       ctx.beginPath(); ctx.arc(p.x, p.y-4, 40, 0, Math.PI*2); ctx.stroke(); }
@@ -4388,6 +4704,7 @@ function shRender(){
     if(!drew){ ctx.fillStyle="#ffe14d"; ctx.beginPath(); ctx.arc(0,-8,10,0,Math.PI*2); ctx.fill(); }
     ctx.restore();
     ctx.globalAlpha=1;
+    ctx.restore();
   }
   ctx.restore();
   ctx.save(); ctx.textBaseline="middle";
@@ -4431,7 +4748,7 @@ function shRender(){
     ctx.fillStyle="rgba(8,10,22,0.82)"; ctx.fillRect(0,0,LOGW,LOGH);
     ctx.font="bold 44px 'Malgun Gothic',sans-serif";
     ctx.fillStyle=(SH.phase==="win")?"#7dffb0":"#ff8a8a";
-    ctx.fillText((SH.phase==="win")?"🎉 함대 사령관 승리!":"💥 함선 격추...", LOGW/2, LOGH/2-96);
+    ctx.fillText((SH.phase==="win")?(SH.custom?"🎉 친구 편대 격파!":"🎉 함대 사령관 승리!"):"💥 함선 격추...", LOGW/2, LOGH/2-96);
     ctx.fillStyle="#dfe6ff"; ctx.font="18px 'Malgun Gothic',sans-serif";
     ctx.fillText("점수 "+SH.score+" · 처치 "+SH.kills+" · 최대콤보 "+SH.maxCombo+" · 웨이브 "+Math.min(SH.wave,SH_MAXWAVE), LOGW/2, LOGH/2-48);
     const rank=SH.rank||shRankLoad();
@@ -5415,6 +5732,17 @@ function pzEditCheck(){
   playSfx(r.ok?"clear":"hit");
   return r;
 }
+function pzSubmit(){   // v1.71: 선생님께 제출(검증 통과 필수 — 별빛점프 공방과 같은 흐름)
+  if(!PZ||PZ.phase!=="edit") return false;
+  if(!PZ.checked||!PZ.checked.ok){ showToast("먼저 🔍 검증을 통과해야 제출돼요!"); return false; }
+  let name=null; try{ name=window.prompt("퍼즐 이름 (2~10자)","내 퍼즐"); }catch(e){}
+  if(!name) return false; name=(""+name).trim().slice(0,10); if(name.length<2){ showToast("이름은 2자 이상!"); return false; }
+  labSubmit({ id:"pz_"+Date.now().toString(36)+Math.floor(Math.random()*100), mode:"puzzle",
+    name:name, author:profile.nickname||"학생", size:[PZ.eW,PZ.eH], floor:"tile_floor",
+    cellsLeft:pzEditRows(), createdAt:Date.now(), min:PZ.checked.moves });
+  const i=PZ.idx; pzStart(); PZ.idx=i;
+  return true;
+}
 function pzEditSave(){
   if(!PZ||PZ.phase!=="edit") return false;
   if(!PZ.checked||!PZ.checked.ok){ showToast("먼저 🔍 검증을 통과해야 저장돼요!"); return false; }
@@ -5441,7 +5769,8 @@ function pzBeginLevel(L, customTag){
       if(ch==="o") goals.push({c:c,r:r});
     } }
   PZ={ phase:"play", idx:0, W:W, H:H, walls:walls, boxes:boxes, goals:goals, level:L, custom:customTag||null,
-       px:px, py:py, moves:0, pushes:0, hist:[], cleared:false, stars:0 };
+       px:px, py:py, ax:px, ay:py, moves:0, pushes:0, hist:[], cleared:false, stars:0 };
+  for(const b of boxes){ b.ax=b.c; b.ay=b.r; }   // v1.71: 렌더 보간 좌표(그리드 단위)
 }
 function pzBegin(idx){
   const L=PZ_LEVELS[idx]; if(!L) return;
@@ -5517,8 +5846,19 @@ function pzKey(code){
   if(PZ.phase==="edit"){
     if(code==="Escape"){ const i=PZ.idx; pzStart(); PZ.idx=i; return; }
     if(code==="KeyV"){ pzEditCheck(); return; }
+    if(code==="KeyS"){ pzSubmit(); return; }
     if(code==="KeyB"){ pzEditSave(); return; }
     if(code==="KeyN"){ pzEditStart(); return; }
+    return;
+  }
+  if(PZ.phase==="shared"){
+    const list=labShared("puzzle");
+    if(code==="Escape"){ const i=PZ.idx; pzStart(); PZ.idx=i; return; }
+    if(!list.length) return;
+    if(code==="ArrowUp"){ PZ.sidx=((PZ.sidx||0)+list.length-1)%list.length; return; }
+    if(code==="ArrowDown"){ PZ.sidx=((PZ.sidx||0)+1)%list.length; return; }
+    if(code==="Enter"||code==="NumpadEnter"){ const r=list[PZ.sidx||0];
+      pzBeginLevel({ name:r.name, rows:r.cellsLeft, min:r.min||10 }, "shared"); return; }
     return;
   }
   if(code==="Escape"){ if(PZ.custom){ pzStart(); PZ.phase="custom"; PZ.cidx=0; } else { const i=PZ.idx; pzStart(); PZ.idx=i; } return; }
@@ -5563,13 +5903,15 @@ function pzRender(){
       ctx.fillText(rec?("★".repeat(rec.stars)+"☆".repeat(3-rec.stars)+" ("+rec.moves+"수)"):"미해결", bx+bw/2, by+72);
       (function(idx){ uiHit(bx,by,bw,bh,function(){ if(PZ.idx===idx) pzBegin(idx); else PZ.idx=idx; }); })(i);
     }
-    drawButton("🛠 퍼즐 만들기 (E)", LOGW/2-240, LOGH-58, 420, 44, false, function(){ pzEditStart(); });
-    drawButton("📂 내가 만든 퍼즐 (C) — "+pzCustomLoad().length+"개", LOGW/2+240, LOGH-58, 420, 44, false, function(){ PZ.phase="custom"; PZ.cidx=0; });
+    drawButton("🛠 만들기 (E)", LOGW/2-320, LOGH-58, 290, 44, false, function(){ pzEditStart(); });
+    drawButton("📂 내 서랍 (C) "+pzCustomLoad().length, LOGW/2, LOGH-58, 290, 44, false, function(){ PZ.phase="custom"; PZ.cidx=0; });
+    drawButton("🌟 친구들 퍼즐 (F) "+labShared("puzzle").length, LOGW/2+320, LOGH-58, 290, 44, false, function(){ PZ.phase="shared"; PZ.sidx=0; });
     ctx.fillStyle="#aab4e0"; ctx.font="14px 'Malgun Gothic',sans-serif";
     ctx.fillText("←→↑↓ 고르기 · Enter 시작 · Esc 나가기", LOGW/2, LOGH-16);
     ctx.restore(); return;
   }
   if(PZ.phase==="custom"){ pzRenderCustom(); return; }
+  if(PZ.phase==="shared"){ pzRenderShared(); return; }
   if(PZ.phase==="edit"){ pzRenderEdit(); return; }
   const L=PZ.level||PZ_LEVELS[PZ.idx];
   const cell=Math.min(76, Math.floor(520/PZ.H), Math.floor(880/PZ.W));
@@ -5591,15 +5933,18 @@ function pzRender(){
     ctx.beginPath(); ctx.arc(x, y, cell*0.32, 0, Math.PI*2); ctx.stroke();
     ctx.fillStyle="rgba(255,225,120,0.25)"; ctx.beginPath(); ctx.arc(x, y, cell*0.1, 0, Math.PI*2); ctx.fill();
   }
+  // v1.71 쾌적성: 이동 보간(칸 순간이동 → 90ms 슬라이드 느낌)
+  PZ.ax+=(PZ.px-PZ.ax)*0.45; PZ.ay+=(PZ.py-PZ.ay)*0.45;
+  for(const b of PZ.boxes){ if(b.ax===undefined){ b.ax=b.c; b.ay=b.r; } b.ax+=(b.c-b.ax)*0.45; b.ay+=(b.r-b.ay)*0.45; }
   // 별조각
   for(const b of PZ.boxes){
-    const x=ox+b.c*cell+cell/2, y=oy+b.r*cell+cell/2, onGoal=pzGoalAt(b.c,b.r);
+    const x=ox+b.ax*cell+cell/2, y=oy+b.ay*cell+cell/2, onGoal=pzGoalAt(b.c,b.r);
     if(onGoal){ ctx.fillStyle="rgba(125,255,176,0.2)"; ctx.beginPath(); ctx.arc(x,y,cell*0.42,0,Math.PI*2); ctx.fill(); }
     drawStar(x, y, 5, cell*0.34, cell*0.15, onGoal?"#8fffb0":"#ffe14d");
   }
   // 시고니
   {
-    const x=ox+PZ.px*cell+cell/2, y=oy+PZ.py*cell+cell/2;
+    const x=ox+PZ.ax*cell+cell/2, y=oy+PZ.ay*cell+cell/2;
     ctx.save(); ctx.translate(x, y+cell*0.3);
     const drew=drawCharacterSprite(selectedCharacterId, Math.max(12,cell*0.26), 0, { moving:false, attacking:false });
     if(!drew){ ctx.fillStyle="#ffd0a0"; ctx.beginPath(); ctx.arc(0,-cell*0.22,cell*0.26,0,Math.PI*2); ctx.fill(); }
@@ -5651,6 +5996,28 @@ function pzRenderCustom(){
   }
   ctx.restore();
 }
+function pzRenderShared(){
+  const list=labShared("puzzle");
+  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillStyle="#9fe6c8"; ctx.font="bold 30px 'Malgun Gothic',sans-serif"; ctx.fillText("🌟 친구들의 퍼즐", LOGW/2, 60);
+  ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
+  ctx.fillText("선생님이 승인한 우리 반 퍼즐 — Enter/클릭 도전 · Esc 목록", LOGW/2, 92);
+  if(!list.length){
+    ctx.fillStyle="#aab4e0"; ctx.font="17px 'Malgun Gothic',sans-serif";
+    ctx.fillText("아직 승인된 친구 퍼즐이 없어요 — 첫 출제자가 되어 볼까요? 🛠", LOGW/2, LOGH/2);
+    ctx.restore(); return;
+  }
+  for(let i=0;i<list.length && i<11;i++){
+    const bx=LOGW/2-260, by=120+i*44, sel=(i===(PZ.sidx||0));
+    ctx.fillStyle=sel?"rgba(70,110,190,0.92)":"rgba(30,38,66,0.85)"; roundRect(bx,by,520,38,9); ctx.fill();
+    ctx.strokeStyle=sel?"#fff":"#56608a"; ctx.lineWidth=sel?2.5:1.2; roundRect(bx,by,520,38,9); ctx.stroke();
+    ctx.fillStyle="#fff"; ctx.font="bold 15px 'Malgun Gothic',sans-serif";
+    ctx.fillText("🌟 "+list[i].name+" · ✍"+(list[i].author||"친구")+" (최소 "+(list[i].min||"?")+"수)", LOGW/2, by+19);
+    (function(idx){ uiHit(bx,by,520,38,function(){ PZ.sidx=idx; const r=list[idx];
+      pzBeginLevel({ name:r.name, rows:r.cellsLeft, min:r.min||10 }, "shared"); }); })(i);
+  }
+  ctx.restore();
+}
 function pzRenderEdit(){
   ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
   ctx.fillStyle="#9fe6c8"; ctx.font="bold 28px 'Malgun Gothic',sans-serif"; ctx.fillText("🛠 퍼즐 만들기 — 별조각 밀기 출제", LOGW/2, 52);
@@ -5669,9 +6036,10 @@ function pzRenderEdit(){
   ctx.strokeStyle="#3a4470"; ctx.lineWidth=2; ctx.strokeRect(ox-2, oy-2, PZ.eW*cell+4, PZ.eH*cell+4);
   ctx.fillStyle=(PZ.checked&&PZ.checked.ok)?"#7dffb0":"#ffd97d"; ctx.font="bold 16px 'Malgun Gothic',sans-serif";
   ctx.fillText(PZ.editMsg||"", LOGW/2, oy+PZ.eH*cell+28);
-  drawButton("🔍 풀이 검증 (V)", LOGW/2-330, LOGH-52, 300, 44, false, function(){ pzEditCheck(); });
-  drawButton("💾 저장 (B)", LOGW/2, LOGH-52, 300, 44, !!(PZ.checked&&PZ.checked.ok), function(){ pzEditSave(); });
-  drawButton("🧹 새로 (N)", LOGW/2+330, LOGH-52, 300, 44, false, function(){ pzEditStart(); });
+  drawButton("🔍 검증 (V)", LOGW/2-390, LOGH-52, 240, 44, false, function(){ pzEditCheck(); });
+  drawButton("📮 선생님께 제출 (S)", LOGW/2-130, LOGH-52, 260, 44, !!(PZ.checked&&PZ.checked.ok), function(){ pzSubmit(); });
+  drawButton("💾 내 서랍 (B)", LOGW/2+130, LOGH-52, 240, 44, false, function(){ pzEditSave(); });
+  drawButton("🧹 새로 (N)", LOGW/2+380, LOGH-52, 220, 44, false, function(){ pzEditStart(); });
   ctx.fillStyle="#8893bb"; ctx.font="12px 'Malgun Gothic',sans-serif";
   ctx.fillText("클릭 순환: 바닥→벽→⭐별→⭕홈→😺시고니 · 별≤5 · 검증 통과해야 저장 · Esc 목록", LOGW/2, LOGH-14);
   ctx.restore();
@@ -5965,7 +6333,7 @@ function snPlaceFood(golden){
   }
 }
 function snStart(){
-  SN={ body:[{c:6,r:6},{c:5,r:6},{c:4,r:6}], dir:{c:1,r:0}, nextDir:{c:1,r:0},
+  SN={ body:[{c:6,r:6},{c:5,r:6},{c:4,r:6}], rend:[], dir:{c:1,r:0}, nextDir:{c:1,r:0},
        stepIv:0.15, stepT:0, score:0, eaten:0, over:false, paused:false, food:null };
   snPlaceFood(false);
   gameState=STATE.SNAKE;
@@ -6018,14 +6386,22 @@ function snRender(){
     const p=1+0.12*Math.sin(uiTime*6);
     drawStar(x, y, 5, (SN.food.golden?17:12)*p, (SN.food.golden?8:5)*p, SN.food.golden?"#ffb63f":"#ffe14d");
   }
+  // v1.71 쾌적성: 칸 단위 순간이동 → 렌더 보간(부드러운 미끄러짐)
+  while(SN.rend.length<SN.body.length) SN.rend.push({ x:SN_OX+SN.body[SN.rend.length].c*SN_CELL, y:SN_OY+SN.body[SN.rend.length].r*SN_CELL });
+  if(SN.rend.length>SN.body.length) SN.rend.length=SN.body.length;
+  const _k=SN.over?1:0.38;
+  for(let i=0;i<SN.body.length;i++){
+    const tx=SN_OX+SN.body[i].c*SN_CELL, ty=SN_OY+SN.body[i].r*SN_CELL;
+    SN.rend[i].x+=(tx-SN.rend[i].x)*_k; SN.rend[i].y+=(ty-SN.rend[i].y)*_k;
+  }
   for(let i=SN.body.length-1;i>=1;i--){
-    const b=SN.body[i], x=SN_OX+b.c*SN_CELL, y=SN_OY+b.r*SN_CELL;
+    const x=SN.rend[i].x, y=SN.rend[i].y;
     const k=1-i/SN.body.length;
     ctx.fillStyle="rgba("+Math.round(90+k*40)+","+Math.round(200+k*30)+","+Math.round(220)+",0.9)";
     roundRect(x+5, y+5, SN_CELL-10, SN_CELL-10, 12); ctx.fill();
   }
   {
-    const h=SN.body[0], x=SN_OX+h.c*SN_CELL+SN_CELL/2, y=SN_OY+h.r*SN_CELL+SN_CELL/2;
+    const x=SN.rend[0].x+SN_CELL/2, y=SN.rend[0].y+SN_CELL/2;
     ctx.save(); ctx.translate(x, y+SN_CELL*0.32);
     const drew=drawCharacterSprite(selectedCharacterId, 15, SN.dir.c<0?Math.PI:0, { moving:true, attacking:false });
     if(!drew){ ctx.fillStyle="#7ad0e0"; ctx.beginPath(); ctx.arc(0,-SN_CELL*0.32,SN_CELL*0.4,0,Math.PI*2); ctx.fill(); }
@@ -6059,7 +6435,7 @@ function otStart(){
   const b=[];
   for(let r=0;r<8;r++){ b.push(new Array(8).fill(0)); }
   b[3][3]=2; b[4][4]=2; b[3][4]=1; b[4][3]=1;   // 1=⭐플레이어 2=☁AI
-  OT={ b:b, turn:1, cur:{c:2,r:3}, aiT:0, over:false, msg:"", passMsgT:0, lastMove:null, wins:otWins() };
+  OT={ b:b, turn:1, cur:{c:2,r:3}, aiT:0, over:false, msg:"", passMsgT:0, lastMove:null, wins:otWins(), anims:{} };
   gameState=STATE.OTHELLO;
   showToast("⚫ 별빛 오델로 — ⭐를 놓아 ☁먹구름을 뒤집자!");
 }
@@ -6084,7 +6460,11 @@ function otPlace(c, r, who){
   const fl=otFlips(OT.b, c, r, who);
   if(!fl.length) return false;
   OT.b[r][c]=who;
-  for(const [fc,fr] of fl) OT.b[fr][fc]=who;
+  OT.anims[c+","+r]={ t0:uiTime, type:"pop" };   // v1.71: 놓기 팝
+  for(let fi=0; fi<fl.length; fi++){ const [fc,fr]=fl[fi];
+    OT.b[fr][fc]=who;
+    OT.anims[fc+","+fr]={ t0:uiTime+0.05+fi*0.05, type:"flip", from:(who===1)?2:1 };   // 도미노 뒤집기
+  }
   OT.lastMove={c:c,r:r,who:who};
   playSfx(who===1?"buff":"stomp");
   // 다음 턴(패스 처리)
@@ -6149,14 +6529,27 @@ function otRender(){
     if(legal.some(m=>m.c===c&&m.r===r)){
       ctx.fillStyle="rgba(255,225,120,0.22)"; ctx.beginPath(); ctx.arc(x+cell/2, y+cell/2, 10, 0, Math.PI*2); ctx.fill();
     }
-    const v=OT.b[r][c];
-    if(v===1){
-      ctx.fillStyle="#ffd23f"; ctx.beginPath(); ctx.arc(x+cell/2, y+cell/2, cell*0.36, 0, Math.PI*2); ctx.fill();
-      drawStar(x+cell/2, y+cell/2, 5, cell*0.2, cell*0.09, "#fff8d0");
-    } else if(v===2){
-      ctx.fillStyle="#8a7dd0"; ctx.beginPath(); ctx.arc(x+cell/2, y+cell/2, cell*0.36, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle="#e8e4ff"; ctx.font=Math.round(cell*0.34)+"px 'Malgun Gothic',sans-serif";
-      ctx.fillText("☁", x+cell/2, y+cell/2+1);
+    let v=OT.b[r][c];
+    let sx2=1, pop=1;
+    const an=OT.anims[c+","+r];
+    if(an){
+      const k=(uiTime-an.t0)/((an.type==="pop")?0.22:0.30);
+      if(k>=1){ delete OT.anims[c+","+r]; }
+      else if(k<0){ if(an.type==="flip") v=an.from; }   // 아직 차례 안 옴 — 이전 색 유지
+      else if(an.type==="flip"){ sx2=Math.abs(Math.cos(Math.PI*k)); if(k<0.5) v=an.from; }
+      else { pop=0.5+0.5*(1-Math.pow(1-k,3))*1.0+0.0; pop=0.55+0.45*(1-Math.pow(1-k,3)); }
+    }
+    if(v===1||v===2){
+      ctx.save(); ctx.translate(x+cell/2, y+cell/2); ctx.scale(Math.max(0.06,sx2)*pop, pop);
+      if(v===1){
+        ctx.fillStyle="#ffd23f"; ctx.beginPath(); ctx.arc(0, 0, cell*0.36, 0, Math.PI*2); ctx.fill();
+        drawStar(0, 0, 5, cell*0.2, cell*0.09, "#fff8d0");
+      } else {
+        ctx.fillStyle="#8a7dd0"; ctx.beginPath(); ctx.arc(0, 0, cell*0.36, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle="#e8e4ff"; ctx.font=Math.round(cell*0.34)+"px 'Malgun Gothic',sans-serif";
+        ctx.fillText("☁", 0, 1);
+      }
+      ctx.restore();
     }
     if(OT.lastMove && OT.lastMove.c===c && OT.lastMove.r===r){
       ctx.strokeStyle="#ffffff"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(x+cell/2, y+cell/2, cell*0.42, 0, Math.PI*2); ctx.stroke();
@@ -6191,7 +6584,7 @@ function otRender(){
 /* ── 🧪 실험실 허브 — 10종 게임틀 한 화면(교사 전용) ── */
 const LAB_GAMES=[
   { key:"td", emoji:"🏰", name:"별빛 수비대",   desc:"길목에 탑을 지어 방어",   run:function(){ tdStart(); } },
-  { key:"fleet", emoji:"🚀", name:"별빛 함대",     desc:"편대를 격추하는 슈팅",     run:function(){ shStart(); } },
+  { key:"fleet", emoji:"🚀", name:"별빛 함대",     desc:"편대를 격추하는 슈팅",     run:function(){ shOpen(); } },
   { key:"ray", emoji:"🕶", name:"별빛 던전 3D",  desc:"1인칭 미로 탐험",         run:function(){ rayStart(); } },
   { key:"sv", emoji:"⚔", name:"별빛 생존자",   desc:"5분 버티기(자동 공격)",    run:function(){ svStart(); } },
   { key:"egg", emoji:"🥚", name:"별빛 알",       desc:"챕터1의 알을 부화시키자",  run:function(){ eggStart(); } },
@@ -10134,7 +10527,7 @@ function applyApprovedMaps(){
   // BIG-BATCH-1 D11: 승인 목록과 MAPS를 완전 동기화 — 삭제·비활성된 에디터 맵은 목록에서 내려간다
   const want={};
   for(const rec of st.approved){
-    if(rec.mode==="platformer") continue;                // 플랫포머 레벨은 별빛 점프 레벨 선택이 직접 읽음(§3.8)
+    if(rec.mode==="platformer"||LAB_MAKER_MODES[rec.mode]) continue;   // 점프/공방3종 레벨은 각 게임이 직접 읽음
     if(rec.disabled) continue;                           // 비활성(교사가 잠시 내림)  — P4: 대형 맵도 탑재(줌아웃 카메라)
     want[rec.id]=rec;
   }
@@ -13615,11 +14008,19 @@ function drawTitle(y){
   drawStar(LOGW/2-230,y,5,20,8,"#ffe14d"); drawStar(LOGW/2+230,y,5,20,8,"#ffe14d");
   ctx.restore();
 }
+function glowRect(x,y,w,h,r,color,inten){   // v1.71 쾌적성: shadowBlur(고비용) 대체 — 3중 스트로크 글로우
+  ctx.save();
+  ctx.strokeStyle=color; ctx.globalAlpha=0.30*inten; ctx.lineWidth=3; roundRect(x,y,w,h,r); ctx.stroke();
+  ctx.globalAlpha=0.16*inten; ctx.lineWidth=7; roundRect(x-2,y-2,w+4,h+4,r+2); ctx.stroke();
+  ctx.globalAlpha=0.07*inten; ctx.lineWidth=12; roundRect(x-5,y-5,w+10,h+10,r+4); ctx.stroke();
+  ctx.restore();
+}
 function drawButton(text,cx,cy,w,h,selected,fn){
   ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
   const x=cx-w/2,y=cy-h/2;
-  if(selected){ const p=0.5+0.5*Math.sin(uiTime*6); ctx.fillStyle="rgba(95,160,255,0.9)"; ctx.shadowColor="rgba(120,200,255,"+(0.5+p*0.5)+")"; ctx.shadowBlur=22; } else ctx.fillStyle="rgba(40,52,100,0.9)";
-  roundRect(x,y,w,h,12); ctx.fill(); ctx.shadowBlur=0;
+  if(selected){ ctx.fillStyle="rgba(95,160,255,0.9)"; } else ctx.fillStyle="rgba(40,52,100,0.9)";
+  roundRect(x,y,w,h,12); ctx.fill();
+  if(selected){ const p=0.5+0.5*Math.sin(uiTime*6); glowRect(x,y,w,h,12,"rgba(120,200,255,1)",0.6+p*0.4); }
   ctx.strokeStyle=selected?"#ffffff":"#6678b0"; ctx.lineWidth=selected?4:2; roundRect(x,y,w,h,12); ctx.stroke();
   ctx.fillStyle="#ffffff"; ctx.font="bold 22px 'Malgun Gothic',sans-serif"; ctx.fillText(text,cx,cy+1);
   ctx.restore();
@@ -13855,10 +14256,9 @@ function lbCard(x,y,w,h,e){   // v1.68 게임 로비 카드: 색 그라디언트
     _lbGrads[gk]=g; }
   ctx.translate(x,y);
   ctx.fillStyle=_lbGrads[gk]; roundRect(0,0,w,h,16); ctx.fill();
-  if(sel){ const p=0.5+0.5*Math.sin(uiTime*6);
-    ctx.shadowColor=_lbRGBA(e.color||"#9fe0ff",0.45+p*0.35); ctx.shadowBlur=22; }
+  if(sel){ const p=0.5+0.5*Math.sin(uiTime*6); glowRect(0,0,w,h,16,_lbRGBA(e.color||"#9fe0ff",1),0.55+p*0.45); }
   ctx.strokeStyle=sel?"#ffffff":_lbRGBA(e.color||"#56608a",0.75); ctx.lineWidth=sel?3:1.5;
-  roundRect(0,0,w,h,16); ctx.stroke(); ctx.shadowBlur=0;
+  roundRect(0,0,w,h,16); ctx.stroke();
   // 윗면 하이라이트(유리 느낌)
   ctx.fillStyle="rgba(255,255,255,0.06)"; roundRect(3,3,w-6,Math.floor(h*0.28),13); ctx.fill();
   // 아이콘 메달리온
@@ -13932,9 +14332,9 @@ function drawLobbyMiniBanner(){   // v1.67: 선생님이 연 미니게임 광장
   ctx.save();
   ctx.fillStyle=sel?"rgba(70,110,190,0.92)":(n>0?"rgba(26,42,54,0.9)":"rgba(22,28,52,0.75)");
   roundRect(X,Y,W,H,14); ctx.fill();
-  if(sel){ const p=0.5+0.5*Math.sin(uiTime*6); ctx.shadowColor="rgba(120,200,255,"+(0.35+p*0.4)+")"; ctx.shadowBlur=16; }
+  if(sel){ const p=0.5+0.5*Math.sin(uiTime*6); glowRect(X,Y,W,H,14,"rgba(120,200,255,1)",0.5+p*0.4); }
   ctx.strokeStyle=sel?"#ffffff":(n>0?"#4fae8d":"#39457a"); ctx.lineWidth=sel?3:1.5;
-  roundRect(X,Y,W,H,14); ctx.stroke(); ctx.shadowBlur=0;
+  roundRect(X,Y,W,H,14); ctx.stroke();
   ctx.textAlign="left"; ctx.textBaseline="middle";
   ctx.font="26px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#fff"; ctx.fillText(n>0?"🎮":"🔒", X+18, Y+H/2+1);
   ctx.font="bold 17px 'Malgun Gothic',sans-serif"; ctx.fillStyle=n>0?(sel?"#ffe066":"#9fe6c8"):"#8893bb";
@@ -14148,7 +14548,7 @@ function drawMapReviewScreen(){
       ctx.fillText(it.kind==="pending"?("⏳ 승인 대기 "+st.pending.length+"개"):("✅ 승인됨 "+st.approved.length+"개"), lx, y); y+=26; }
     if(sel){ ctx.fillStyle="rgba(140,111,192,0.35)"; roundRect(lx-10, y-16, 470, 36, 8); ctx.fill(); }
     ctx.fillStyle=m.disabled?"#6b7398":(sel?"#ffe066":"#d6cdee"); ctx.font="bold 16px 'Malgun Gothic',sans-serif";
-    ctx.fillText((m.disabled?"⏸ ":"")+m.name+"  ·  "+(m.author||"?")+"  ·  "+((m.mode==="platformer")?"🦘 별빛 점프":getRule(m.mode).name)+"  ·  "+m.size[0]+"×"+m.size[1], lx, y);
+    ctx.fillText((m.disabled?"⏸ ":"")+m.name+"  ·  "+(m.author||"?")+"  ·  "+((m.mode==="platformer")?"🦘 별빛 점프":(LAB_MAKER_MODES[m.mode]||getRule(m.mode).name))+"  ·  "+m.size[0]+"×"+m.size[1], lx, y);
     y+=40;
   }
   // 우: 선택 맵 미리보기(미니 그리드)
@@ -14157,13 +14557,16 @@ function drawMapReviewScreen(){
     const cols=m.size[0], rows=m.size[1], half=cols/2;
     const pw=560, s=Math.min(pw/cols, 300/rows), px=620, py=160;
     ctx.fillStyle="rgba(16,22,52,0.95)"; roundRect(px-12, py-12, cols*s+24, rows*s+24, 10); ctx.fill();
+    const LAB_RV_COLOR={ "$":"#ffe14d", "o":"#ffd97d", "*":"#7dffb0", "P":"#8a6a3a", "d":"#9fb4ff", "b":"#c7ff6b", "g":"#c5b8ff", "s":"#8fd9ff", "#":"#3f4a80" };
+    const noMirror=(m.mode==="platformer")||LAB_MAKER_MODES[m.mode];
     for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){
-      const ch=(m.mode==="platformer") ? m.cellsLeft[r][c] : ((c<half)?m.cellsLeft[r][c]:m.cellsLeft[r][cols-1-c]);
-      ctx.fillStyle=(ch&&ch!==".")?(ED_CELL_COLOR[ch]||"#888"):"rgba(38,46,96,0.9)";
+      const ch=noMirror ? m.cellsLeft[r][c] : ((c<half)?m.cellsLeft[r][c]:m.cellsLeft[r][cols-1-c]);
+      ctx.fillStyle=(ch&&ch!==".")?(LAB_RV_COLOR[ch]||ED_CELL_COLOR[ch]||"#888"):"rgba(38,46,96,0.9)";
       ctx.fillRect(px+c*s, py+r*s, s-0.5, s-0.5);
     }
     ctx.fillStyle="#aab4e0"; ctx.font="13px 'Malgun Gothic',sans-serif";
-    ctx.fillText("바닥: "+(FLOOR_THEME_NAME[m.floor]||m.floor)+(m.size[0]!==22?"   ⚠ 대형 맵 — 승인해도 플레이 탑재는 카메라 작업 후":""), px, py+rows*s+30);
+    ctx.fillText(LAB_MAKER_MODES[m.mode] ? (LAB_MAKER_MODES[m.mode]+" — 승인하면 그 게임의 \"친구들 작품\"에 실려요")
+      : ("바닥: "+(FLOOR_THEME_NAME[m.floor]||m.floor)+(m.size[0]!==22 && m.mode!=="platformer"?"   ⚠ 대형 맵 — 승인해도 플레이 탑재는 카메라 작업 후":"")), px, py+rows*s+30);
   }
   ctx.textAlign="center"; ctx.fillStyle="#d6cdee"; ctx.font="bold 15px 'Malgun Gothic',sans-serif";
   const selIt=list[reviewIdx];

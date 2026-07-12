@@ -32,6 +32,9 @@ script+=`;globalThis.__api={ STATE, keysDown,
   LabOpenStore, labToggle, labOpenCount, labBack, drawLobbyMiniBanner, activateMenuRow, handleAdminKey,
   get labOpen(){return labOpen;}, get labFrom(){return labFrom;}, setLabFrom:v=>{labFrom=v;}, setState:(s)=>{ gameState=s; },
   labReward, get lobbyCardOpen(){return lobbyCardOpen;}, setLobbyCardOpen:v=>{lobbyCardOpen=v;}, handleStartKey,
+  labShared, labSubmit, pzSubmit, tdEditStart, tdEditCheck, tdSubmit, tdBeginShared, tdStartWave2:tdStartWave,
+  shOpen, shEditStart, shEditCheck, shSubmit, shBeginShared, drawMapReviewScreen, loadEditorStore, saveEditorStore,
+  setReviewIdx:v=>{reviewIdx=v;}, setPrompt:f=>{ window.prompt=f; },
   get PZ(){return PZ;}, get RN(){return RN;}, get BK(){return BK;}, get SN(){return SN;}, get OT(){return OT;}, get LH(){return LH;},
   get SV(){return SV;}, get EGG(){return EGG;}, get profile(){return profile;},
   get TD(){return TD;}, get SH(){return SH;}, get RAY(){return RAY;}, get gameState(){return gameState;} };`;
@@ -858,6 +861,64 @@ run("능력 보기 오버레이: 열기·키 통과·닫기", ()=>{
   check("오버레이 중 C = 캐릭터 변경(안 닫힘)", api.lobbyCardOpen===true);
   api.handleStartKey("Escape");
   check("그 외 키 = 닫기", api.lobbyCardOpen===false);
+});
+
+
+/* ═══ v1.71: 공방 3종 파이프라인(제출→승인→친구 작품) ═══ */
+function approveLast(){   // 승인 시뮬: pending 마지막 → approved 이동
+  const st=api.loadEditorStore(); const rec=st.pending.pop(); st.approved.push(rec); api.saveEditorStore(st); return rec;
+}
+run("퍼즐 공방: 제출→승인→친구 퍼즐 플레이", ()=>{
+  delete LS["starArena.editorMaps.v1"];
+  api.setPrompt(()=>"하네스퍼즐");
+  api.pzStart(); api.pzEditStart();
+  api.PZ.eg[3][2]="*"; api.PZ.eg[3][3]="$"; api.PZ.eg[3][4]="o";
+  api.pzEditCheck();
+  check("제출 성공(pending에 mode·min)", api.pzSubmit()===true && (function(){ const st=api.loadEditorStore(); const r=st.pending[st.pending.length-1]; return r.mode==="puzzle"&&r.min===1&&r.name==="하네스퍼즐"; })());
+  const rec=approveLast();
+  check("승인 → 친구 퍼즐 목록 1개", api.labShared("puzzle").length===1);
+  api.pzBeginLevel({ name:rec.name, rows:rec.cellsLeft, min:rec.min }, "shared");
+  api.pzMove(1,0);
+  check("친구 퍼즐 플레이·클리어", api.PZ.cleared===true && api.PZ.custom==="shared");
+});
+run("수비대 길 공방: 그리기→검증→제출→친구 맵 방어", ()=>{
+  api.setPrompt(()=>"하네스길");
+  api.tdEditStart();
+  for(let c=0;c<20;c++) api.TD.eg[5][c]=true;   // 일자 길
+  const chk=api.tdEditCheck();
+  check("검증: 연결 20칸", chk.ok===true && chk.len===20);
+  check("제출 성공(mode tdpath)", api.tdSubmit()===true && (function(){ const st=api.loadEditorStore(); return st.pending[st.pending.length-1].mode==="tdpath"; })());
+  const rec=approveLast();
+  check("승인 → 친구 맵 1개", api.labShared("tdpath").length===1);
+  api.tdBeginShared(rec);
+  check("친구 맵 시작(custom·경로 주입)", api.TD.phase==="build" && api.TD.custom===true && api.TD.pathsPx[0].length>=2);
+  api.TD.gold=500; api.tdBuy(3,4,0);
+  api.tdStartWave2();
+  for(let i=0;i<400;i++) api.tdUpdate(1/60);
+  check("친구 길로 적 진행(스폰·이동)", api.TD.enemies.length>0);
+});
+run("함대 편대 공방: 메뉴→배치→제출→친구 편대 격파", ()=>{
+  api.setPrompt(()=>"하네스편대");
+  api.shOpen();
+  check("메뉴 진입(도전/만들기/친구)", api.SH.phase==="menu");
+  api.shEditStart();
+  for(let c=0;c<8;c++) api.SH.eg[1][c]="d";
+  const chk=api.shEditCheck();
+  check("검증: 8기 OK", chk.ok===true && chk.n===8);
+  check("제출 성공(mode fleet)", api.shSubmit()===true && (function(){ const st=api.loadEditorStore(); return st.pending[st.pending.length-1].mode==="fleet"; })());
+  const rec=approveLast();
+  api.shBeginShared(rec);
+  check("친구 편대 로드(8기·custom)", api.SH.custom===true && api.SH.foes.filter(f=>f.alive).length===8);
+  delete LS["starArena.lab.rewardDay"]; api.profile.gold=0;
+  for(const f of api.SH.foes) f.alive=false;
+  api.SH.eshots.length=0; api.SH.p.inv=99;
+  api.shUpdate(1/60);
+  check("전멸 → 격파 승리 + 일일보상 15G", api.SH.phase==="win" && api.profile.gold===15);
+});
+run("교사 승인 화면: 공방 3종 렌더(getRule 크래시 방지)", ()=>{
+  api.setReviewIdx(0);
+  api.drawMapReviewScreen();   // pending에 3종 섞여 있어도 라벨/프리뷰 예외 없어야
+  check("리뷰 화면 렌더 예외 없음", true);
 });
 
 console.log("\n결과: "+(fail===0?("ALL PASS ✅ ("+pass+"항목)"):(fail+"건 실패 ❌")));
