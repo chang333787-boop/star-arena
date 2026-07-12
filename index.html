@@ -3534,6 +3534,67 @@ const LabOpenStore={
     if(this.ready()){ try{ const o={}; o[key]=!!val; this._ref().update(o); }catch(e){} }
   }
 };
+/* ── v1.74 학급 랭킹: 게임별 TOP8을 클라우드로 공유(starArenaOnline/labRank/<class>) ──
+   로컬 캐시 폴백 — 오프라인이어도 이 기기 랭킹은 동작, 접속되면 학급 전체와 합쳐짐. */
+const LAB_RANK_KEY="starArena.labRank.v1";
+let labRank=(function(){ try{ const s=JSON.parse(localStorage.getItem(LAB_RANK_KEY)); if(s&&typeof s==="object") return s; }catch(e){} return {}; })();
+const LabRankStore={
+  _on:false,
+  ready(){ try{ return !!(OnlineManager && OnlineManager.available && OnlineManager.db); }catch(e){ return false; } },
+  _ref(){ return OnlineManager.db.ref("starArenaOnline/labRank/"+ADMIN_CONFIG.classCode); },
+  watch(){
+    if(this._on || !this.ready()) return;
+    this._on=true;
+    try{ this._ref().on("value", function(snap){ const v=snap&&snap.val();
+      if(v&&typeof v==="object"){
+        for(const k in v){ labRank[k]=LabRankStore.merge(labRank[k]||[], v[k]||[], LAB_RANK_LOWER[k]); }
+        try{ localStorage.setItem(LAB_RANK_KEY, JSON.stringify(labRank)); }catch(e){}
+      } }); }catch(e){ this._on=false; }
+  },
+  merge(a, b, lower){   // 이름별 최고 기록만 남기고 정렬 → TOP8
+    const by={};
+    const put=function(e){ if(!e||!e.n) return;
+      if(!(e.n in by)) by[e.n]=e.s;
+      else by[e.n]=lower?Math.min(by[e.n],e.s):Math.max(by[e.n],e.s); };
+    (Array.isArray(a)?a:[]).forEach(put); (Array.isArray(b)?b:[]).forEach(put);
+    const out=Object.keys(by).map(function(n){ return { n:n, s:by[n] }; });
+    out.sort(function(x,y){ return lower?(x.s-y.s):(y.s-x.s); });
+    return out.slice(0,8);
+  },
+  _dirty:{}, _flushT:null,
+  flush(){
+    this._flushT=null;
+    if(!this.ready()) return;   // 오프라인이면 로컬만 — watch 재접속 때 합쳐짐
+    const o={}; let n=0;
+    for(const k in this._dirty){ o[k]=labRank[k]||[]; n++; }
+    this._dirty={};
+    if(n){ try{ this._ref().update(o); }catch(e){} }
+  },
+  submit(key, score){
+    const lower=!!LAB_RANK_LOWER[key];
+    const name=(profile&&profile.nickname)?(""+profile.nickname).slice(0,8):"별빛이";
+    const prevTop=(labRank[key]&&labRank[key][0])?labRank[key][0].n:null;
+    labRank[key]=this.merge(labRank[key]||[], [{ n:name, s:score }], lower);
+    try{ localStorage.setItem(LAB_RANK_KEY, JSON.stringify(labRank)); }catch(e){}
+    this._dirty[key]=1;   // 클라우드는 4초 코얼레싱(연속 재도전·알 피드 연타에도 쓰기 1회)
+    if(!this._flushT){ try{ this._flushT=setTimeout(function(){ LabRankStore.flush(); }, 4000); }catch(e){ this.flush(); } }
+    if(labRank[key][0] && labRank[key][0].n===name && prevTop!==name){ showToast("👑 우리 반 1위 등극!"); playSfx("win"); }
+  }
+};
+const LAB_RANK_LOWER={ ray:true };   // 낮을수록 좋은 기록(시간)
+function labRankTop(key){ LabRankStore.watch(); return labRank[key]||[]; }
+function labRankDraw(key, cx, y, unit){   // 결과 화면용 학급 TOP3
+  const top=labRankTop(key);
+  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillStyle="#ffe14d"; ctx.font="bold 15px 'Malgun Gothic',sans-serif";
+  ctx.fillText("🏫 우리 반 랭킹", cx, y);
+  ctx.font="13px 'Malgun Gothic',sans-serif";
+  const M=["🥇","🥈","🥉"];
+  for(let i=0;i<3;i++){ const r=top[i];
+    ctx.fillStyle=r?"#cbd4f5":"#5f6a94";
+    ctx.fillText(M[i]+" "+(r?(r.n+" — "+r.s+(unit||"")):"—"), cx, y+20+i*19); }
+  ctx.restore();
+}
 const LAB_MAKER_MODES={ puzzle:"🧩 별조각 밀기", tdpath:"🏰 수비대 길", fleet:"🚀 함대 편대" };   // v1.71 공방 3종
 function labShared(mode){   // 승인된 친구 작품(모드별)
   try{ return loadEditorStore().approved.filter(r=>r.mode===mode && !r.disabled); }catch(e){ return []; }
@@ -3933,6 +3994,7 @@ function tdSim(dt){
     if(TD.wave>=TD_WAVES.length){
       TD.phase="win"; playSfx("win");
       labReward("td", 30);   // v1.70 일일 보상
+      if(!TD.custom) LabRankStore.submit("td", TD.lives);   // v1.74 랭킹: 남은 생명
       const ratio=TD.lives/TD.livesMax;
       TD.stars=(ratio>=0.8)?3:((ratio>=0.4)?2:1);
       if(!TD.custom){
@@ -4209,6 +4271,7 @@ function tdRender(){
       ctx.fillText("★".repeat(TD.stars)+"☆".repeat(3-TD.stars), LOGW/2, LOGH/2-24);
       ctx.fillStyle="#dfe6ff"; ctx.font="17px 'Malgun Gothic',sans-serif";
       ctx.fillText("남은 생명 "+TD.lives+"/"+TD.livesMax+" · ⏱ "+TD.time.toFixed(0)+"초 · "+TD_DIFFS[TD.diff].name, LOGW/2, LOGH/2+10);
+      labRankDraw("td", LOGW/2+330, LOGH/2-40, "생명");
       // LAB-3 MVP 통계
       let mvp=null; for(const t of TD.towers){ if(!mvp||(t.kills||0)>(mvp.kills||0)) mvp=t; }
       ctx.fillText("총 처치 "+TD.killsTotal+"마리"+(mvp&&mvp.kills?("   ·   🏆 MVP: "+TD_TOWERS[mvp.spec].emoji+" "+TD_TOWERS[mvp.spec].name+" ("+mvp.kills+"킬)"):""), LOGW/2, LOGH/2+40);
@@ -4286,7 +4349,7 @@ function shNextWave(){
   else if(w===11){ shDiamond("shield", LOGW/2-200, 170); shDiamond("bug", LOGW/2+200, 170); SH.spawner={ left:10, t:1.2, iv:1.6, type:"kaze", aim:true }; }
   else if(w===12){ SH.boss={ type:"boss", spec:SH_FOES.boss, x:LOGW/2, y:150, hp:SH_FOES.boss.hp, alive:true, t:0, fire:1.2, phase:1 };
     SH.warnT=1.8; SH.spawner={ left:99, t:2.5, iv:3.0, type:"drone", aim:false }; }
-  else { SH.phase="win"; SH.rank=shRankAdd(SH.score, SH.wave-1); labReward("fleet", 30); playSfx("win"); return; }
+  else { SH.phase="win"; SH.rank=shRankAdd(SH.score, SH.wave-1); labReward("fleet", 30); LabRankStore.submit("fleet", SH.score); playSfx("win"); return; }
   SH.msg="WAVE "+SH.wave; SH.msgT=1.4; playSfx("spring");
 }
 /* ── v1.71 함대 편대 공방: 메뉴(도전/만들기/친구 편대) + 그리드 배치 → 검증 → 제출 ── */
@@ -4414,7 +4477,7 @@ function shHurtPlayer(){
   if(p.barrier){ p.barrier=false; p.inv=1.2; playSfx("break"); showToast("🛡 배리어가 막아줬다!"); return; }
   p.lives--; p.inv=1.7; p.spread=0; SH.waveHit=true; playSfx("hit");
   SH.combo=0;
-  if(p.lives<=0){ SH.phase="over"; SH.rank=shRankAdd(SH.score, SH.wave); playSfx("lose"); }
+  if(p.lives<=0){ SH.phase="over"; SH.rank=shRankAdd(SH.score, SH.wave); if(!SH.custom) LabRankStore.submit("fleet", SH.score); playSfx("lose"); }
 }
 function shUpdate(dt){
   if(!SH) return;
@@ -4754,11 +4817,11 @@ function shRender(){
     ctx.fillText((SH.phase==="win")?(SH.custom?"🎉 친구 편대 격파!":"🎉 함대 사령관 승리!"):"💥 함선 격추...", LOGW/2, LOGH/2-96);
     ctx.fillStyle="#dfe6ff"; ctx.font="18px 'Malgun Gothic',sans-serif";
     ctx.fillText("점수 "+SH.score+" · 처치 "+SH.kills+" · 최대콤보 "+SH.maxCombo+" · 웨이브 "+Math.min(SH.wave,SH_MAXWAVE), LOGW/2, LOGH/2-48);
-    const rank=SH.rank||shRankLoad();
-    ctx.fillStyle="#ffe14d"; ctx.font="bold 17px 'Malgun Gothic',sans-serif"; ctx.fillText("🏆 명예의 전당", LOGW/2, LOGH/2-8);
+    const top=labRankTop("fleet"), M=["🥇","🥈","🥉"];
+    ctx.fillStyle="#ffe14d"; ctx.font="bold 17px 'Malgun Gothic',sans-serif"; ctx.fillText("🏫 우리 반 명예의 전당", LOGW/2, LOGH/2-8);
     ctx.fillStyle="#cbd4f5"; ctx.font="15px 'Malgun Gothic',sans-serif";
-    for(let i=0;i<3;i++){ const r=rank[i];
-      ctx.fillText((i+1)+"위  "+(r?(r.score+"점 (웨이브 "+r.wave+")"):"—"), LOGW/2, LOGH/2+20+i*24); }
+    for(let i=0;i<3;i++){ const r=top[i];
+      ctx.fillText(M[i]+" "+(r?(r.n+" — "+r.s+"점"):"—"), LOGW/2, LOGH/2+20+i*24); }
     ctx.fillText("R 다시 도전 · Esc 나가기", LOGW/2, LOGH/2+108);
   }
   ctx.restore();
@@ -4943,6 +5006,7 @@ function rayUpdate(dt){
         const total=RAY.times.reduce((a,b)=>a+b,0);
         RAY.total=total; RAY.starsRate=(RAY.totalGot>=13)?3:((RAY.totalGot>=8)?2:1);
         labReward("ray", 30);   // v1.70 일일 보상
+        LabRankStore.submit("ray", Math.round(total*10)/10);   // v1.74 랭킹: 합계 시간(빠를수록)
         try{ const best=JSON.parse(localStorage.getItem(RAY_BEST_KEY)||"null");
           if(!best || total<best.total) localStorage.setItem(RAY_BEST_KEY, JSON.stringify({ total:Math.round(total*10)/10, stars:RAY.totalGot })); }catch(e){}
         playSfx("win");
@@ -5114,6 +5178,7 @@ function rayRender(){
     ctx.fillText("★".repeat(RAY.starsRate)+"☆".repeat(3-RAY.starsRate), LOGW/2, LOGH/2-36);
     ctx.fillStyle="#dfe6ff"; ctx.font="17px 'Malgun Gothic',sans-serif";
     ctx.fillText("⏱ 합계 "+RAY.total.toFixed(1)+"초 ("+RAY.times.map(t=>t.toFixed(0)+"s").join(" · ")+") · ⭐ "+RAY.totalGot+"/15", LOGW/2, LOGH/2+4);
+    labRankDraw("ray", LOGW/2+360, LOGH/2-60, "초");
     ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
     ctx.fillText("★★★=별 13개 이상 · ★★=8개 이상 · 시간은 기록용", LOGW/2, LOGH/2+32);
     let bestTxt="—";
@@ -5241,6 +5306,7 @@ function svHurt(dmg){
   p.hp-=dmg; p.ifr=0.8; SV.hurtT=0.4; playSfx("hit");
   if(p.hp<=0){ p.hp=0; SV.phase="over"; playSfx("lose");
     try{ const b=svBestLoad(); if(SV.t>b.bestT){ b.bestT=Math.round(SV.t); localStorage.setItem(SV_BEST_KEY, JSON.stringify(b)); } SV.best=b; }catch(e){}
+    LabRankStore.submit("sv", Math.floor(SV.t));   // v1.74 랭킹: 생존 초
   }
 }
 function svKill(f, noBoom){
@@ -5415,6 +5481,7 @@ function svUpdate(dt){
   if(SV.t>=SV_WIN_T){
     SV.phase="win"; playSfx("win");
     labReward("sv", 30);   // v1.70 일일 보상
+    LabRankStore.submit("sv", Math.floor(SV.t));
     try{ const b=svBestLoad(); b.wins=(b.wins||0)+1; if(SV.t>b.bestT) b.bestT=Math.round(SV.t); localStorage.setItem(SV_BEST_KEY, JSON.stringify(b)); SV.best=b; }catch(e){}
   }
   // 카메라
@@ -5554,6 +5621,7 @@ function svRender(){
     ctx.fillText("⏱ "+SV.t.toFixed(0)+"초 생존 · Lv."+SV.level+" · 💀 "+SV.kills+"마리", LOGW/2, LOGH/2-16);
     const b=SV.best;
     ctx.fillText("🏆 최고 "+b.bestT+"초 · 승리 "+(b.wins||0)+"회", LOGW/2, LOGH/2+16);
+    labRankDraw("sv", LOGW/2+340, LOGH/2-52, "초");
     ctx.fillText("R 다시 도전 · Esc 나가기", LOGW/2, LOGH/2+52);
   }
   ctx.restore();
@@ -5584,6 +5652,7 @@ function eggFeed(){
     profile.gold-=10; paid=true; try{ saveProfile(); }catch(e){}
   } }catch(e){}
   EGG.save.xp+=10; EGG.save.feeds++;
+  LabRankStore.submit("egg", EGG.save.xp);   // v1.74 랭킹: 별빛
   EGG.wobbleT=0.7; EGG.sparkT=0.5; playSfx("buff");
   const idx=eggStageIdx(EGG.save.xp);
   if(EGG_STAGES[idx].at===EGG.save.xp || (idx===4 && EGG.save.xp>=500)) { playSfx("powerup"); showToast("✨ "+EGG_STAGES[idx].name+"!"); }
@@ -5937,6 +6006,8 @@ function pzMove(dc,dr){
     labReward("pz", 15);   // v1.70 일일 보상
     const min=(PZ.level&&PZ.level.min)||PZ_LEVELS[PZ.idx].min;
     PZ.stars=(PZ.moves<=min)?3:((PZ.moves<=Math.ceil(min*1.6))?2:1);
+    if(!PZ.custom){ LabRankStore.submit("pz", Object.keys(pzBestLoad()).length+ (pzBestLoad()[""+PZ.idx]?0:1));   // v1.74 랭킹: 해결 판수
+    }
     if(!PZ.custom){   // 내장 퍼즐만 ★기록(커스텀은 이름 바뀌면 꼬여서 v1 미기록)
       const best=pzBestLoad(), k=""+PZ.idx, prev=best[k];
       if(!prev || PZ.stars>prev.stars || (PZ.stars===prev.stars && PZ.moves<prev.moves)){
@@ -6238,6 +6309,7 @@ function rnUpdate(dt){
     else { const oy0=RN.groundY-o.h;
       if(py>oy0+6){ RN.over=true; } }
     if(RN.over){ playSfx("lose");
+      LabRankStore.submit("rn", Math.floor(RN.dist));   // v1.74 랭킹: 거리 m
       try{ if(Math.floor(RN.dist)>rnBest()) localStorage.setItem(RN_BEST_KEY, ""+Math.floor(RN.dist)); }catch(e){}
       return; }
   }
@@ -6300,6 +6372,7 @@ function rnRender(){
     ctx.fillStyle="#ff8a8a"; ctx.font="bold 44px 'Malgun Gothic',sans-serif"; ctx.fillText("💫 꽈당!", LOGW/2, LOGH/2-52);
     ctx.fillStyle="#dfe6ff"; ctx.font="18px 'Malgun Gothic',sans-serif";
     ctx.fillText(Math.floor(RN.dist)+"m 달림 · ⭐ "+RN.coins+"개 · 🏆 최고 "+rnBest()+"m", LOGW/2, LOGH/2-4);
+    labRankDraw("rn", LOGW/2+340, LOGH/2-56, "m");
     ctx.fillText("Enter 다시 달리기 · Esc 나가기", LOGW/2, LOGH/2+32);
   }
   ctx.restore();
@@ -6383,7 +6456,7 @@ function bkUpdate(dt){
   });
   if(!BK.balls.length){
     BK.lives--;
-    if(BK.lives<=0){ BK.over=true; playSfx("lose");
+    if(BK.lives<=0){ BK.over=true; LabRankStore.submit("bk", BK.score); playSfx("lose");
       try{ const bb=bkBest(); if(BK.score>bb.score){ localStorage.setItem(BK_BEST_KEY, JSON.stringify({score:BK.score, stage:BK.stage})); } BK.best=bkBest(); }catch(e){}
       return; }
     playSfx("hit"); bkServe();
@@ -6398,7 +6471,7 @@ function bkUpdate(dt){
   BK.drops=BK.drops.filter(d=>!d.got && d.y<LOGH+20);
   if(!BK.bricks.some(br=>br.hp>0)){
     BK.score+=200; playSfx("clear");
-    if(BK.stage>=3){ BK.win=true; labReward("bk", 30); playSfx("win");
+    if(BK.stage>=3){ BK.win=true; labReward("bk", 30); LabRankStore.submit("bk", BK.score); playSfx("win");
       try{ const bb=bkBest(); if(BK.score>bb.score){ localStorage.setItem(BK_BEST_KEY, JSON.stringify({score:BK.score, stage:3})); } BK.best=bkBest(); }catch(e){} }
     else { BK.stage++; BK.bricks=bkBricks(BK.stage); BK.drops.length=0; bkServe(); showToast("🎉 스테이지 "+BK.stage+"!"); }
   }
@@ -6453,6 +6526,7 @@ function bkRender(){
     ctx.fillText(BK.win?"🎉 벽돌 완전 정복!":"💧 별공이 떨어졌다...", LOGW/2, LOGH/2-52);
     ctx.fillStyle="#dfe6ff"; ctx.font="18px 'Malgun Gothic',sans-serif";
     ctx.fillText("점수 "+BK.score+" · 스테이지 "+BK.stage+" · 🏆 "+Math.max(BK.best.score,BK.score), LOGW/2, LOGH/2-4);
+    labRankDraw("bk", LOGW/2+340, LOGH/2-56, "점");
     ctx.fillText("Enter 다시 · Esc 나가기", LOGW/2, LOGH/2+32);
   }
   ctx.restore();
@@ -6500,6 +6574,7 @@ function snUpdate(dt){
   const h=SN.body[0], nc=h.c+SN.dir.c, nr=h.r+SN.dir.r;
   if(nc<0||nr<0||nc>=SN_COLS||nr>=SN_ROWS || SN.body.some((b,i)=>i<SN.body.length-1 && b.c===nc && b.r===nr)){
     SN.over=true; playSfx("lose");
+    LabRankStore.submit("sn", SN.score);   // v1.74 랭킹
     try{ if(SN.score>snBest()) localStorage.setItem(SN_BEST_KEY, ""+SN.score); }catch(e){}
     return;
   }
@@ -6559,6 +6634,7 @@ function snRender(){
     ctx.fillStyle="#ff8a8a"; ctx.font="bold 44px 'Malgun Gothic',sans-serif"; ctx.fillText("💫 아이쿠!", LOGW/2, LOGH/2-52);
     ctx.fillStyle="#dfe6ff"; ctx.font="18px 'Malgun Gothic',sans-serif";
     ctx.fillText("점수 "+SN.score+" · 길이 "+SN.body.length+" · 🏆 최고 "+Math.max(snBest(),SN.score), LOGW/2, LOGH/2-4);
+    labRankDraw("sn", LOGW/2+340, LOGH/2-56, "점");
     ctx.fillText("Enter 다시 · Esc 나가기", LOGW/2, LOGH/2+32);
   }
   ctx.restore();
@@ -6567,11 +6643,11 @@ function snRender(){
 const OT_WINS_KEY="starArena.lab.otWins";
 let OT=null;
 function otWins(){ try{ const s=JSON.parse(localStorage.getItem(OT_WINS_KEY)); if(s) return s; }catch(e){} return { w:0, l:0, d:0 }; }
-function otStart(){
+function otStart(pvp){
   const b=[];
   for(let r=0;r<8;r++){ b.push(new Array(8).fill(0)); }
   b[3][3]=2; b[4][4]=2; b[3][4]=1; b[4][3]=1;   // 1=⭐플레이어 2=☁AI
-  OT={ b:b, turn:1, cur:{c:2,r:3}, aiT:0, over:false, msg:"", passMsgT:0, lastMove:null, wins:otWins(), anims:{} };
+  OT={ b:b, turn:1, cur:{c:2,r:3}, aiT:0, over:false, msg:"", passMsgT:0, lastMove:null, wins:otWins(), anims:{}, pvp:!!pvp };
   gameState=STATE.OTHELLO;
   showToast("⚫ 별빛 오델로 — ⭐를 놓아 ☁먹구름을 뒤집자!");
 }
@@ -6610,9 +6686,9 @@ function otPlace(c, r, who){
   else {
     OT.over=true;
     const s=otCount(OT.b);
-    try{ const w=otWins(); if(s.p>s.a) w.w++; else if(s.p<s.a) w.l++; else w.d++;
+    if(!OT.pvp){ try{ const w=otWins(); if(s.p>s.a) w.w++; else if(s.p<s.a) w.l++; else w.d++;
       localStorage.setItem(OT_WINS_KEY, JSON.stringify(w)); OT.wins=w;
-      if(s.p>s.a) labReward("ot", 20); }catch(e){}
+      if(s.p>s.a){ labReward("ot", 20); LabRankStore.submit("ot", w.w); } }catch(e){} }   // v1.74: 전적·랭킹은 AI전만
     playSfx(s.p>s.a?"win":(s.p<s.a?"lose":"clear"));
   }
   if(OT.turn===2) OT.aiT=0.75;
@@ -6635,21 +6711,23 @@ function otAiMove(){
 function otKey(code){
   if(code==="Escape"){ OT=null; labBack(); return; }
   if(!OT) return;
-  if(code==="KeyR"){ otStart(); return; }
-  if(OT.over){ if(code==="Enter"||code==="NumpadEnter") otStart(); return; }
-  if(OT.turn!==1) return;
+  if(code==="KeyT"){ otStart(!OT.pvp); showToast(OT.pvp?"👥 둘이서 한 판! (한 키보드)":"🤖 먹구름 AI와 대결!"); return; }   // v1.74: 종료 후에도 전환 가능
+  if(code==="KeyR"){ otStart(OT.pvp); return; }   // 새 판은 현재 모드 유지
+  if(OT.over){ if(code==="Enter"||code==="NumpadEnter") otStart(OT.pvp); return; }
+  if(OT.turn!==1 && !OT.pvp) return;   // v1.74: 2인전은 ☁ 차례도 사람이
   if(code==="ArrowLeft") OT.cur.c=(OT.cur.c+7)%8;
   else if(code==="ArrowRight") OT.cur.c=(OT.cur.c+1)%8;
   else if(code==="ArrowUp") OT.cur.r=(OT.cur.r+7)%8;
   else if(code==="ArrowDown") OT.cur.r=(OT.cur.r+1)%8;
   else if(code==="Enter"||code==="NumpadEnter"||code==="Space"){
-    if(!otPlace(OT.cur.c, OT.cur.r, 1)) showToast("거긴 못 놓아요! (뒤집을 수 있는 곳만)");
+    if(!otPlace(OT.cur.c, OT.cur.r, OT.pvp?OT.turn:1)) showToast("거긴 못 놓아요! (뒤집을 수 있는 곳만)");
   }
+
 }
 function otUpdate(dt){
   if(!OT||OT.over) return;
   if(OT.passMsgT>0) OT.passMsgT-=dt;
-  if(OT.turn===2){ OT.aiT-=dt; if(OT.aiT<=0) otAiMove(); }
+  if(OT.turn===2 && !OT.pvp){ OT.aiT-=dt; if(OT.aiT<=0) otAiMove(); }   // v1.74: 2인전은 AI 없음
 }
 function otRender(){
   if(!OT) return;
@@ -6658,7 +6736,7 @@ function otRender(){
   const cell=72, ox=LOGW/2-4*cell, oy=76;
   ctx.fillStyle="#14224a"; roundRect(ox-14, oy-14, cell*8+28, cell*8+28, 14); ctx.fill();
   ctx.strokeStyle="#3a4470"; ctx.lineWidth=3; roundRect(ox-14, oy-14, cell*8+28, cell*8+28, 14); ctx.stroke();
-  const legal=(OT.turn===1 && !OT.over)?otMoves(OT.b,1):[];
+  const legal=((OT.turn===1||OT.pvp) && !OT.over)?otMoves(OT.b,OT.turn):[];
   for(let r=0;r<8;r++) for(let c=0;c<8;c++){
     const x=ox+c*cell, y=oy+r*cell;
     ctx.fillStyle=((c+r)%2)?"#182a58":"#16264f"; ctx.fillRect(x, y, cell-2, cell-2);
@@ -6690,9 +6768,9 @@ function otRender(){
     if(OT.lastMove && OT.lastMove.c===c && OT.lastMove.r===r){
       ctx.strokeStyle="#ffffff"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(x+cell/2, y+cell/2, cell*0.42, 0, Math.PI*2); ctx.stroke();
     }
-    (function(cc,rr){ uiHit(x, y, cell-2, cell-2, function(){ if(OT.turn===1 && !OT.over){ OT.cur={c:cc,r:rr}; if(!otPlace(cc,rr,1)) showToast("거긴 못 놓아요!"); } }); })(c,r);
+    (function(cc,rr){ uiHit(x, y, cell-2, cell-2, function(){ if((OT.turn===1||OT.pvp) && !OT.over){ OT.cur={c:cc,r:rr}; if(!otPlace(cc,rr,OT.pvp?OT.turn:1)) showToast("거긴 못 놓아요!"); } }); })(c,r);
   }
-  if(OT.turn===1 && !OT.over){
+  if((OT.turn===1||OT.pvp) && !OT.over){
     const x=ox+OT.cur.c*cell, y=oy+OT.cur.r*cell;
     ctx.strokeStyle="#7dffb0"; ctx.lineWidth=3; ctx.strokeRect(x+2, y+2, cell-6, cell-6);
   }
@@ -6701,14 +6779,25 @@ function otRender(){
   ctx.textAlign="left"; ctx.fillStyle="#9fe6c8"; ctx.font="bold 17px 'Malgun Gothic',sans-serif";
   ctx.fillText("⚫ 별빛 오델로", 16, 22);
   ctx.textAlign="center"; ctx.fillStyle="#fff"; ctx.font="bold 18px 'Malgun Gothic',sans-serif";
-  ctx.fillText("⭐ "+s.p+"  vs  ☁ "+s.a+"    ·    "+(OT.over?"게임 끝!":(OT.turn===1?"내 차례!":"☁ 생각 중...")), LOGW/2, 22);
+  ctx.fillText("⭐ "+s.p+"  vs  ☁ "+s.a+"    ·    "+(OT.over?"게임 끝!":(OT.pvp?(OT.turn===1?"⭐ 친구 차례!":"☁ 친구 차례!"):(OT.turn===1?"내 차례!":"☁ 생각 중..."))), LOGW/2, 22);
   ctx.textAlign="right"; ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
-  ctx.fillText("전적 "+w.w+"승 "+w.l+"패 "+w.d+"무", LOGW-16, 22);
+  ctx.fillText(OT.pvp?"👥 둘이서 모드":("전적 "+w.w+"승 "+w.l+"패 "+w.d+"무"), LOGW-16, 22);
+  // v1.74: 모드 전환 버튼(새 판으로 시작)
+  {
+    const bw2=104, bx1=16, by1=44;
+    ctx.textAlign="center";
+    ctx.fillStyle=!OT.pvp?"rgba(95,160,255,0.4)":"rgba(30,38,66,0.85)"; roundRect(bx1,by1,bw2,26,13); ctx.fill();
+    ctx.fillStyle="#dfe6ff"; ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.fillText("🤖 AI 대결", bx1+bw2/2, by1+14);
+    uiHit(bx1,by1,bw2,26,function(){ if(OT.pvp) otStart(false); });
+    ctx.fillStyle=OT.pvp?"rgba(95,160,255,0.4)":"rgba(30,38,66,0.85)"; roundRect(bx1+bw2+8,by1,bw2,26,13); ctx.fill();
+    ctx.fillStyle="#dfe6ff"; ctx.fillText("👥 둘이서", bx1+bw2+8+bw2/2, by1+14);
+    uiHit(bx1+bw2+8,by1,bw2,26,function(){ if(!OT.pvp) otStart(true); });
+  }
   ctx.textAlign="center"; ctx.fillStyle="#8893bb";
-  ctx.fillText("클릭 또는 화살표+Enter · 노란 점=놓을 수 있는 곳 · R 새 판 · Esc 나가기", LOGW/2, LOGH-16);
+  ctx.fillText("클릭/화살표+Enter · 노란 점=가능 · T 모드 전환(AI↔둘이서) · R 새 판 · Esc 나가기", LOGW/2, LOGH-16);
   if(OT.passMsgT>0){ ctx.fillStyle="#ffd97d"; ctx.font="bold 22px 'Malgun Gothic',sans-serif"; ctx.fillText(OT.msg, LOGW/2, 60); }
   if(OT.over){
-    const res=(s.p>s.a)?"🎉 별빛 승리!":((s.p<s.a)?"☁ 먹구름 승리...":"🤝 무승부!");
+    const res=OT.pvp?((s.p>s.a)?"🎉 ⭐별빛 친구 승리!":((s.p<s.a)?"🎉 ☁먹구름 친구 승리!":"🤝 무승부!")):((s.p>s.a)?"🎉 별빛 승리!":((s.p<s.a)?"☁ 먹구름 승리...":"🤝 무승부!"));
     ctx.fillStyle="rgba(8,10,22,0.7)"; ctx.fillRect(0,LOGH/2-70,LOGW,140);
     ctx.fillStyle=(s.p>s.a)?"#7dffb0":((s.p<s.a)?"#ff8a8a":"#ffd97d");
     ctx.font="bold 42px 'Malgun Gothic',sans-serif"; ctx.fillText(res, LOGW/2, LOGH/2-18);
@@ -6807,7 +6896,10 @@ function lhRender(){
     ctx.font="bold 18px 'Malgun Gothic',sans-serif"; ctx.fillText(g.name, bx+bw/2, by+104);
     ctx.font="12px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#aab4e0"; ctx.fillText(g.desc, bx+bw/2, by+130);
     const rec=lhRecord(i);
-    ctx.fillStyle="#ffe14d"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.fillText(rec||"—", bx+bw/2, by+158);
+    ctx.fillStyle="#ffe14d"; ctx.font="bold 13px 'Malgun Gothic',sans-serif"; ctx.fillText(rec||"—", bx+bw/2, by+150);
+    const top1=labRankTop(g.key)[0];
+    ctx.fillStyle="#c9a6ff"; ctx.font="11px 'Malgun Gothic',sans-serif";
+    ctx.fillText(top1?("👑 "+top1.n+" "+top1.s):"👑 —", bx+bw/2, by+166);
     ctx.fillStyle="#5f6a94"; ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.fillText("["+((k+1)%10)+"]", bx+bw/2, by+182);
     (function(idx){ uiHit(bx,by,bw,bh,function(){ if(LH.idx===idx) LAB_GAMES[list[idx]].run(); else LH.idx=idx; }); })(k);
     if(!stu){   // 교사: 개방 토글 배지(카드 우상단 — 카드 클릭과 별개 히트)

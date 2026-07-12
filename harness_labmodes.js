@@ -32,6 +32,7 @@ script+=`;globalThis.__api={ STATE, keysDown,
   LabOpenStore, labToggle, labOpenCount, labBack, drawLobbyMiniBanner, activateMenuRow, handleAdminKey,
   get labOpen(){return labOpen;}, get labFrom(){return labFrom;}, setLabFrom:v=>{labFrom=v;}, setState:(s)=>{ gameState=s; },
   labReward, get lobbyCardOpen(){return lobbyCardOpen;}, setLobbyCardOpen:v=>{lobbyCardOpen=v;}, handleStartKey,
+  LabRankStore, labRankTop, labRankDraw, LAB_RANK_LOWER, get labRank(){return labRank;},
   labShared, labSubmit, pzSubmit, tdEditStart, tdEditCheck, tdSubmit, tdBeginShared, tdStartWave2:tdStartWave,
   shOpen, shEditStart, shEditCheck, shSubmit, shBeginShared, drawMapReviewScreen, loadEditorStore, saveEditorStore,
   setReviewIdx:v=>{reviewIdx=v;}, setPrompt:f=>{ window.prompt=f; },
@@ -967,6 +968,65 @@ run("교사 승인 화면: 공방 3종 렌더(getRule 크래시 방지)", ()=>{
   api.setReviewIdx(0);
   api.drawMapReviewScreen();   // pending에 3종 섞여 있어도 라벨/프리뷰 예외 없어야
   check("리뷰 화면 렌더 예외 없음", true);
+});
+
+/* ═══ ⑮ v1.74 학급 랭킹 + 오델로 2인 대전 ═══ */
+run("학급 랭킹: 병합 규칙(이름별 최고·정렬·TOP8)", ()=>{
+  const m=api.LabRankStore.merge(
+    [{n:"가",s:10},{n:"나",s:30}], [{n:"가",s:50},{n:"다",s:20}], false);
+  check("높은 점수 우선 정렬", m[0].n==="가" && m[0].s===50 && m[1].s===30 && m[2].s===20);
+  check("같은 이름은 최고 기록만", m.length===3);
+  const big=[]; for(let i=0;i<12;i++) big.push({n:"학생"+i,s:i});
+  check("TOP8로 잘림", api.LabRankStore.merge(big,[],false).length===8);
+  const lo=api.LabRankStore.merge([{n:"가",s:40},{n:"나",s:12}],[{n:"가",s:25}],true);
+  check("낮을수록 좋은 기록(던전 시간): min 유지·오름차순", lo[0].n==="나" && lo[0].s===12 && lo[1].n==="가" && lo[1].s===25);
+  check("던전만 lowerBetter 등록", api.LAB_RANK_LOWER.ray===true && !api.LAB_RANK_LOWER.sn);
+});
+run("학급 랭킹: 게임 종료 시 자동 제출(별꼬리)", ()=>{
+  delete api.labRank.sn;
+  function snCrash(sc){ api.snStart(); api.SN.score=sc;
+    api.SN.body=[{c:6,r:0},{c:5,r:0},{c:4,r:0}]; api.SN.prev=api.SN.body.map(b=>({c:b.c,r:b.r}));
+    api.SN.dir={c:0,r:-1}; api.SN.nextDir={c:0,r:-1};   // 위쪽 벽 직전 → 한 걸음에 충돌
+    for(let i=0;i<120 && !api.SN.over;i++) api.snUpdate(1/30); }
+  snCrash(77);
+  check("게임오버 도달", api.SN.over===true);
+  const r=(api.labRank.sn||[])[0];
+  check("labRank.sn에 내 점수 기록", !!r && r.s===77);
+  snCrash(50);
+  check("낮은 점수는 최고 기록을 못 깎음", (api.labRank.sn||[])[0].s===77);
+  api.labRankDraw("sn", 640, 300, "점");
+  check("랭킹 표시 렌더 예외 없음", true);
+});
+run("오델로: 👥 2인 대전(핫시트)", ()=>{
+  api.otStart(true);
+  check("pvp 모드 시작", api.OT.pvp===true && api.OT.turn===1);
+  for(let i=0;i<200;i++) api.otUpdate(0.1);
+  check("시간이 흘러도 AI가 대신 안 둠", api.OT.turn===1 && api.otCount(api.OT.b).p===2);
+  const mv=api.otMoves(api.OT.b,1)[0];
+  api.OT.cur={c:mv.c,r:mv.r}; api.otKey("Enter");
+  check("⭐ 착수 → ☁ 차례로", api.OT.turn===2);
+  for(let i=0;i<50;i++) api.otUpdate(0.1);
+  check("☁ 차례도 사람 몫(AI 미개입)", api.OT.turn===2);
+  const mv2=api.otMoves(api.OT.b,2)[0];
+  api.OT.cur={c:mv2.c,r:mv2.r}; api.otKey("Enter");
+  check("☁도 키보드로 착수 가능", api.OT.turn===1 && api.otCount(api.OT.b).a>=2);
+  const w0=JSON.stringify(JSON.parse(localStorage.getItem("starArena.othello.wins.v1")||"{\"w\":0,\"l\":0,\"d\":0}"));
+  let guard=0;   // 남은 판을 양쪽 다 사람처럼 첫 수로 끝까지(패스·종료는 otPlace가 판정)
+  while(!api.OT.over && guard++<70){
+    const mv=api.otMoves(api.OT.b, api.OT.turn)[0];
+    if(!mv) break;
+    api.otPlace(mv.c, mv.r, api.OT.turn);
+  }
+  check("2인전 완주 → 종료 판정", api.OT.over===true);
+  check("2인전 종료 시 AI 전적 불변",
+    JSON.stringify(JSON.parse(localStorage.getItem("starArena.othello.wins.v1")||"{\"w\":0,\"l\":0,\"d\":0}"))===w0);
+  api.otKey("KeyT");
+  check("T키: AI전으로 전환(새 판)", api.OT.pvp===false && api.OT.turn===1);
+  const mv3=api.otMoves(api.OT.b,1)[0];
+  api.OT.cur={c:mv3.c,r:mv3.r}; api.otKey("Enter");
+  check("AI전 회귀: ⭐ 착수 정상", api.OT.turn===2);
+  for(let i=0;i<40 && api.OT.turn===2;i++) api.otUpdate(0.1);
+  check("AI전 회귀: ☁ AI가 둔다", api.OT.turn===1);
 });
 
 console.log("\n결과: "+(fail===0?("ALL PASS ✅ ("+pass+"항목)"):(fail+"건 실패 ❌")));
