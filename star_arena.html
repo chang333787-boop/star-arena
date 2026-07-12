@@ -2377,7 +2377,7 @@ const PF_SIZES=[ {cols:33, rows:12, name:"연습 33×12 (1.5화면)"},
 const PF_BEST_KEY="starArena.pfBest.v1";
 function pfLoadBest(){ try{ const s=JSON.parse(localStorage.getItem(PF_BEST_KEY)); if(s&&typeof s==="object") return s; }catch(e){} return {}; }
 function pfSaveBest(st){ try{ localStorage.setItem(PF_BEST_KEY, JSON.stringify(st)); }catch(e){} }
-/* P1.5 별빛 점프 원정 — 캠페인 20스테이지(테마 4구역×5 · 스테이지마다 새 기믹 도입 후 조합)
+/* P1.5+MAKER: 별빛 점프 원정 — 캠페인 30스테이지(테마 6구역×5 · 스테이지마다 새 기믹 도입 후 조합)
    전 스테이지 실물리 몬테카를로 봇 클리어 검증(harness_pfcamp.js) — 못 깨는 스테이지 출시 금지(1.5-A) */
 const PF_LEVELS=[
   { id:"pfc_01", name:"1. 첫 걸음", author:"별빛", camp:0, zone:0, rows:[
@@ -3849,7 +3849,7 @@ function tdEdgeFlash(color, a){   // LAB-3 눈편안: 전체화면 플래시 →
 }
 function tdDrawSelect(){
   ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
-  ctx.fillStyle="#9fe6c8"; ctx.font="bold 34px 'Malgun Gothic',sans-serif"; ctx.fillText("🏰 별빛 수비대 (실험)", LOGW/2, 66);
+  ctx.fillStyle="#9fe6c8"; ctx.font="bold 34px 'Malgun Gothic',sans-serif"; ctx.fillText("🏰 별빛 수비대", LOGW/2, 66);
   ctx.fillStyle="#8893bb"; ctx.font="14px 'Malgun Gothic',sans-serif";
   ctx.fillText("맵과 난이도를 고르세요 — ←→ 맵 · ↑↓ 난이도 · Enter 시작 · Esc 나가기", LOGW/2, 100);
   const best=tdBestLoad();
@@ -4373,7 +4373,7 @@ function shRender(){
   ctx.save(); ctx.textBaseline="middle";
   ctx.fillStyle="rgba(10,14,24,0.85)"; ctx.fillRect(0,0,LOGW,44);
   ctx.textAlign="left"; ctx.fillStyle="#9fe6c8"; ctx.font="bold 17px 'Malgun Gothic',sans-serif";
-  ctx.fillText("🚀 별빛 함대 (실험)", 16, 22);
+  ctx.fillText("🚀 별빛 함대", 16, 22);
   ctx.textAlign="center"; ctx.fillStyle="#ffffff"; ctx.font="bold 18px 'Malgun Gothic',sans-serif";
   ctx.fillText("점수 "+SH.score+"   ·   🏆 "+Math.max(shBest(),SH.score)+"   ·   WAVE "+Math.min(SH.wave,SH_MAXWAVE)+"/"+SH_MAXWAVE, LOGW/2, 22);
   ctx.textAlign="right"; ctx.fillStyle="#ff8a8a"; ctx.fillText("❤".repeat(Math.max(0,SH.p.lives)), LOGW-16, 22);
@@ -4810,9 +4810,9 @@ function svStart(){
        foes:[], bolts:[], gems:[], fx:[],
        t:0, kills:0, level:1, xp:0, xpNext:6,
        phase:"play", choices:null, paused:false, bossSpawned:false,
-       spawnT:1.2, camX:SV_W/2-LOGW/2, camY:SV_H/2-LOGH/2, hurtT:0 };
+       spawnT:1.2, camX:SV_W/2-LOGW/2, camY:SV_H/2-LOGH/2, hurtT:0, best:svBestLoad() };
   gameState=STATE.SURVIVOR;
-  showToast("⚔ 별빛 생존자(실험) — 5분 동안 살아남아라! 공격은 자동!");
+  showToast("⚔ 별빛 생존자 — 5분 동안 살아남아라! 공격은 자동!");
 }
 function svRollChoices(){
   const pool=SV_UPS.slice(), out=[];
@@ -4863,7 +4863,7 @@ function svHurt(dmg){
   if(p.ifr>0) return;
   p.hp-=dmg; p.ifr=0.8; SV.hurtT=0.4; playSfx("hit");
   if(p.hp<=0){ p.hp=0; SV.phase="over"; playSfx("lose");
-    try{ const b=svBestLoad(); if(SV.t>b.bestT){ b.bestT=Math.round(SV.t); localStorage.setItem(SV_BEST_KEY, JSON.stringify(b)); } }catch(e){}
+    try{ const b=svBestLoad(); if(SV.t>b.bestT){ b.bestT=Math.round(SV.t); localStorage.setItem(SV_BEST_KEY, JSON.stringify(b)); } SV.best=b; }catch(e){}
   }
 }
 function svKill(f){
@@ -4970,7 +4970,7 @@ function svUpdate(dt){
   // 승리
   if(SV.t>=SV_WIN_T){
     SV.phase="win"; playSfx("win");
-    try{ const b=svBestLoad(); b.wins=(b.wins||0)+1; if(SV.t>b.bestT) b.bestT=Math.round(SV.t); localStorage.setItem(SV_BEST_KEY, JSON.stringify(b)); }catch(e){}
+    try{ const b=svBestLoad(); b.wins=(b.wins||0)+1; if(SV.t>b.bestT) b.bestT=Math.round(SV.t); localStorage.setItem(SV_BEST_KEY, JSON.stringify(b)); SV.best=b; }catch(e){}
   }
   // 카메라
   SV.camX=clamp(p.x-LOGW/2, 0, SV_W-LOGW);
@@ -5025,12 +5025,12 @@ function svRender(){
   ctx.save(); ctx.textBaseline="middle";
   ctx.fillStyle="rgba(10,14,24,0.85)"; ctx.fillRect(0,0,LOGW,44);
   ctx.textAlign="left"; ctx.fillStyle="#9fe6c8"; ctx.font="bold 17px 'Malgun Gothic',sans-serif";
-  ctx.fillText("⚔ 별빛 생존자 (실험)", 16, 22);
+  ctx.fillText("⚔ 별빛 생존자", 16, 22);
   ctx.textAlign="center"; ctx.fillStyle="#ffffff"; ctx.font="bold 20px 'Malgun Gothic',sans-serif";
   const remain=Math.max(0, SV_WIN_T-SV.t);
   ctx.fillText("⏱ "+Math.floor(remain/60)+":"+String(Math.floor(remain%60)).padStart(2,"0")+"   ·   Lv."+SV.level+"   ·   💀 "+SV.kills, LOGW/2, 22);
   ctx.textAlign="right"; ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
-  ctx.fillText("최고 "+svBestLoad().bestT+"초 · 승리 "+svBestLoad().wins+"회", LOGW-16, 22);
+  ctx.fillText("최고 "+SV.best.bestT+"초 · 승리 "+(SV.best.wins||0)+"회", LOGW-16, 22);
   // HP·XP 바
   {
     const bw=420, bx=LOGW/2-bw/2;
@@ -5077,7 +5077,7 @@ function svRender(){
     ctx.fillText((SV.phase==="win")?"🎉 5분 생존 성공!":"💧 별빛이 스러졌다...", LOGW/2, LOGH/2-64);
     ctx.fillStyle="#dfe6ff"; ctx.font="18px 'Malgun Gothic',sans-serif";
     ctx.fillText("⏱ "+SV.t.toFixed(0)+"초 생존 · Lv."+SV.level+" · 💀 "+SV.kills+"마리", LOGW/2, LOGH/2-16);
-    const b=svBestLoad();
+    const b=SV.best;
     ctx.fillText("🏆 최고 "+b.bestT+"초 · 승리 "+(b.wins||0)+"회", LOGW/2, LOGH/2+16);
     ctx.fillText("R 다시 도전 · Esc 나가기", LOGW/2, LOGH/2+52);
   }
@@ -5112,7 +5112,7 @@ function eggFeed(){
   EGG.wobbleT=0.7; EGG.sparkT=0.5; playSfx("buff");
   const idx=eggStageIdx(EGG.save.xp);
   if(EGG_STAGES[idx].at===EGG.save.xp || (idx===4 && EGG.save.xp>=500)) { playSfx("powerup"); showToast("✨ "+EGG_STAGES[idx].name+"!"); }
-  else showToast("🍬 냠냠! 별빛 먹이"+(paid?" (-10G)":" (실험 무료)"));
+  else showToast("🍬 냠냠! 별빛 먹이"+(paid?" (-10G)":" (무료)"));
   eggSave();
   return true;
 }
@@ -5145,7 +5145,7 @@ function eggRender(){
   ctx.fillStyle="rgba(223,230,255,0.5)";
   for(let i=0;i<40;i++){ const tw=0.3+0.7*Math.abs(Math.sin(uiTime*0.8+i)); ctx.globalAlpha=tw*0.6; ctx.fillRect((i*167)%LOGW, (i*97)%(LOGH-200), 2, 2); }
   ctx.globalAlpha=1;
-  ctx.fillStyle="#9fe6c8"; ctx.font="bold 32px 'Malgun Gothic',sans-serif"; ctx.fillText("🥚 별빛 알 (실험)", LOGW/2, 60);
+  ctx.fillStyle="#9fe6c8"; ctx.font="bold 32px 'Malgun Gothic',sans-serif"; ctx.fillText("🥚 별빛 알", LOGW/2, 60);
   ctx.fillStyle="#8893bb"; ctx.font="14px 'Malgun Gothic',sans-serif";
   ctx.fillText("먹구름 요새 깊은 곳에서 발견된 알 — 챕터1 엔딩의 그 알이에요!", LOGW/2, 94);
   const cx=LOGW/2, cy=LOGH/2+40;
@@ -5522,7 +5522,7 @@ function pzRender(){
   for(let i=0;i<30;i++){ ctx.globalAlpha=0.25+0.35*Math.abs(Math.sin(uiTime+i)); ctx.fillRect((i*167)%LOGW, (i*97)%LOGH, 2, 2); }
   ctx.globalAlpha=1;
   if(PZ.phase==="select"){
-    ctx.fillStyle="#9fe6c8"; ctx.font="bold 32px 'Malgun Gothic',sans-serif"; ctx.fillText("🧩 별조각 밀기 (실험)", LOGW/2, 60);
+    ctx.fillStyle="#9fe6c8"; ctx.font="bold 32px 'Malgun Gothic',sans-serif"; ctx.fillText("🧩 별조각 밀기", LOGW/2, 60);
     ctx.fillStyle="#8893bb"; ctx.font="14px 'Malgun Gothic',sans-serif";
     ctx.fillText("별조각(⭐)을 밀어서 별자리 홈(⭕)에 쏙! — 당길 수는 없어요. 구석 조심!", LOGW/2, 94);
     const best=pzBestLoad(), cols=3, bw=330, bh=96;
@@ -5661,7 +5661,7 @@ function rnStart(){
   RN={ y:0, vy:0, slide:0, spd:330, dist:0, coins:0, obst:[], stars:[], spawnT:1.1,
        over:false, paused:false, groundY:LOGH-140, t:0, dj:true };
   gameState=STATE.RUNNER;
-  showToast("🏃 별빛 러너(실험) — Z 점프(2단!) · ↓ 슬라이드 · 장애물을 피해 멀리!");
+  showToast("🏃 별빛 러너 — Z 점프(2단!) · ↓ 슬라이드 · 장애물을 피해 멀리!");
 }
 function rnJump(){
   if(!RN||RN.over) return;
@@ -5757,7 +5757,7 @@ function rnRender(){
   ctx.save(); ctx.textBaseline="middle";
   ctx.fillStyle="rgba(10,14,24,0.85)"; ctx.fillRect(0,0,LOGW,44);
   ctx.textAlign="left"; ctx.fillStyle="#9fe6c8"; ctx.font="bold 17px 'Malgun Gothic',sans-serif";
-  ctx.fillText("🏃 별빛 러너 (실험)", 16, 22);
+  ctx.fillText("🏃 별빛 러너", 16, 22);
   ctx.textAlign="center"; ctx.fillStyle="#fff"; ctx.font="bold 20px 'Malgun Gothic',sans-serif";
   ctx.fillText(Math.floor(RN.dist)+"m   ·   ⭐ "+RN.coins, LOGW/2, 22);
   ctx.textAlign="right"; ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
@@ -5792,10 +5792,10 @@ function bkBricks(stage){
 function bkServe(){ BK.balls=[{ x:BK.px, y:LOGH-96, vx:(Math.random()<0.5?-1:1)*180, vy:-430, stuck:false }]; }
 function bkStart(){
   BK={ px:LOGW/2, pw:130, stage:1, score:0, lives:3, bricks:bkBricks(1), balls:[], drops:[],
-       slowT:0, wideT:0, over:false, win:false, paused:false, t:0 };
+       slowT:0, wideT:0, over:false, win:false, paused:false, t:0, best:bkBest() };
   bkServe();
   gameState=STATE.BREAKOUT;
-  showToast("🧱 별빛 벽돌깨기(실험) — ←→로 받아치자! 3스테이지!");
+  showToast("🧱 별빛 벽돌깨기 — ←→로 받아치자! 3스테이지!");
 }
 function bkKey(code){
   if(code==="Escape"){ BK=null; labBack(); return; }
@@ -5854,7 +5854,7 @@ function bkUpdate(dt){
   if(!BK.balls.length){
     BK.lives--;
     if(BK.lives<=0){ BK.over=true; playSfx("lose");
-      try{ const bb=bkBest(); if(BK.score>bb.score) localStorage.setItem(BK_BEST_KEY, JSON.stringify({score:BK.score, stage:BK.stage})); }catch(e){}
+      try{ const bb=bkBest(); if(BK.score>bb.score){ localStorage.setItem(BK_BEST_KEY, JSON.stringify({score:BK.score, stage:BK.stage})); } BK.best=bkBest(); }catch(e){}
       return; }
     playSfx("hit"); bkServe();
   }
@@ -5869,7 +5869,7 @@ function bkUpdate(dt){
   if(!BK.bricks.some(br=>br.hp>0)){
     BK.score+=200; playSfx("clear");
     if(BK.stage>=3){ BK.win=true; playSfx("win");
-      try{ const bb=bkBest(); if(BK.score>bb.score) localStorage.setItem(BK_BEST_KEY, JSON.stringify({score:BK.score, stage:3})); }catch(e){} }
+      try{ const bb=bkBest(); if(BK.score>bb.score){ localStorage.setItem(BK_BEST_KEY, JSON.stringify({score:BK.score, stage:3})); } BK.best=bkBest(); }catch(e){} }
     else { BK.stage++; BK.bricks=bkBricks(BK.stage); BK.drops.length=0; bkServe(); showToast("🎉 스테이지 "+BK.stage+"!"); }
   }
 }
@@ -5908,9 +5908,9 @@ function bkRender(){
   ctx.save(); ctx.textBaseline="middle";
   ctx.fillStyle="rgba(10,14,24,0.85)"; ctx.fillRect(0,0,LOGW,44);
   ctx.textAlign="left"; ctx.fillStyle="#9fe6c8"; ctx.font="bold 17px 'Malgun Gothic',sans-serif";
-  ctx.fillText("🧱 별빛 벽돌깨기 (실험)", 16, 22);
+  ctx.fillText("🧱 별빛 벽돌깨기", 16, 22);
   ctx.textAlign="center"; ctx.fillStyle="#fff"; ctx.font="bold 18px 'Malgun Gothic',sans-serif";
-  ctx.fillText("점수 "+BK.score+"   ·   STAGE "+BK.stage+"/3   ·   🏆 "+Math.max(bkBest().score,BK.score), LOGW/2, 22);
+  ctx.fillText("점수 "+BK.score+"   ·   STAGE "+BK.stage+"/3   ·   🏆 "+Math.max(BK.best.score,BK.score), LOGW/2, 22);
   ctx.textAlign="right"; ctx.fillStyle="#ff8a8a"; ctx.fillText("❤".repeat(Math.max(0,BK.lives)), LOGW-16, 22);
   ctx.textAlign="center"; ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
   ctx.fillText("←→ 패들 · 🟦넓게 ✨멀티볼 🐌슬로우 · P 정지 · Esc 나가기", LOGW/2, LOGH-14);
@@ -5922,7 +5922,7 @@ function bkRender(){
     ctx.fillStyle=BK.win?"#7dffb0":"#ff8a8a";
     ctx.fillText(BK.win?"🎉 벽돌 완전 정복!":"💧 별공이 떨어졌다...", LOGW/2, LOGH/2-52);
     ctx.fillStyle="#dfe6ff"; ctx.font="18px 'Malgun Gothic',sans-serif";
-    ctx.fillText("점수 "+BK.score+" · 스테이지 "+BK.stage+" · 🏆 "+Math.max(bkBest().score,BK.score), LOGW/2, LOGH/2-4);
+    ctx.fillText("점수 "+BK.score+" · 스테이지 "+BK.stage+" · 🏆 "+Math.max(BK.best.score,BK.score), LOGW/2, LOGH/2-4);
     ctx.fillText("Enter 다시 · Esc 나가기", LOGW/2, LOGH/2+32);
   }
   ctx.restore();
@@ -5945,7 +5945,7 @@ function snStart(){
        stepIv:0.15, stepT:0, score:0, eaten:0, over:false, paused:false, food:null };
   snPlaceFood(false);
   gameState=STATE.SNAKE;
-  showToast("🐍 별꼬리(실험) — 별조각을 먹고 길~어지자! 벽과 내 꼬리 조심!");
+  showToast("🐍 별꼬리 — 별조각을 먹고 길~어지자! 벽과 내 꼬리 조심!");
 }
 function snKey(code){
   if(code==="Escape"){ SN=null; labBack(); return; }
@@ -6010,7 +6010,7 @@ function snRender(){
   ctx.save(); ctx.textBaseline="middle"; ctx.textAlign="center";
   ctx.fillStyle="rgba(10,14,24,0.85)"; ctx.fillRect(0,0,LOGW,44);
   ctx.textAlign="left"; ctx.fillStyle="#9fe6c8"; ctx.font="bold 17px 'Malgun Gothic',sans-serif";
-  ctx.fillText("🐍 별꼬리 (실험)", 16, 22);
+  ctx.fillText("🐍 별꼬리", 16, 22);
   ctx.textAlign="center"; ctx.fillStyle="#fff"; ctx.font="bold 18px 'Malgun Gothic',sans-serif";
   ctx.fillText("점수 "+SN.score+"   ·   길이 "+SN.body.length+"   ·   🏆 "+Math.max(snBest(),SN.score), LOGW/2, 22);
   ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
@@ -6034,9 +6034,9 @@ function otStart(){
   const b=[];
   for(let r=0;r<8;r++){ b.push(new Array(8).fill(0)); }
   b[3][3]=2; b[4][4]=2; b[3][4]=1; b[4][3]=1;   // 1=⭐플레이어 2=☁AI
-  OT={ b:b, turn:1, cur:{c:2,r:3}, aiT:0, over:false, msg:"", passMsgT:0, lastMove:null };
+  OT={ b:b, turn:1, cur:{c:2,r:3}, aiT:0, over:false, msg:"", passMsgT:0, lastMove:null, wins:otWins() };
   gameState=STATE.OTHELLO;
-  showToast("⚫ 별빛 오델로(실험) — ⭐를 놓아 ☁먹구름을 뒤집자!");
+  showToast("⚫ 별빛 오델로 — ⭐를 놓아 ☁먹구름을 뒤집자!");
 }
 function otFlips(b, c, r, who){
   if(b[r][c]!==0) return [];
@@ -6070,7 +6070,7 @@ function otPlace(c, r, who){
     OT.over=true;
     const s=otCount(OT.b);
     try{ const w=otWins(); if(s.p>s.a) w.w++; else if(s.p<s.a) w.l++; else w.d++;
-      localStorage.setItem(OT_WINS_KEY, JSON.stringify(w)); }catch(e){}
+      localStorage.setItem(OT_WINS_KEY, JSON.stringify(w)); OT.wins=w; }catch(e){}
     playSfx(s.p>s.a?"win":(s.p<s.a?"lose":"clear"));
   }
   if(OT.turn===2) OT.aiT=0.75;
@@ -6141,10 +6141,10 @@ function otRender(){
     const x=ox+OT.cur.c*cell, y=oy+OT.cur.r*cell;
     ctx.strokeStyle="#7dffb0"; ctx.lineWidth=3; ctx.strokeRect(x+2, y+2, cell-6, cell-6);
   }
-  const s=otCount(OT.b), w=otWins();
+  const s=otCount(OT.b), w=OT.wins;   // PERF: 프레임당 파싱 방지(종국 시 갱신)
   ctx.fillStyle="rgba(10,14,24,0.85)"; ctx.fillRect(0,0,LOGW,44);
   ctx.textAlign="left"; ctx.fillStyle="#9fe6c8"; ctx.font="bold 17px 'Malgun Gothic',sans-serif";
-  ctx.fillText("⚫ 별빛 오델로 (실험)", 16, 22);
+  ctx.fillText("⚫ 별빛 오델로", 16, 22);
   ctx.textAlign="center"; ctx.fillStyle="#fff"; ctx.font="bold 18px 'Malgun Gothic',sans-serif";
   ctx.fillText("⭐ "+s.p+"  vs  ☁ "+s.a+"    ·    "+(OT.over?"게임 끝!":(OT.turn===1?"내 차례!":"☁ 생각 중...")), LOGW/2, 22);
   ctx.textAlign="right"; ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
@@ -6201,7 +6201,9 @@ function lhKey(code){
   if(code.indexOf("Digit")===0){ const n=+code.slice(5); const i=(n===0)?9:(n-1); if(i>=0&&i<list.length){ LAB_GAMES[list[i]].run(); } return; }
 }
 function lhUpdate(dt){}
-function lhRecord(i){   // 카드에 보여줄 한 줄 기록
+let _lhRec={t:-9,a:[]};
+function lhRecord(i){ if(uiTime-_lhRec.t>2){ _lhRec={t:uiTime,a:[]}; } if(_lhRec.a[i]===undefined) _lhRec.a[i]=lhRecordCalc(i); return _lhRec.a[i]; }   // PERF 2초 캐시
+function lhRecordCalc(i){   // 카드에 보여줄 한 줄 기록
   try{
     if(i===0){ const b=tdBestLoad(); const n=Object.keys(b).length; return n?("★ 기록 "+n+"개 맵"):""; }
     if(i===1){ const s=shBest(); return s?("🏆 "+s+"점"):""; }
@@ -12639,6 +12641,7 @@ function drawSplashScreen(){
 }
 // 학생 로그인 화면
 function drawLoginScreen(){
+  try{ drawLobbyScene(); }catch(e){}   // v1.69: 첫 화면부터 별빛 마을 씬(로비와 톤 통일)
   dimScreen(0.82);
   ctx.save(); ctx.textAlign="center"; ctx.textBaseline="alphabetic";
   ctx.fillStyle="#9fe0ff"; ctx.font="bold 22px 'Malgun Gothic',sans-serif"; ctx.fillText("별빛 아레나", LOGW/2, 84);
@@ -13797,6 +13800,7 @@ function drawLobbyTopBar(){
 }
 /* ── v1.66 카드형 로비 ── 위키·실험실 허브와 같은 톤. 키보드 로직(menuIndex 0~13·activateMenuRow·changeMenuValue)은 무변경 */
 let _lbGrads={};
+let _lbPf={t:-9,n:0};   // 로비 점프 클리어 수 캐시
 function lbCard(x,y,w,h,e){   // v1.68 게임 로비 카드: 색 그라디언트·아이콘 메달리온·선택 시 확대+샤인
   const sel=(menuIndex===e.i);
   if(sel){ x-=5; y-=5; w+=10; h+=10; }   // 선택 카드 살짝 확대(붕 뜨는 느낌)
@@ -13837,9 +13841,10 @@ function lbCard(x,y,w,h,e){   // v1.68 게임 로비 카드: 색 그라디언트
 }
 function drawLobbyCards(){
   const X=64, W=224, H=148, G=12, Y1=166, Y2=Y1+H+G;
-  let pfClear=0; try{ const b=pfLoadBest(); for(const k in b){ if(k.indexOf("pfc_")===0) pfClear++; } }catch(e){}
+  if(uiTime-_lbPf.t>2){ _lbPf.t=uiTime; _lbPf.n=0; try{ const b=pfLoadBest(); for(const k in b){ if(k.indexOf("pfc_")===0) _lbPf.n++; } }catch(e){} }
+  const pfClear=_lbPf.n;   // PERF: 프레임당 JSON.parse 방지(2초 캐시)
   const on=OnlineManager.available;
-  lbCard(X,         Y1, W, H, { i:0,  em:"⭐", name:"캠페인 도전", d1:"몬스터 군단 19판 격파", d2:"난이도: "+getDifficulty(selectedDifficultyId).name, color:"#ffd166", badge:"혼자 하기" });
+  lbCard(X,         Y1, W, H, { i:0,  em:"⭐", name:"캠페인 도전", d1:"몬스터 군단 20판 격파", d2:"난이도: "+getDifficulty(selectedDifficultyId).name, color:"#ffd166", badge:"혼자 하기" });
   lbCard(X+(W+G),   Y1, W, H, { i:2,  em:"▶",  name:"빠른 대전",   d1:getRule(selectedRuleId).name+" · "+getMode(selectedModeId).name, d2:getMap(selectedMapId).name, color:"#5fd0ff", badge:"혼자 하기" });
   lbCard(X+(W+G)*2, Y1, W, H, { i:7,  em:"🦘", name:"별빛 점프",   d1:"캠페인 30판 · 친구 맵", d2:(pfClear?("클리어 "+pfClear+"/30"):"점프 대모험"), color:"#7dffb0", badge:"혼자 하기" });
   lbCard(X,         Y2, W, H, { i:8,  em:"🌙", name:"별빛 마을",   d1:"혼자 하는 RPG 모험", d2:"농사 · 퀘스트 · 보스", color:"#ffce6b", badge:"혼자 하기" });
