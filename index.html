@@ -5229,7 +5229,7 @@ function svStart(){
   SV={ p:{ x:SV_W/2, y:SV_H/2, hp:100, maxhp:100, spd:250, ifr:0, face:1 },
        atk:{ dmg:14, cd:0.78, t:0.5, multi:1, orbit:0, orbitA:0, orbitTick:0, magnet:1, regen:0 },   // v1.77: 시작 젤리 1방(루프 시동)
        foes:[], bolts:[], gems:[], fx:[], dnums:[], meteorWarn:null,
-       chests:[], freeCards:0, vacuumT:0, chestSeeded:false, freeOpen:false,   // v1.78 보급 상자
+       chests:[], freeCards:0, vacuumT:0, chestSeeded:false, freeOpen:false, chestCd:0,   // v1.78 보급 상자(+v1.81 드랍 쿨)
        t:0, kills:0, level:1, xp:0, xpNext:6,
        phase:"play", choices:null, paused:false, bossSpawned:false,
        spawnT:1.2, camX:SV_W/2-LOGW/2, camY:SV_H/2-LOGH/2, hurtT:0, best:svBestLoad() };
@@ -5324,7 +5324,7 @@ function svKill(f, noBoom){
   f.alive=false; SV.kills++;
   playSfx("kill");
   const n=f.spec.boss?20:(f.elite?3:1);   // v1.73 정예 = 별가루 3개
-  const gv=Math.max(1, Math.round((f.spec.boss?1:f.spec.xp)*(1+SV.t/60)));   // v1.77: 늦게 잡은 적일수록 별가루 가치↑(1→2→3)
+  const gv=Math.max(1, Math.round((f.spec.boss?1:f.spec.xp)*Math.min(2.5, 1+SV.t/75)));   // v1.81: 가치 상승 완만화+×2.5 캡
   for(let k=0;k<n;k++) SV.gems.push({ x:f.x+(k?((k%5)-2)*14:0), y:f.y+(k?Math.floor(k/5)*14-14:0), xp:gv });
   SV.fx.push({x:f.x,y:f.y,t:0,dur:0.35});
   if(SV.fx.length>60) SV.fx.shift();
@@ -5335,7 +5335,7 @@ function svKill(f, noBoom){
     for(const f2 of SV.foes){ if(!f2.alive) continue;
       if(Math.hypot(f.x-f2.x,f.y-f2.y)<R){ f2.hp-=dmg; f2.hitT=0.12; svDnum(f2.x,f2.y-f2.spec.r,dmg,"#ff9a5a"); if(f2.hp<=0) svKill(f2,true); } }
   }
-  if(f.elite && !f.spec.boss && Math.random()<0.22) SV.chests.push({ x:f.x, y:f.y, jack:false });   // v1.78: 정예 → 🎁
+  if(f.elite && !f.spec.boss && SV.chestCd<=0 && Math.random()<0.15){ SV.chests.push({ x:f.x, y:f.y, jack:false }); SV.chestCd=12; }   // v1.81: 상자는 12초에 최대 1개(스트림 차단)
   if(f.spec.boss){ SV.chests.push({ x:f.x, y:f.y, jack:true }); showToast("👑 뭉게대왕 격파! 잭팟 상자가 떨어졌다!"); }
 }
 function svUpdate(dt){
@@ -5493,6 +5493,7 @@ function svUpdate(dt){
     } }
   SV.chests=SV.chests.filter(c=>!c.got);
   if(SV.vacuumT>0) SV.vacuumT-=dt;
+  if(SV.chestCd>0) SV.chestCd-=dt;
   // 별가루(젬) 자석·수집·레벨업
   const magR=130*a.magnet;   // v1.77: 70→130 + 전역 드리프트 — 카이팅 중에도 별가루가 따라와 루프가 이어짐
   for(const g of SV.gems){
@@ -5504,7 +5505,8 @@ function svUpdate(dt){
   }
   SV.gems=SV.gems.filter(g=>!g.got);
   if(SV.xp>=SV.xpNext){
-    SV.xp-=SV.xpNext; SV.level++; SV.xpNext=4+SV.level*3;   // v1.77: 페이싱(3분에 카드 8~11장 목표)
+    SV.xp-=SV.xpNext; SV.level++;
+    SV.xpNext=4+SV.level*3+Math.max(0,SV.level-8)*Math.max(0,SV.level-8)*2;   // v1.81: 9렙부터 제곱 가산 — "1초 1증강" 폭주 차단(초반 곡선은 그대로)
     SV.phase="levelup"; SV.choices=svRollChoices(); SV.freeOpen=false; playSfx("powerup");
   }
   else if(SV.freeCards>0){ SV.freeCards--; SV.phase="levelup"; SV.choices=svRollChoices(); SV.freeOpen=true; playSfx("powerup"); }   // v1.78: 공짜 카드 연쇄(파바바)

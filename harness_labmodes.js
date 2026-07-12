@@ -1218,6 +1218,24 @@ run("무쌍 v2: 🏅 랭크 성장·🔥 총력전", ()=>{
   check("마지막 30초 = 총력전 발동", ms.spurt===true);
   api.msKey("Escape");
 });
+run("생존자: v1.81 폭주 방지(비용 제곱·상자 쿨다운)", ()=>{
+  api.svStart();
+  const sv=api.SV; sv.spawnT=9999; sv.foes.length=0; sv.gems.length=0;
+  sv.level=13; sv.xp=1; sv.xpNext=1;
+  api.svUpdate(1/60); api.svKey("Digit1");
+  check("14레벨 비용 = 제곱 가산(4+42+72=118)", sv.xpNext===118);
+  check("저레벨 곡선은 유지(레벨9 미만 선형)", (4+5*3+0)===19);
+  const mr=Math.random; Math.random=()=>0.1;
+  sv.chests.length=0; sv.chestCd=0;
+  const f1={ alive:true, elite:true, x:100, y:100, hp:0, spec:{ hp:14, xp:1, r:17 }, hitT:0 };
+  const f2={ alive:true, elite:true, x:140, y:100, hp:0, spec:{ hp:14, xp:1, r:17 }, hitT:0 };
+  api.svKill(f1);
+  check("정예 상자 드랍 + 12초 쿨 시작", sv.chests.length===1 && sv.chestCd>0);
+  api.svKill(f2);
+  check("쿨다운 중엔 연속 드랍 없음(스트림 차단)", sv.chests.length===1);
+  Math.random=mr;
+  api.svKey("Escape");
+});
 run("생존자: 🎁 보급 상자·잭팟·진공(v1.78 도파민)", ()=>{
   api.svStart();
   let sv=api.SV; sv.xpNext=999999; sv.spawnT=9999; sv.foes.length=0;
