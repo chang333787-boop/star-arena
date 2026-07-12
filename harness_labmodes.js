@@ -1224,6 +1224,36 @@ run("무쌍 v2: 🏅 랭크 성장·🔥 총력전", ()=>{
   check("마지막 30초 = 총력전 발동", ms.spurt===true);
   api.msKey("Escape");
 });
+run("생존자: v1.85 멀미 수술(카메라 데드존·젬 정지) + 🏹 구름 포수", ()=>{
+  api.svStart();
+  const sv=api.SV; sv.spawnT=9999; sv.foes.length=0; sv.gems.length=0; sv.xpNext=999999;
+  // 젬 전역 드리프트 제거: 먼 별가루는 제자리(벡션 소멸)
+  sv.gems.push({ x:sv.p.x+600, y:sv.p.y, xp:1 });
+  const gx0=sv.gems[0].x;
+  for(let i=0;i<30;i++) api.svUpdate(1/60);
+  check("자석 밖(600px) 별가루는 움직이지 않음", Math.abs(sv.gems[0].x-gx0)<2);
+  sv.gems.length=0; sv.gems.push({ x:sv.p.x+170, y:sv.p.y, xp:1 });
+  for(let i=0;i<40 && sv.gems.length;i++) api.svUpdate(1/60);
+  check("자석(190) 안은 빨려와 수집", sv.gems.length===0);
+  // 카메라 데드존: 26px 이내 이동은 화면 고정
+  const cx0=sv.camX;
+  sv.p.x+=15;
+  for(let i=0;i<10;i++) api.svUpdate(1/60);
+  check("미세 이동(15px)엔 카메라 고정(데드존)", sv.camX===cx0);
+  sv.p.x+=300;
+  api.svUpdate(1/60);
+  const moved1=sv.camX-cx0;
+  check("큰 이동은 부드럽게 추적(한 프레임에 다 안 감)", moved1>0 && moved1<289);
+  // 포수: 거리 유지·조준탄·명중
+  sv.foes.push({ type:"archer", spec:api.SV_FOES_ARCHER||{hp:18,spd:60,dmg:5,xp:2,r:16,ranged:true}, x:sv.p.x+300, y:sv.p.y, hp:50, maxHp:50, alive:true, hitT:0, shootT:0.01 });
+  for(let i=0;i<10 && !sv.ebolts.length;i++) api.svUpdate(1/60);
+  check("🏹 포수: 조준탄 발사", sv.ebolts.length>=1);
+  sv.ebolts.length=0; sv.ebolts.push({ x:sv.p.x+2, y:sv.p.y, vx:0, vy:0, t:0 });
+  sv.p.ifr=0; sv.p.shield=false; const hp0=sv.p.hp;
+  api.svUpdate(1/60);
+  check("탄 명중 → 피해 7", sv.p.hp===hp0-7);
+  api.svKey("Escape");
+});
 run("생존자: v1.84 터렛 무적 차단 — 정예는 벽을 뚫는다", ()=>{
   api.svStart();
   const sv=api.SV; sv.spawnT=9999; sv.foes.length=0; sv.gems.length=0; sv.xpNext=999999;

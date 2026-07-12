@@ -3545,7 +3545,7 @@ const LabOpenStore={
 };
 /* ── v1.74 학급 랭킹: 게임별 TOP8을 클라우드로 공유(starArenaOnline/labRank/<class>) ──
    로컬 캐시 폴백 — 오프라인이어도 이 기기 랭킹은 동작, 접속되면 학급 전체와 합쳐짐. */
-const GAME_VER="v1.84";   // 화면 표시용 — 배포마다 PATCHNOTES와 함께 갱신(캐시 구버전 진단)
+const GAME_VER="v1.85";   // 화면 표시용 — 배포마다 PATCHNOTES와 함께 갱신(캐시 구버전 진단)
 const LAB_RANK_KEY="starArena.labRank.v1";
 let labRank=(function(){ try{ const s=JSON.parse(localStorage.getItem(LAB_RANK_KEY)); if(s&&typeof s==="object") return s; }catch(e){} return {}; })();
 const LabRankStore={
@@ -5207,6 +5207,7 @@ const SV_FOES={
   hop:  { asset:"bounce_bubble", hp:10, spd:126, dmg:5,  xp:1, r:15 },
   shield:{asset:"shield_block",  hp:46, spd:52,  dmg:9,  xp:2, r:19 },
   ghost:{ asset:"cloud_ghost",   hp:22, spd:96,  dmg:7,  xp:2, r:16 },
+  archer:{asset:"paper_drone",   hp:18, spd:60,  dmg:5,  xp:2, r:16, ranged:true },   /* v1.85: 원거리 — 자리 지키기 또 다른 처벌 축 */
   boss: { asset:"boss_king",     hp:900,spd:60,  dmg:14, xp:20, r:34, boss:true } };
 const SV_UPS=[   // 레벨업 3택 강화 카드(v1.73: 14종)
   { k:"dmg",    e:"🌟", n:"별의 힘",   d:"공격력 +40%" },
@@ -5229,7 +5230,7 @@ function svBestLoad(){ try{ const s=JSON.parse(localStorage.getItem(SV_BEST_KEY)
 function svStart(){
   SV={ p:{ x:SV_W/2, y:SV_H/2, hp:100, maxhp:100, spd:250, ifr:0, face:1 },
        atk:{ dmg:14, cd:0.78, t:0.5, multi:1, orbit:0, orbitA:0, orbitTick:0, magnet:1, regen:0 },   // v1.77: 시작 젤리 1방(루프 시동)
-       foes:[], bolts:[], gems:[], fx:[], dnums:[], meteorWarn:null,
+       foes:[], bolts:[], gems:[], fx:[], dnums:[], meteorWarn:null, ebolts:[],
        chests:[], freeCards:0, vacuumT:0, chestSeeded:false, freeOpen:false, chestCd:0,   // v1.78 보급 상자(+v1.81 드랍 쿨)
        t:0, kills:0, level:1, xp:0, xpNext:6,
        phase:"play", choices:null, paused:false, bossSpawned:false,
@@ -5300,6 +5301,7 @@ function svSpawn(){
   const roll=Math.random();
   if(t>150 && roll<0.22) type="shield";
   else if(t>90 && roll<0.4) type="ghost";
+  else if(t>75 && roll<0.5) type="archer";   // v1.85: 10%
   else if(t>45 && roll<0.55) type="hop";
   const spec=SV_FOES[type];
   const hpMul=1+t/55;   // v1.77: 카드 수급 속도에 맞춘 완만화(42→55) — 중반 "안 죽는 벽" 방지
@@ -5308,7 +5310,7 @@ function svSpawn(){
   const x=clamp(SV.p.x+Math.cos(a)*R, 20, SV_W-20), y=clamp(SV.p.y+Math.sin(a)*R, 20, SV_H-20);
   const elite=(SV.t>72 && Math.random()<0.08);   // v1.73 정예: 보라 오라·체력 2.2배·별가루 3개
   const em=elite?2.2:1;
-  SV.foes.push({ type:type, spec:spec, x:x, y:y, hp:spec.hp*hpMul*em, maxHp:spec.hp*hpMul*em, alive:true, hitT:0, elite:elite });
+  SV.foes.push({ type:type, spec:spec, x:x, y:y, hp:spec.hp*hpMul*em, maxHp:spec.hp*hpMul*em, alive:true, hitT:0, elite:elite, shootT:2+Math.random()*1.5 });
   /* v1.83 주의: 적 이속 스케일은 금지 — 카이팅 플레이어에게 적이 "배달"되며 킬 컨베이어→수입 재폭발(봇 83→742킬 실측). 압박은 ifr로만. */
 }
 function svHurt(dmg){
@@ -5382,7 +5384,15 @@ function svUpdate(dt){
     if(!f.alive) continue;
     const d=Math.hypot(p.x-f.x, p.y-f.y)||1;
     const fmul=(frR && d<frR)?0.68:1;   // v1.84: 감속 완화 — 서리+수호별 완전 정지 벽 방지
-    f.x+=(p.x-f.x)/d*f.spec.spd*fmul*dt; f.y+=(p.y-f.y)/d*f.spec.spd*fmul*dt;
+    if(f.spec.ranged){   // v1.85 포수: 거리 유지·조준탄
+      if(d>360){ f.x+=(p.x-f.x)/d*f.spec.spd*fmul*dt; f.y+=(p.y-f.y)/d*f.spec.spd*fmul*dt; }
+      else if(d<250){ f.x-=(p.x-f.x)/d*f.spec.spd*fmul*dt; f.y-=(p.y-f.y)/d*f.spec.spd*fmul*dt; }
+      f.shootT-=dt;
+      if(f.shootT<=0 && d<540){ f.shootT=3.2;
+        if(SV.ebolts.length<24) SV.ebolts.push({ x:f.x, y:f.y, vx:(p.x-f.x)/d*145, vy:(p.y-f.y)/d*145, t:0 }); }
+    } else {
+      f.x+=(p.x-f.x)/d*f.spec.spd*fmul*dt; f.y+=(p.y-f.y)/d*f.spec.spd*fmul*dt;
+    }
     if(f.hitT>0) f.hitT-=dt;
     if(d<f.spec.r+16) svHurt(f.spec.dmg);
     if(SV.phase!=="play") return;
@@ -5489,20 +5499,22 @@ function svUpdate(dt){
   for(const c of SV.chests){
     if(Math.hypot(p.x-c.x, p.y-c.y)<34){ c.got=true;
       const jack=c.jack || Math.random()<0.12, n=jack?3:1;
-      SV.freeCards+=n; SV.vacuumT=1.4; playSfx("clear");
+      SV.freeCards+=n; SV.vacuumT=1.1; playSfx("clear");
       showToast(jack?"🎰 잭팟!! 카드 3장 연속!":"🎁 보급 상자! 공짜 카드!");
       SV.fx.push({x:c.x,y:c.y,t:0,dur:0.4,boom:120});
     } }
   SV.chests=SV.chests.filter(c=>!c.got);
   if(SV.vacuumT>0) SV.vacuumT-=dt;
   if(SV.chestCd>0) SV.chestCd-=dt;
+  for(const b of SV.ebolts){ b.x+=b.vx*dt; b.y+=b.vy*dt; b.t+=dt;
+    if(Math.hypot(b.x-p.x, b.y-p.y)<15){ b.hit=true; svHurt(7); } }
+  SV.ebolts=SV.ebolts.filter(b=>!b.hit && b.t<5.5);
   // 별가루(젬) 자석·수집·레벨업
-  const magR=130*a.magnet;   // v1.77: 70→130 + 전역 드리프트 — 카이팅 중에도 별가루가 따라와 루프가 이어짐
+  const magR=190*a.magnet;   // v1.85 멀미 수술: 전역 드리프트 제거(화면 전체가 나를 향해 흐르는 벡션이 멀미 주범) — 자석 130→190으로 보상
   for(const g of SV.gems){
     const d=Math.hypot(p.x-g.x, p.y-g.y);
-    if(SV.vacuumT>0){ g.x+=(p.x-g.x)/(d||1)*950*dt; g.y+=(p.y-g.y)/(d||1)*950*dt; }   // v1.78 진공: 상자 = 화면의 별가루 전부 흡입 → 연쇄 레벨업
+    if(SV.vacuumT>0){ g.x+=(p.x-g.x)/(d||1)*950*dt; g.y+=(p.y-g.y)/(d||1)*950*dt; }   // 진공은 짧은 이벤트라 유지
     else if(d<magR){ const pull=(magR-d)/magR*460+150; g.x+=(p.x-g.x)/(d||1)*pull*dt; g.y+=(p.y-g.y)/(d||1)*pull*dt; }
-    else { g.x+=(p.x-g.x)/(d||1)*58*dt; g.y+=(p.y-g.y)/(d||1)*58*dt; }
     if(d<26){ g.got=true; SV.xp+=g.xp; playSfx("buff"); }
   }
   SV.gems=SV.gems.filter(g=>!g.got);
@@ -5524,9 +5536,13 @@ function svUpdate(dt){
     LabRankStore.submit("sv", Math.floor(SV.t));
     try{ const b=svBestLoad(); b.wins=(b.wins||0)+1; if(SV.t>b.bestT) b.bestT=Math.round(SV.t); localStorage.setItem(SV_BEST_KEY, JSON.stringify(b)); SV.best=b; }catch(e){}
   }
-  // 카메라
-  SV.camX=clamp(p.x-LOGW/2, 0, SV_W-LOGW);
-  SV.camY=clamp(p.y-LOGH/2, 0, SV_H-LOGH);
+  // 카메라(v1.85 멀미 수술): 하드락 금지 — 데드존 26px + 부드러운 추적. 관성 이동의 잔흔들림이 화면 전체로 증폭되지 않게
+  {
+    const tcx=clamp(p.x-LOGW/2, 0, SV_W-LOGW), tcy=clamp(p.y-LOGH/2, 0, SV_H-LOGH);
+    const dxc=tcx-SV.camX, dyc=tcy-SV.camY, dz=26;
+    if(Math.abs(dxc)>dz) SV.camX+=(dxc-Math.sign(dxc)*dz)*Math.min(1, dt*6);
+    if(Math.abs(dyc)>dz) SV.camY+=(dyc-Math.sign(dyc)*dz)*Math.min(1, dt*6);
+  }
 }
 function svRender(){
   if(!SV) return;
@@ -5534,14 +5550,18 @@ function svRender(){
   ctx.fillStyle="#0c1226"; ctx.fillRect(0,0,LOGW,LOGH);
   ctx.save(); ctx.translate(-Math.round(SV.camX), -Math.round(SV.camY));
   // 바닥 격자+별
-  ctx.strokeStyle="rgba(90,110,180,0.12)"; ctx.lineWidth=1;
+  ctx.strokeStyle="rgba(90,110,180,0.06)"; ctx.lineWidth=1;   // v1.85: 대비 절반 — 고대비 격자+스크롤=흐름 자극
   for(let gx=0; gx<=SV_W; gx+=112){ ctx.beginPath(); ctx.moveTo(gx,0); ctx.lineTo(gx,SV_H); ctx.stroke(); }
   for(let gy=0; gy<=SV_H; gy+=112){ ctx.beginPath(); ctx.moveTo(0,gy); ctx.lineTo(SV_W,gy); ctx.stroke(); }
-  ctx.fillStyle="rgba(223,230,255,0.4)";
+  ctx.fillStyle="rgba(223,230,255,0.26)";
   for(let i=0;i<60;i++){ ctx.fillRect((i*397)%SV_W, (i*251)%SV_H, 2, 2); }
   ctx.strokeStyle="#3a4470"; ctx.lineWidth=4; ctx.strokeRect(2,2,SV_W-4,SV_H-4);
   // 별가루
   for(const g of SV.gems) drawStar(g.x, g.y, 5, 6, 2.6, "#8fe3ff");
+  for(const b of SV.ebolts){   // v1.85 포수 탄(느린 구름 탄환 — 보고 피하기)
+    ctx.fillStyle="#c9a6ff"; ctx.beginPath(); ctx.arc(b.x,b.y,5.5,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle="rgba(201,166,255,0.3)"; ctx.beginPath(); ctx.arc(b.x-b.vx*0.06,b.y-b.vy*0.06,3.6,0,Math.PI*2); ctx.fill();
+  }
   // 적
   ctx.textAlign="center"; ctx.textBaseline="middle";
   if(a.frost){ const frR=115+20*a.frost;   // 서리 오라 링
