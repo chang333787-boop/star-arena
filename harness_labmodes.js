@@ -31,6 +31,7 @@ script+=`;globalThis.__api={ STATE, keysDown,
   LAB_GAMES, lhStart, lhKey, lhRender, lhList,
   LabOpenStore, labToggle, labOpenCount, labBack, drawLobbyMiniBanner, activateMenuRow, handleAdminKey,
   get labOpen(){return labOpen;}, get labFrom(){return labFrom;}, setLabFrom:v=>{labFrom=v;}, setState:(s)=>{ gameState=s; },
+  labReward, get lobbyCardOpen(){return lobbyCardOpen;}, setLobbyCardOpen:v=>{lobbyCardOpen=v;}, handleStartKey,
   get PZ(){return PZ;}, get RN(){return RN;}, get BK(){return BK;}, get SN(){return SN;}, get OT(){return OT;}, get LH(){return LH;},
   get SV(){return SV;}, get EGG(){return EGG;}, get profile(){return profile;},
   get TD(){return TD;}, get SH(){return SH;}, get RAY(){return RAY;}, get gameState(){return gameState;} };`;
@@ -830,6 +831,33 @@ run("v1.67 렌더 스모크(학생 허브 빈/찬·교사 허브·로비 배너)
   api.lhStart("teacher"); api.lhRender();
   api.drawLobbyMiniBanner();
   check("허브·배너 렌더 예외 없음", true);
+});
+
+
+/* ═══ v1.70: 일일 보상 + 능력 오버레이 ═══ */
+run("일일 보상: 하루 1회·골드 지급·파밍 차단", ()=>{
+  delete LS["starArena.lab.rewardDay"];
+  const P=api.profile; P.gold=100;
+  check("첫 성취 → +30G", api.labReward("td",30)===true && P.gold===130);
+  check("같은 날 재시도 → 지급 없음", api.labReward("td",30)===false && P.gold===130);
+  check("다른 게임은 같은 날 OK", api.labReward("pz",15)===true && P.gold===145);
+  const s=JSON.parse(LS["starArena.lab.rewardDay"]);
+  check("기록 구조(day+got)", !!s.day && s.got.td===true && s.got.pz===true);
+});
+run("일일 보상: 게임 승리 경로에서 실제 발동(함대 12웨이브)", ()=>{
+  delete LS["starArena.lab.rewardDay"];
+  const P=api.profile; P.gold=0;
+  api.shStart();
+  api.SH.wave=12; api.SH.foes.length=0; api.SH.eshots.length=0; api.SH.spawner=null; api.SH.boss=null; api.SH.warns.length=0;
+  api.shNextWave();   // →13 = 승리
+  check("함대 승리 → win + 30G", api.SH.phase==="win" && P.gold===30);
+});
+run("능력 보기 오버레이: 열기·키 통과·닫기", ()=>{
+  api.setLobbyCardOpen(true);
+  api.handleStartKey("KeyC");
+  check("오버레이 중 C = 캐릭터 변경(안 닫힘)", api.lobbyCardOpen===true);
+  api.handleStartKey("Escape");
+  check("그 외 키 = 닫기", api.lobbyCardOpen===false);
 });
 
 console.log("\n결과: "+(fail===0?("ALL PASS ✅ ("+pass+"항목)"):(fail+"건 실패 ❌")));
