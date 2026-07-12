@@ -1064,6 +1064,12 @@ run("별꼬리: 👥 2인 대결(핫시트)", ()=>{
   api.snKey("Escape");
 });
 
+run("배포 규율: 화면 버전 스탬프 = PATCHNOTES 최신", ()=>{
+  const pn=fs.readFileSync(path.join(__dirname,"PATCHNOTES.md"),"utf8");
+  const latest=(pn.match(/^## (v[\d.]+) /m)||[])[1];
+  const gv=(html.match(/const GAME_VER="(v[\d.]+)"/)||[])[1];
+  check("GAME_VER("+gv+") == PATCHNOTES 최신("+latest+")", !!gv && gv===latest);
+});
 run("무쌍: 진입·개막 포위진·11번째 게임 등록", ()=>{
   check("LAB_GAMES 11종 + ms 키", api.LAB_GAMES.length===11 && api.LAB_GAMES[10].key==="ms");
   api.msStart();
