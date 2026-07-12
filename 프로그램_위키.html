@@ -54,7 +54,7 @@ details[open] summary{margin-bottom:8px;}
 <body>
 <div class="app">
 <nav class="side" id="side">
-  <div class="logo">⭐ 별빛 아레나 위키<small>현재 버전 <b style="color:#ffe14d">v1.66</b> · 2026-07-12</small></div>
+  <div class="logo">⭐ 별빛 아레나 위키<small>현재 버전 <b style="color:#ffe14d">v1.67</b> · 2026-07-12</small></div>
   <input id="wsearch" type="search" placeholder="🔎 검색 (예: 뭉게대왕, 조작)" style="width:100%;margin:10px 0 2px;padding:7px 10px;border-radius:9px;border:1px solid #2a3560;background:#0a0f28;color:#dfe6ff;font-family:inherit;font-size:13px;">
   <div id="sres" style="font-size:11.5px;color:#8893bb;padding:0 4px;"></div>
   <div class="grp">시작</div>
@@ -97,7 +97,7 @@ details[open] summary{margin-bottom:8px;}
 <div class="gcard" data-p="jump"><div class="em">🦘</div><div class="nm">별빛 점프</div><div class="ds">플랫포머 30판+공방</div></div>
 <div class="gcard" data-p="rpg"><div class="em">🌙</div><div class="nm">별빛 마을</div><div class="ds">RPG 챕터1</div></div>
 </div>
-<h3>🧪 별빛 실험실 10종 — 지금은 교사 전용 (교사 패널 → 🧪 버튼 또는 <kbd>L</kbd>)</h3>
+<h3>🧪 별빛 실험실 10종 — 선생님이 🔓열어 준 게임은 학생 로비 "🎮 미니게임 광장"에 등장!</h3>
 <div class="card-grid">
 <div class="gcard" data-p="td"><div class="em">🏰</div><div class="nm">별빛 수비대</div><div class="ds">타워 디펜스</div></div>
 <div class="gcard" data-p="fleet"><div class="em">🚀</div><div class="nm">별빛 함대</div><div class="ds">세로 슈팅</div></div>
@@ -459,6 +459,12 @@ details[open] summary{margin-bottom:8px;}
 <section class="page" id="p-admin">
 <h1>🔧 관리·수정 안내서</h1>
 <p class="tagline">이 게임의 유지보수 AI는 <b>Claude</b>입니다(2026-07-12부터 위키 관리 인수). 사람이 직접 고칠 때도 이 페이지대로만 하면 안전해요.</p>
+<h2>🎮 미니게임 개방제(v1.67)</h2>
+<ul>
+<li>교사 콘솔 가운데 <b>"미니게임 개방" 위젯</b>(또는 실험실의 🔓버튼/O키)으로 게임별 열고 닫기.</li>
+<li>상태는 클라우드(<code>starArenaOnline/labOpen</code>) 동기화 — 여는 순간 학생들 로비 하단 광장 배너에 실시간 등장.</li>
+<li>학생은 열린 게임만 보이는 광장으로 입장(Esc=로비). 데이터 상수: <code>LAB_OPEN_KEY</code>·<code>LabOpenStore</code>·<code>labToggle()</code>.</li>
+</ul>
 <h2>구조 한 장 요약</h2>
 <ul>
 <li>모든 게임 = <code>index.html</code> <b>한 파일</b>(약 100만 자). <code>star_arena.html</code>은 항상 바이트 동일 쌍둥이.</li>
@@ -508,11 +514,12 @@ node -e 'const fs=require("fs");const h=fs.readFileSync("index.html","utf8");con
 
 <!-- ═════════ 일지 ═════════ -->
 <section class="page" id="p-log">
-<h1>📜 업데이트 일지 <span class="badge">현재 v1.66</span></h1>
+<h1>📜 업데이트 일지 <span class="badge">현재 v1.67</span></h1>
 <p class="tagline">v1.00(6-29 첫 버전)부터 이어온 버전 기록 — 전체 상세는 저장소 <code>PATCHNOTES.md</code>(67개 버전), 작업 맥락은 <code>작업현황_HANDOFF.md</code>.</p>
 <h2>최근 (v1.55 ~ v1.65)</h2>
 <table><tr><th>버전</th><th>날짜</th><th>내용</th></tr>
-<tr><td><b>v1.66</b></td><td>07-12</td><td><b>로비 전면 개편</b> — 카드형 게임 선택 6장(살아있는 정보 표시)+대전 설정 미니 스테퍼. 키보드·터치 로직 무변경</td></tr>
+<tr><td><b>v1.67</b></td><td>07-12</td><td><b>미니게임 교사 개방제</b> — 실험실 게임을 선생님이 🔓열면 학생 로비 광장에 실시간 등장(클라우드) + 교사 콘솔 전면 개편(개방 위젯·그룹 타일)</td></tr>
+<tr><td>v1.66</td><td>07-12</td><td><b>로비 전면 개편</b> — 카드형 게임 선택 6장(살아있는 정보 표시)+대전 설정 미니 스테퍼. 키보드·터치 로직 무변경</td></tr>
 <tr><td>v1.65</td><td>07-12</td><td><b>위키 v2</b>(앱 스타일·게임별 페이지·검색·도감·내 기록) + 버전 기록 체계 Claude 인수(v1.55~65 소급) + 교사 패널 📖위키 버튼</td></tr>
 <tr><td>v1.64</td><td>07-11</td><td><b>실험실 10종 완성</b>: 러너·벽돌깨기·별꼬리·오델로 + 🧪허브 + 🧩퍼즐 출제 공방(풀리는 퍼즐만 저장) + 에셋 발주 목록</td></tr>
 <tr><td>v1.63</td><td>07-11</td><td><b>눈편안 대수술</b>(전체화면 플래시 4건 제거) · 3종 각 +10단계 · ⚔생존자·🥚별빛알·🧩별조각밀기 추가</td></tr>

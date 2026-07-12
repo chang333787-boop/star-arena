@@ -28,7 +28,9 @@ script+=`;globalThis.__api={ STATE, keysDown,
   bkStart, bkKey, bkUpdate, bkRender, bkBricks,
   snStart, snKey, snUpdate, snRender,
   otStart, otKey, otUpdate, otRender, otFlips, otMoves, otPlace, otCount, otAiMove,
-  LAB_GAMES, lhStart, lhKey, lhRender,
+  LAB_GAMES, lhStart, lhKey, lhRender, lhList,
+  LabOpenStore, labToggle, labOpenCount, labBack, drawLobbyMiniBanner, activateMenuRow, handleAdminKey,
+  get labOpen(){return labOpen;}, get labFrom(){return labFrom;}, setLabFrom:v=>{labFrom=v;}, setState:(s)=>{ gameState=s; },
   get PZ(){return PZ;}, get RN(){return RN;}, get BK(){return BK;}, get SN(){return SN;}, get OT(){return OT;}, get LH(){return LH;},
   get SV(){return SV;}, get EGG(){return EGG;}, get profile(){return profile;},
   get TD(){return TD;}, get SH(){return SH;}, get RAY(){return RAY;}, get gameState(){return gameState;} };`;
@@ -769,6 +771,65 @@ run("LAB-4 렌더 스모크(러너·벽돌·별꼬리·오델로·허브·에디
   api.lhStart(); api.lhRender();
   api.pzStart(); api.pzEditStart(); api.pzRenderEdit();
   check("6화면 렌더 예외 없음", true);
+});
+
+
+/* ═══ v1.67: 미니게임 교사 개방제 + 허브 모드 ═══ */
+run("개방 스위치: 토글·카운트·로컬 저장", ()=>{
+  delete LS["starArena.labOpen.v1"];
+  for(const g of api.LAB_GAMES){ if(api.labOpen[g.key]) api.LabOpenStore.set(g.key,false); }
+  check("초기 0/10", api.labOpenCount()===0);
+  api.labToggle("td");
+  check("수비대 개방 → 1/10 + 로컬 저장", api.labOpenCount()===1 && api.labOpen.td===true && JSON.parse(LS["starArena.labOpen.v1"]).td===true);
+  api.labToggle("td");
+  check("다시 닫기 → 0/10", api.labOpenCount()===0 && api.labOpen.td===false);
+});
+run("학생 허브: 개방된 게임만 + Esc 귀환 라우팅", ()=>{
+  api.labToggle("td"); api.labToggle("pz");
+  api.lhStart("student");
+  check("학생 모드 진입: 열린 2개만", api.gameState==="labhub" && api.lhList().length===2);
+  api.lhKey("Enter");   // 목록 0번 = 수비대
+  check("Enter → 수비대 실행(labFrom=studenthub)", api.gameState==="td" && api.labFrom==="studenthub");
+  api.tdKey("Escape");
+  check("게임 Esc → 학생 허브로 복귀", api.gameState==="labhub" && api.LH.mode==="student");
+  api.lhKey("Escape");
+  check("허브 Esc → 학생 로비(START)", api.gameState==="start");
+  // 정리
+  api.labToggle("td"); api.labToggle("pz");
+});
+run("교사 허브: 전체 10종 + O키 개방 토글", ()=>{
+  api.lhStart("teacher");
+  check("교사 모드: 10종 전부", api.lhList().length===10 && api.labFrom==="teacherhub");
+  const k=api.LAB_GAMES[0].key, before=!!api.labOpen[k];
+  api.lhKey("KeyO");
+  check("O키 → 선택 게임 개방 토글", !!api.labOpen[k]===!before);
+  api.lhKey("KeyO");   // 원복
+  api.lhKey("Escape");
+  check("교사 허브 Esc → 교사 패널", api.gameState==="admin");
+});
+run("학생 로비 게이팅: 0개면 입장 불가·열리면 광장 입장", ()=>{
+  for(const g of api.LAB_GAMES){ if(api.labOpen[g.key]) api.LabOpenStore.set(g.key,false); }
+  api.setState(api.STATE.START);
+  api.activateMenuRow(14);
+  check("0개 → 로비 유지(토스트만)", api.gameState==="start");
+  api.labToggle("sn");
+  api.activateMenuRow(14);
+  check("1개 열림 → 미니게임 광장(학생 모드)", api.gameState==="labhub" && api.lhList().length===1);
+  api.lhKey("Escape"); api.labToggle("sn");
+});
+run("교사 패널 직행 게임의 Esc 귀환=패널", ()=>{
+  api.setState(api.STATE.ADMIN);
+  api.handleAdminKey("Digit9");   // 별꼬리 직행
+  check("Digit9 → 별꼬리(labFrom=admin)", api.gameState==="snake" && api.labFrom==="admin");
+  api.snKey("Escape");
+  check("Esc → 교사 패널", api.gameState==="admin");
+});
+run("v1.67 렌더 스모크(학생 허브 빈/찬·교사 허브·로비 배너)", ()=>{
+  api.lhStart("student"); api.lhRender();          // 빈 안내
+  api.labToggle("bk"); api.lhStart("student"); api.lhRender(); api.labToggle("bk");
+  api.lhStart("teacher"); api.lhRender();
+  api.drawLobbyMiniBanner();
+  check("허브·배너 렌더 예외 없음", true);
 });
 
 console.log("\n결과: "+(fail===0?("ALL PASS ✅ ("+pass+"항목)"):(fail+"건 실패 ❌")));
