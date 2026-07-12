@@ -28,7 +28,7 @@ script+=`;globalThis.__api={ STATE, keysDown,
   bkStart, bkKey, bkUpdate, bkRender, bkBricks,
   snStart, snKey, snUpdate, snRender,
   otStart, otKey, otUpdate, otRender, otFlips, otMoves, otPlace, otCount, otAiMove,
-  msStart, msKey, msUpdate, msRender, msSwing, msUlt, msSpawnFoe, msBest, MS_FOES, get MS(){return MS;},
+  msStart, msKey, msUpdate, msRender, msSwing, msUlt, msSpawnFoe, msBest, MS_FOES, MS_WEAPONS, msHurt, msApplyPick, msKillFoe, get MS(){return MS;},
   LAB_GAMES, lhStart, lhKey, lhRender, lhList,
   LabOpenStore, labToggle, labOpenCount, labBack, drawLobbyMiniBanner, activateMenuRow, handleAdminKey,
   get labOpen(){return labOpen;}, get labFrom(){return labFrom;}, setLabFrom:v=>{labFrom=v;}, setState:(s)=>{ gameState=s; },
@@ -1138,6 +1138,84 @@ run("무쌍: 종료 → 결과·학급 랭킹 제출·기록 저장", ()=>{
   check("개인 최고 저장", b.kills>=777 && b.combo>=150);
   api.msRender();
   check("결과 렌더 예외 없음", true);
+  api.msKey("Escape");
+});
+run("무쌍 v2: 무기 3종 — 창 관통·망치 광역·쌍검 속도·만료 복귀", ()=>{
+  api.msStart();
+  const ms=api.MS;
+  ms.squadT=9999; ms.officerT=9999; ms.rushT=9999; ms.foes.length=0;
+  ms.p.face={x:1,y:0};
+  api.msApplyPick({kind:"weapon", wk:"spear"});
+  check("☄ 유성창 장착(15초)", ms.wpn==="spear" && ms.wpnT>0);
+  api.msSpawnFoe(ms.p.x+185, ms.p.y, "jelly");     // 별빛검(R100)으론 못 닿는 거리
+  api.msSpawnFoe(ms.p.x+80, ms.p.y+120, "jelly");  // 창 옆(직사각 밖)
+  ms.swingCd=0; ms.chainT=0; api.msSwing();
+  check("창: 전방 직선 관통(185px 적중)", !ms.foes[0] || !ms.foes.some(f=>f.alive&&f.x>ms.p.x+150) || ms.foes.filter(f=>f.alive).length===1);
+  check("창: 옆은 안 맞음", ms.foes.some(f=>f.alive && f.y>ms.p.y+100));
+  api.msApplyPick({kind:"weapon", wk:"dual"});
+  ms.swingCd=0; ms.chainT=0; api.msSwing();
+  check("🗡 쌍별검: 짧은 쿨(0.13)", ms.swingCd<=0.14);
+  api.msApplyPick({kind:"weapon", wk:"hammer"});
+  ms.wpnT=0.01; api.msUpdate(0.02);
+  check("무기 시간 종료 → ⭐ 별빛검 복귀", ms.wpn==="star");
+});
+run("무쌍 v2: 버프 아이템 — 격노×2·별방패·유성부적·자석·별보석", ()=>{
+  const ms=api.MS;
+  ms.foes.length=0;
+  api.msApplyPick({kind:"rage"});
+  api.msSpawnFoe(ms.p.x+60, ms.p.y, "bubble");   // 26hp — 별빛검 12론 2방, 격노 24... 아직 부족
+  api.msApplyPick({kind:"weapon", wk:"hammer"}); // 격노 망치 = 24×2=48 → 한 방
+  ms.p.face={x:1,y:0}; ms.swingCd=0; ms.chainT=0;
+  const k0=ms.kills; api.msSwing();
+  check("🔥 격노: 망치 한 방에 방울(26hp) 격파", ms.kills>k0);
+  api.msApplyPick({kind:"shield"});
+  const hp0=ms.p.hp; ms.p.ifr=0;
+  api.msHurt(50);
+  check("🛡 별방패: 피해 무효 1회 소모", ms.p.hp===hp0 && ms.shieldN===0 && ms.p.ifr>0);
+  ms.p.ifr=0; api.msHurt(10);
+  check("방패 소진 후엔 피해", ms.p.hp===hp0-10);
+  api.msApplyPick({kind:"meteor"});
+  ms.foes.length=0; api.msSpawnFoe(ms.p.x+560, ms.p.y, "jelly");   // 기본 폭발(440) 밖·부적(660) 안
+  ms.gauge=100; const k1=ms.kills; api.msUlt();
+  check("💫 유성 부적: 폭발 1.5배(560px 적중)·소모", ms.kills>k1 && ms.meteorNext===false);
+  api.msDrop_test=0;
+  ms.picks.length=0; ms.picks.push({x:ms.p.x+300, y:ms.p.y, kind:"hp"});
+  api.msApplyPick({kind:"magnet"});
+  const d0=300; for(let i=0;i<30;i++) api.msUpdate(1/60);
+  check("🧲 자석: 먼 아이템(300px)이 빨려옴", ms.picks.length===0 || Math.hypot(ms.p.x-ms.picks[0].x, ms.p.y-ms.picks[0].y)<d0-80);
+  const k2=ms.kills; api.msApplyPick({kind:"gem"});
+  check("💎 별보석 = +15 격파", ms.kills===k2+15);
+});
+run("무쌍 v2: 위기 — 🌊 대군 밀물·💨 자객·🏹 궁수 탄", ()=>{
+  const ms=api.MS;
+  ms.foes.length=0; ms.squadT=9999; ms.officerT=9999; ms.slowT=0;
+  ms.rushT=0.01; ms.rushWarnT=0;
+  api.msUpdate(0.02);
+  check("밀물 예고 발동(2초 경고)", ms.rushWarnT>0);
+  ms.rushWarnT=0.01; api.msUpdate(0.02);
+  check("예고 후 사방 포위 스폰(30+)", ms.foes.length>=30 && ms.rushN===1);
+  check("밀물 한복판 무기 상자(위기=기회)", ms.picks.some(g=>g.kind==="weapon"));
+  check("💨 질풍자객 스펙(빠름)", api.MS_FOES.dasher.spd>=140);
+  ms.foes.length=0; ms.rushT=9999;
+  api.msSpawnFoe(ms.p.x+300, ms.p.y, "archer");
+  ms.foes[0].shootT=0.01;
+  api.msUpdate(0.05);
+  check("🏹 궁수: 조준탄 발사", ms.ebolts.length>=1);
+  ms.ebolts.length=0; ms.ebolts.push({x:ms.p.x+2, y:ms.p.y, vx:0, vy:0, t:0});
+  ms.p.ifr=0; ms.shieldN=0; const hp0=ms.p.hp;
+  api.msUpdate(1/60);
+  check("탄 명중 → 피해", ms.p.hp<hp0);
+});
+run("무쌍 v2: 🏅 랭크 성장·🔥 총력전", ()=>{
+  const ms=api.MS;
+  ms.foes.length=0; ms.rushT=9999;
+  ms.kills=299; ms.rank=0; const mh0=ms.p.maxhp, db0=ms.dmgBonus;
+  api.msSpawnFoe(ms.p.x+500, ms.p.y, "jelly");
+  api.msKillFoe(ms.foes[ms.foes.length-1], 1, 0);
+  check("300 격파 → 랭크 C(체력·공격력 상승+풀회복)", ms.rank===1 && ms.p.maxhp===mh0+10 && ms.dmgBonus===db0+2 && ms.p.hp===ms.p.maxhp);
+  ms.t=150.01; ms.spurt=false;
+  api.msUpdate(1/60);
+  check("마지막 30초 = 총력전 발동", ms.spurt===true);
   api.msKey("Escape");
 });
 run("생존자: 🎁 보급 상자·잭팟·진공(v1.78 도파민)", ()=>{
