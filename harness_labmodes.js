@@ -31,7 +31,7 @@ script+=`;globalThis.__api={ STATE, keysDown,
   LAB_GAMES, lhStart, lhKey, lhRender, lhList,
   LabOpenStore, labToggle, labOpenCount, labBack, drawLobbyMiniBanner, activateMenuRow, handleAdminKey,
   get labOpen(){return labOpen;}, get labFrom(){return labFrom;}, setLabFrom:v=>{labFrom=v;}, setState:(s)=>{ gameState=s; },
-  labReward, get lobbyCardOpen(){return lobbyCardOpen;}, setLobbyCardOpen:v=>{lobbyCardOpen=v;}, handleStartKey,
+  labReward, addExp, get lobbyCardOpen(){return lobbyCardOpen;}, setLobbyCardOpen:v=>{lobbyCardOpen=v;}, handleStartKey,
   LabRankStore, labRankTop, labRankDraw, LAB_RANK_LOWER, get labRank(){return labRank;},
   labShared, labSubmit, pzSubmit, tdEditStart, tdEditCheck, tdSubmit, tdBeginShared, tdStartWave2:tdStartWave,
   shOpen, shEditStart, shEditCheck, shSubmit, shBeginShared, drawMapReviewScreen, loadEditorStore, saveEditorStore,
@@ -1029,6 +1029,12 @@ run("오델로: 👥 2인 대전(핫시트)", ()=>{
   check("AI전 회귀: ☁ AI가 둔다", api.OT.turn===1);
 });
 
+run("학급 랭킹: 본편 확장(계정 레벨)", ()=>{
+  delete api.labRank.lv;
+  const lv0=api.profile.level||1;
+  api.addExp(100000);   // 몇 레벨은 확실히 오르는 경험치
+  check("레벨 업 시 lv 랭킹 제출", (api.labRank.lv||[])[0] && api.labRank.lv[0].s===api.profile.level && api.profile.level>lv0);
+});
 run("별꼬리: 👥 2인 대결(핫시트)", ()=>{
   api.snStart(true);
   check("2인전 시작: 두 뱀·점수 0:0", api.SN.pvp===true && api.SN.body2.length===3 && api.SN.score===0 && api.SN.score2===0);

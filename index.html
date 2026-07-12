@@ -2916,6 +2916,10 @@ function pfClear(){
     best[id]=rec;
   }
   pfSaveBest(best);
+  if(PF.level.camp!==undefined){   // v1.76: 캠페인 별조각 총합 → 학급 랭킹(친구 맵은 제외)
+    let _tot=0; for(const l of PF_LEVELS){ const b2=best[l.id]; if(b2) _tot+=(b2.stars||0); }
+    LabRankStore.submit("pf", _tot);
+  }
   PF.bestView=best[id];   // PERF-2: 클리어 오버레이가 프레임마다 localStorage 파싱하지 않게 스냅샷
   _pfSel=null;            // PERF-2: 선택 화면 캐시 무효화(기록·해금 갱신)
   try{ saveProfile(); }catch(e){}
@@ -3414,6 +3418,9 @@ function drawPfSelect(){
   dimScreen(0.7);
   ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
   ctx.fillStyle="#7dffb0"; ctx.font="bold 34px 'Malgun Gothic',sans-serif"; ctx.fillText("🦘 별빛 점프", LOGW/2, 56);
+  { const t1=labRankTop("pf")[0];   // v1.76: 캠페인 별조각 학급 1위
+    if(t1){ ctx.textAlign="right"; ctx.fillStyle="#c9a6ff"; ctx.font="bold 13px 'Malgun Gothic',sans-serif";
+      ctx.fillText("👑 우리 반 1위 · "+t1.n+" ⭐"+t1.s, LOGW-40, 34); ctx.textAlign="center"; } }
   if(!_pfSel) pfSelRefresh();   // PERF-2: 캐시 사용(진입·클리어 시 갱신)
   const best=_pfSel.best, unlocked=_pfSel.unlocked;
   // 탭(캠페인 맵 / 친구들이 만든 맵) — 허용된 학생 맵은 친구 탭으로
@@ -13041,7 +13048,7 @@ function addExp(n){
   profile.exp=(profile.exp||0)+n; profile.level=profile.level||1;
   let ups=0;
   while(profile.exp>=expNeed(profile.level)){ profile.exp-=expNeed(profile.level); profile.level++; ups++; }
-  if(ups>0) showToast("🎉 레벨 업! Lv."+profile.level);
+  if(ups>0){ showToast("🎉 레벨 업! Lv."+profile.level); LabRankStore.submit("lv", profile.level); }   // v1.76: 계정 레벨 학급 랭킹
 }
 function grantMatchReward(){
   if(matchRewardGiven) return;
@@ -14537,6 +14544,8 @@ function drawLobbyTopBar(){
   const idTxt=(profile.id && profile.id!==profile.nickname)?(" · "+profile.id):"";   // 닉네임=ID면 중복 표시 생략
   x=drawTopChip("👤 "+profile.nickname+" · "+lv+idTxt, x, y, h, false, function(){ gameState=STATE.PROFILE; })+10;
   x=drawTopChip("💰 "+profile.gold+" G", x, y, h, false)+10;
+  { const t1=labRankTop("lv")[0];   // v1.76: 계정 레벨 학급 1위(표시 전용)
+    if(t1) x=drawTopChip("👑 반 1위 · "+t1.n+" Lv."+t1.s, x, y, h, false)+10; }
   ctx.save(); ctx.textAlign="left"; ctx.textBaseline="middle";
   ctx.fillStyle="#7f8bb5"; ctx.font="12px 'Malgun Gothic',sans-serif"; ctx.fillText("U 프로필", x+4, y+h/2+1);
   ctx.restore();
