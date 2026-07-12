@@ -1029,5 +1029,33 @@ run("오델로: 👥 2인 대전(핫시트)", ()=>{
   check("AI전 회귀: ☁ AI가 둔다", api.OT.turn===1);
 });
 
+run("별꼬리: 👥 2인 대결(핫시트)", ()=>{
+  api.snStart(true);
+  check("2인전 시작: 두 뱀·점수 0:0", api.SN.pvp===true && api.SN.body2.length===3 && api.SN.score===0 && api.SN.score2===0);
+  api.snKey("ArrowUp"); api.snKey("KeyS");
+  check("⭐화살표/🌙WASD 조작 분리", api.SN.nextDir.r===-1 && api.SN.nextDir2.r===1);
+  api.snKey("KeyD");   // 🌙은 왼쪽 진행 중 → 오른쪽(정반대)은 금지
+  check("🌙 역방향(←진행 중 D) 금지 규칙 동작", api.SN.nextDir2.c===0 && api.SN.nextDir2.r===1);
+  delete api.labRank.sn2guard;
+  const before=JSON.stringify(api.labRank.sn||[]);
+  api.snStart(true);
+  api.SN.body2=[{c:6,r:0},{c:5,r:0},{c:4,r:0}]; api.SN.prev2=api.SN.body2.map(b=>({c:b.c,r:b.r}));
+  api.SN.dir2={c:0,r:-1}; api.SN.nextDir2={c:0,r:-1};   // 🌙이 위쪽 벽으로
+  for(let i=0;i<120 && !api.SN.over;i++) api.snUpdate(1/30);
+  check("🌙 벽 충돌 → ⭐ 승리", api.SN.over===true && api.SN.winner===1);
+  check("2인전은 학급 랭킹 미반영", JSON.stringify(api.labRank.sn||[])===before);
+  api.snStart(true);
+  api.SN.body=[{c:10,r:5},{c:9,r:5},{c:8,r:5}]; api.SN.prev=api.SN.body.map(b=>({c:b.c,r:b.r}));
+  api.SN.body2=[{c:12,r:5},{c:13,r:5},{c:14,r:5}]; api.SN.prev2=api.SN.body2.map(b=>({c:b.c,r:b.r}));
+  api.SN.dir={c:1,r:0}; api.SN.nextDir={c:1,r:0}; api.SN.dir2={c:-1,r:0}; api.SN.nextDir2={c:-1,r:0};
+  for(let i=0;i<30 && !api.SN.over;i++) api.snUpdate(1/30);
+  check("정면 충돌 → 무승부", api.SN.over===true && api.SN.winner===0);
+  api.snKey("KeyT");
+  check("T키: 혼자 모드 전환", api.SN.pvp===false);
+  api.snKey("KeyT"); api.snKey("KeyR");
+  check("R 재시작은 모드 유지(둘이서)", api.SN.pvp===true);
+  api.snKey("Escape");
+});
+
 console.log("\n결과: "+(fail===0?("ALL PASS ✅ ("+pass+"항목)"):(fail+"건 실패 ❌")));
 process.exit(fail===0?0:1);

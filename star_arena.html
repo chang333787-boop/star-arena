@@ -6540,24 +6540,42 @@ function snPlaceFood(golden){
   while(true){
     const c=Math.floor(Math.random()*SN_COLS), r=Math.floor(Math.random()*SN_ROWS);
     if(SN.body.some(b=>b.c===c&&b.r===r)) continue;
+    if(SN.pvp && SN.body2.some(b=>b.c===c&&b.r===r)) continue;
     SN.food={ c:c, r:r, golden:!!golden };
     return;
   }
 }
-function snStart(){
-  SN={ body:[{c:6,r:6},{c:5,r:6},{c:4,r:6}], prev:[{c:6,r:6},{c:5,r:6},{c:4,r:6}], dir:{c:1,r:0}, nextDir:{c:1,r:0},
-       stepIv:0.15, stepT:0, score:0, eaten:0, over:false, paused:false, food:null };
+function snStart(pvp){
+  SN={ body:[{c:6,r:3},{c:5,r:3},{c:4,r:3}], prev:[{c:6,r:3},{c:5,r:3},{c:4,r:3}], dir:{c:1,r:0}, nextDir:{c:1,r:0},
+       stepIv:0.15, stepT:0, score:0, eaten:0, over:false, paused:false, food:null, pvp:!!pvp, winner:0,
+       body2:[{c:SN_COLS-7,r:SN_ROWS-4},{c:SN_COLS-6,r:SN_ROWS-4},{c:SN_COLS-5,r:SN_ROWS-4}],
+       prev2:[{c:SN_COLS-7,r:SN_ROWS-4},{c:SN_COLS-6,r:SN_ROWS-4},{c:SN_COLS-5,r:SN_ROWS-4}],
+       dir2:{c:-1,r:0}, nextDir2:{c:-1,r:0}, score2:0 };
+  if(!pvp){ SN.body=[{c:6,r:6},{c:5,r:6},{c:4,r:6}]; SN.prev=SN.body.map(b=>({c:b.c,r:b.r})); }
   snPlaceFood(false);
   gameState=STATE.SNAKE;
-  showToast("🐍 별꼬리 — 별조각을 먹고 길~어지자! 벽과 내 꼬리 조심!");
+  showToast(pvp?"👥 별꼬리 대결 — ⭐화살표 vs 🌙WASD! 먼저 부딪히면 져요!":"🐍 별꼬리 — 별조각을 먹고 길~어지자! 벽과 내 꼬리 조심!");
 }
 function snKey(code){
   if(code==="Escape"){ SN=null; labBack(); return; }
   if(!SN) return;
-  if(code==="KeyR"){ snStart(); return; }
+  if(code==="KeyT"){ snStart(!SN.pvp); return; }   // v1.75: 혼자↔둘이서(종료 후에도)
+  if(code==="KeyR"){ snStart(SN.pvp); return; }
   if(code==="KeyP"){ SN.paused=!SN.paused; return; }
-  if(SN.over){ if(code==="Enter"||code==="NumpadEnter") snStart(); return; }
+  if(SN.over){ if(code==="Enter"||code==="NumpadEnter") snStart(SN.pvp); return; }
   const d=SN.dir;
+  if(SN.pvp){   // v1.75: ⭐화살표 / 🌙WASD 분리
+    if(code==="ArrowLeft" && d.c!==1) SN.nextDir={c:-1,r:0};
+    else if(code==="ArrowRight" && d.c!==-1) SN.nextDir={c:1,r:0};
+    else if(code==="ArrowUp" && d.r!==1) SN.nextDir={c:0,r:-1};
+    else if(code==="ArrowDown" && d.r!==-1) SN.nextDir={c:0,r:1};
+    const d2=SN.dir2;
+    if(code==="KeyA" && d2.c!==1) SN.nextDir2={c:-1,r:0};
+    else if(code==="KeyD" && d2.c!==-1) SN.nextDir2={c:1,r:0};
+    else if(code==="KeyW" && d2.r!==1) SN.nextDir2={c:0,r:-1};
+    else if(code==="KeyS" && d2.r!==-1) SN.nextDir2={c:0,r:1};
+    return;
+  }
   if((code==="ArrowLeft"||code==="KeyA") && d.c!==1) SN.nextDir={c:-1,r:0};
   else if((code==="ArrowRight"||code==="KeyD") && d.c!==-1) SN.nextDir={c:1,r:0};
   else if((code==="ArrowUp"||code==="KeyW") && d.r!==1) SN.nextDir={c:0,r:-1};
@@ -6570,6 +6588,7 @@ function snUpdate(dt){
   SN.stepT-=SN.stepIv;   // v1.72: 잔여 시간 보존(프레임 경계에서도 등속 유지)
   if(SN.stepT<0||SN.stepT>SN.stepIv) SN.stepT=0;
   SN.prev=SN.body.map(function(b){ return {c:b.c, r:b.r}; });   // 직전 칸(렌더 보간 기준)
+  if(SN.pvp){ snStepPvp(); return; }   // v1.75: 2인전은 동시 스텝 규칙
   SN.dir=SN.nextDir;
   const h=SN.body[0], nc=h.c+SN.dir.c, nr=h.r+SN.dir.r;
   if(nc<0||nr<0||nc>=SN_COLS||nr>=SN_ROWS || SN.body.some((b,i)=>i<SN.body.length-1 && b.c===nc && b.r===nr)){
@@ -6588,6 +6607,34 @@ function snUpdate(dt){
     snPlaceFood(SN.eaten%5===4);
   } else SN.body.pop();
 }
+/* v1.75 별꼬리 2인전 — 두 뱀이 같은 틱에 동시에 한 칸: 벽/몸 충돌=패배, 머리끼리·자리 바꾸기=무승부 */
+function snStepPvp(){
+  SN.prev2=SN.body2.map(function(b){ return {c:b.c, r:b.r}; });
+  SN.dir=SN.nextDir; SN.dir2=SN.nextDir2;
+  const h1=SN.body[0], h2=SN.body2[0];
+  const n1={c:h1.c+SN.dir.c, r:h1.r+SN.dir.r}, n2={c:h2.c+SN.dir2.c, r:h2.r+SN.dir2.r};
+  function wall(n){ return n.c<0||n.r<0||n.c>=SN_COLS||n.r>=SN_ROWS; }
+  function hitBody(n, body){ return body.some(function(b,i){ return i<body.length-1 && b.c===n.c && b.r===n.r; }); }
+  let die1=wall(n1)||hitBody(n1,SN.body)||hitBody(n1,SN.body2);
+  let die2=wall(n2)||hitBody(n2,SN.body2)||hitBody(n2,SN.body);
+  if(n1.c===n2.c && n1.r===n2.r){ die1=die2=true; }                       // 정면 충돌
+  if(n1.c===h2.c && n1.r===h2.r && n2.c===h1.c && n2.r===h1.r){ die1=die2=true; }   // 자리 바꾸며 통과 금지
+  if(die1||die2){
+    SN.over=true; SN.winner=(die1&&die2)?0:(die1?2:1); playSfx(SN.winner===0?"hit":"win");
+    return;   // 2인전은 개인 최고/학급 랭킹 미반영(혼자 모드 전용)
+  }
+  SN.body.unshift(n1); SN.body2.unshift(n2);
+  let ate1=SN.food && n1.c===SN.food.c && n1.r===SN.food.r;
+  let ate2=SN.food && n2.c===SN.food.c && n2.r===SN.food.r;
+  if(ate1&&ate2){ SN.score+=5; SN.score2+=5; SN.body.pop(); SN.body2.pop(); playSfx("buff"); SN.eaten++; snPlaceFood(SN.eaten%5===4); }   // 동시에 물면 사이좋게 반반(성장 없음)
+  else{
+    if(ate1){ SN.eaten++; if(SN.food.golden){ SN.score+=50; SN.body.push({...SN.body[SN.body.length-1]},{...SN.body[SN.body.length-1]}); playSfx("powerup"); } else { SN.score+=10; playSfx("buff"); } snPlaceFood(SN.eaten%5===4); }
+    else SN.body.pop();
+    if(ate2){ SN.eaten++; if(SN.food.golden){ SN.score2+=50; SN.body2.push({...SN.body2[SN.body2.length-1]},{...SN.body2[SN.body2.length-1]}); playSfx("powerup"); } else { SN.score2+=10; playSfx("buff"); } snPlaceFood(SN.eaten%5===4); }
+    else SN.body2.pop();
+  }
+  SN.stepIv=Math.max(0.085, 0.15-SN.eaten*0.003);
+}
 function snRender(){
   if(!SN) return;
   ctx.fillStyle="#0c1226"; ctx.fillRect(0,0,LOGW,LOGH);
@@ -6603,6 +6650,20 @@ function snRender(){
   }
   // v1.72 쾌적성: 스텝 진행률 보간 — 직전 칸→현재 칸을 등속으로 활주(멈칫 제로, 요즘 스네이크 흐름)
   const _t=SN.over?1:clamp(SN.stepT/SN.stepIv, 0, 1);
+  if(SN.pvp){   // v1.75: 🌙 친구 뱀(라벤더) — 같은 등속 보간
+    function _sx2(i){ const c=SN.body2[i], p=(SN.prev2&&SN.prev2[i])||c; return SN_OX+(p.c+(c.c-p.c)*_t)*SN_CELL; }
+    function _sy2(i){ const c=SN.body2[i], p=(SN.prev2&&SN.prev2[i])||c; return SN_OY+(p.r+(c.r-p.r)*_t)*SN_CELL; }
+    for(let i=SN.body2.length-1;i>=1;i--){
+      const x=_sx2(i), y=_sy2(i), k=1-i/SN.body2.length;
+      ctx.fillStyle="rgba("+Math.round(170+k*30)+","+Math.round(140+k*30)+",255,0.9)";
+      roundRect(x+5, y+5, SN_CELL-10, SN_CELL-10, 12); ctx.fill();
+    }
+    const hx=_sx2(0)+SN_CELL/2, hy=_sy2(0)+SN_CELL/2;
+    ctx.fillStyle="#c9a6ff"; ctx.beginPath(); ctx.arc(hx, hy, SN_CELL*0.38, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle="#2a2244";
+    ctx.beginPath(); ctx.arc(hx+SN.dir2.c*7-4, hy+SN.dir2.r*7-2, 3.4, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(hx+SN.dir2.c*7+4, hy+SN.dir2.r*7-2, 3.4, 0, Math.PI*2); ctx.fill();
+  }
   function _sx(i){ const c=SN.body[i], p=(SN.prev&&SN.prev[i])||c; return SN_OX+(p.c+(c.c-p.c)*_t)*SN_CELL; }
   function _sy(i){ const c=SN.body[i], p=(SN.prev&&SN.prev[i])||c; return SN_OY+(p.r+(c.r-p.r)*_t)*SN_CELL; }
   for(let i=SN.body.length-1;i>=1;i--){
@@ -6624,18 +6685,38 @@ function snRender(){
   ctx.textAlign="left"; ctx.fillStyle="#9fe6c8"; ctx.font="bold 17px 'Malgun Gothic',sans-serif";
   ctx.fillText("🐍 별꼬리", 16, 22);
   ctx.textAlign="center"; ctx.fillStyle="#fff"; ctx.font="bold 18px 'Malgun Gothic',sans-serif";
-  ctx.fillText("점수 "+SN.score+"   ·   길이 "+SN.body.length+"   ·   🏆 "+Math.max(snBest(),SN.score), LOGW/2, 22);
+  if(SN.pvp) ctx.fillText("⭐ "+SN.score+"  vs  🌙 "+SN.score2+"   ·   먼저 부딪히면 패배!", LOGW/2, 22);
+  else ctx.fillText("점수 "+SN.score+"   ·   길이 "+SN.body.length+"   ·   🏆 "+Math.max(snBest(),SN.score), LOGW/2, 22);
+  // v1.75: 모드 버튼(오델로와 같은 문법)
+  {
+    const bw2=104, bx1=16, by1=LOGH-38;
+    ctx.fillStyle=!SN.pvp?"rgba(95,160,255,0.4)":"rgba(30,38,66,0.85)"; roundRect(bx1,by1,bw2,26,13); ctx.fill();
+    ctx.fillStyle="#dfe6ff"; ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.fillText("🐍 혼자서", bx1+bw2/2, by1+14);
+    uiHit(bx1,by1,bw2,26,function(){ if(SN.pvp) snStart(false); });
+    ctx.fillStyle=SN.pvp?"rgba(95,160,255,0.4)":"rgba(30,38,66,0.85)"; roundRect(bx1+bw2+8,by1,bw2,26,13); ctx.fill();
+    ctx.fillStyle="#dfe6ff"; ctx.fillText("👥 둘이서", bx1+bw2+8+bw2/2, by1+14);
+    uiHit(bx1+bw2+8,by1,bw2,26,function(){ if(!SN.pvp) snStart(true); });
+  }
   ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
-  ctx.fillText("화살표(WASD) 방향 · 5개마다 황금별(+50·+3칸) · P 정지 · Esc 나가기", LOGW/2, LOGH-16);
+  if(SN.pvp) ctx.fillText("⭐ 화살표  vs  🌙 WASD · 황금별 +50 · T 혼자서 · P 정지 · Esc 나가기", LOGW/2, LOGH-16);
+  else ctx.fillText("화살표(WASD) 방향 · 5개마다 황금별(+50·+3칸) · T 둘이서 · P 정지 · Esc 나가기", LOGW/2, LOGH-16);
   if(SN.paused){ ctx.fillStyle="rgba(8,10,22,0.6)"; ctx.fillRect(0,0,LOGW,LOGH);
     ctx.fillStyle="#fff"; ctx.font="bold 40px 'Malgun Gothic',sans-serif"; ctx.fillText("⏸ 일시정지 (P)", LOGW/2, LOGH/2); }
   if(SN.over){
     ctx.fillStyle="rgba(8,10,22,0.78)"; ctx.fillRect(0,0,LOGW,LOGH);
-    ctx.fillStyle="#ff8a8a"; ctx.font="bold 44px 'Malgun Gothic',sans-serif"; ctx.fillText("💫 아이쿠!", LOGW/2, LOGH/2-52);
-    ctx.fillStyle="#dfe6ff"; ctx.font="18px 'Malgun Gothic',sans-serif";
-    ctx.fillText("점수 "+SN.score+" · 길이 "+SN.body.length+" · 🏆 최고 "+Math.max(snBest(),SN.score), LOGW/2, LOGH/2-4);
-    labRankDraw("sn", LOGW/2+340, LOGH/2-56, "점");
-    ctx.fillText("Enter 다시 · Esc 나가기", LOGW/2, LOGH/2+32);
+    if(SN.pvp){
+      const t=SN.winner===0?"🤝 동시에 꽈당! 무승부":(SN.winner===1?"🎉 ⭐ 별빛 친구 승리!":"🎉 🌙 달빛 친구 승리!");
+      ctx.fillStyle=SN.winner===0?"#ffd97d":"#7dffb0"; ctx.font="bold 42px 'Malgun Gothic',sans-serif"; ctx.fillText(t, LOGW/2, LOGH/2-52);
+      ctx.fillStyle="#dfe6ff"; ctx.font="18px 'Malgun Gothic',sans-serif";
+      ctx.fillText("⭐ "+SN.score+"점 (길이 "+SN.body.length+")  vs  🌙 "+SN.score2+"점 (길이 "+SN.body2.length+")", LOGW/2, LOGH/2-4);
+      ctx.fillText("Enter 다시 대결 · T 혼자서 · Esc 나가기", LOGW/2, LOGH/2+32);
+    } else {
+      ctx.fillStyle="#ff8a8a"; ctx.font="bold 44px 'Malgun Gothic',sans-serif"; ctx.fillText("💫 아이쿠!", LOGW/2, LOGH/2-52);
+      ctx.fillStyle="#dfe6ff"; ctx.font="18px 'Malgun Gothic',sans-serif";
+      ctx.fillText("점수 "+SN.score+" · 길이 "+SN.body.length+" · 🏆 최고 "+Math.max(snBest(),SN.score), LOGW/2, LOGH/2-4);
+      labRankDraw("sn", LOGW/2+340, LOGH/2-56, "점");
+      ctx.fillText("Enter 다시 · Esc 나가기", LOGW/2, LOGH/2+32);
+    }
   }
   ctx.restore();
 }
