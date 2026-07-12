@@ -12677,6 +12677,11 @@ function drawAdminScreen(){
       ctx.strokeStyle="#4fae8d"; ctx.lineWidth=2; roundRect(bx,by,bw,bh,10); ctx.stroke();
       ctx.fillStyle="#9fe6c8"; ctx.font="bold 15px 'Malgun Gothic',sans-serif"; ctx.fillText("🧪 별빛 실험실 — 10종 (L)", bx+bw/2, by+bh/2+1);
       uiHit(bx,by,bw,bh,function(){ lhStart(); });
+      const wbw=110, wbx=bx-wbw-10;   // 위키 v2: 게임↔위키 연결(새 탭)
+      ctx.fillStyle="rgba(120,150,255,0.20)"; roundRect(wbx,by,wbw,bh,10); ctx.fill();
+      ctx.strokeStyle="#7d90d8"; ctx.lineWidth=1.5; roundRect(wbx,by,wbw,bh,10); ctx.stroke();
+      ctx.fillStyle="#b8c6ff"; ctx.font="bold 14px 'Malgun Gothic',sans-serif"; ctx.fillText("📖 위키", wbx+wbw/2, by+bh/2+1);
+      uiHit(wbx,by,wbw,bh,function(){ try{ window.open("프로그램_위키.html","_blank"); }catch(e){} });
     }
     ctx.fillStyle="#5f8f7d"; ctx.font="11px 'Malgun Gothic',sans-serif";
     ctx.fillText("게임틀 10종 · 숫자 1~9,0 바로 실행", LOGW-20-95, 70);

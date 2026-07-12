@@ -54,9 +54,13 @@ details[open] summary{margin-bottom:8px;}
 <body>
 <div class="app">
 <nav class="side" id="side">
-  <div class="logo">⭐ 별빛 아레나 위키<small>게임 13종 · 만들기 · 관리 (v2 · 2026-07-12)</small></div>
+  <div class="logo">⭐ 별빛 아레나 위키<small>현재 버전 <b style="color:#ffe14d">v1.65</b> · 2026-07-12</small></div>
+  <input id="wsearch" type="search" placeholder="🔎 검색 (예: 뭉게대왕, 조작)" style="width:100%;margin:10px 0 2px;padding:7px 10px;border-radius:9px;border:1px solid #2a3560;background:#0a0f28;color:#dfe6ff;font-family:inherit;font-size:13px;">
+  <div id="sres" style="font-size:11.5px;color:#8893bb;padding:0 4px;"></div>
   <div class="grp">시작</div>
   <button class="nav-btn on" data-p="home">🏠 홈 · 별빛 세계</button>
+  <button class="nav-btn" data-p="dex">👾 몬스터 도감</button>
+  <button class="nav-btn" data-p="records">🏆 내 기록</button>
   <div class="grp">본편 (학생 공개)</div>
   <button class="nav-btn" data-p="arena">⚔ 별빛 아레나</button>
   <button class="nav-btn" data-p="jump">🦘 별빛 점프</button>
@@ -387,6 +391,35 @@ details[open] summary{margin-bottom:8px;}
 <li>전적 <code>starArena.lab.otWins</code> · 2인 대전(핫시트)은 후속 후보</li></ul></details>
 </section>
 
+<!-- ═════════ 몬스터 도감 ═════════ -->
+<section class="page" id="p-dex">
+<h1>👾 먹구름단 몬스터 도감</h1>
+<p class="tagline">별빛 세계 곳곳에 출몰하는 먹구름단 — 같은 몬스터가 게임마다 다른 모습으로 활약해요.</p>
+<h2>단원들</h2>
+<table><tr><th>몬스터</th><th>성격</th><th>출연작과 역할</th></tr>
+<tr><td>🟦 <b>파랭이</b> (그림자 젤리)</td><td>먹구름단 막내. 순하지만 떼로 다님</td><td>점프(순찰) · 수비대(기본병+왕젤리는 죽으면 꼬마 2분열!) · 던전3D(<b>추격자</b>) · 생존자 · 러너 · RPG(들판) · 🥚별빛알(부화하면 아기 파랭이!)</td></tr>
+<tr><td>🐰 <b>뿔깡총</b></td><td>깡총깡총 성급함</td><td>수비대(빠른 적) · 함대(카미카제 급강하) · 벽돌깨기(윗줄 벽돌) · 생존자 · RPG</td></tr>
+<tr><td>🛡 <b>가시딱지</b></td><td>단단한 방패 성애자</td><td>수비대(탱커) · 함대(실드기 6발) · 생존자(튼튼이) · RPG(정면 방어)</td></tr>
+<tr><td>🦉 <b>달빛 부엉이</b></td><td>밤하늘의 감시자</td><td>수비대 · 함대(유령기) · 생존자 · 러너(<b>슬라이드로 피하기</b>) · RPG(부채 탄막)</td></tr>
+<tr><td>🐛 <b>부슬 러너</b> (별벌레)</td><td>어디든 질주</td><td>수비대(최속 150) · 함대 · RPG(돌진)</td></tr>
+<tr><td>🚁 <b>이슬 요정</b> (종이 드론)</td><td>얄미운 지원병</td><td>수비대(<b>아군 회복 — 1순위 처치!</b>) · 함대(기본기) · RPG(포탑)</td></tr>
+<tr><td>💜 <b>정예 먹구름</b></td><td>보라 오라를 두른 강화체</td><td>수비대 웨이브 9+에서 12% 확률(체력 2.4배·골드 3배)</td></tr></table>
+<h2>보스들</h2>
+<table><tr><th>보스</th><th>출연작</th><th>필살기</th></tr>
+<tr><td>🐢 <b>먹구름 거북</b></td><td>수비대 8웨이브 · 함대 5웨이브</td><td>8방향 링 탄막 + 조준 3연발</td></tr>
+<tr><td>✈ <b>먹구름 비행선</b></td><td>함대 12웨이브(최종)</td><td>체력 절반부터 2페이즈 — 부채 5발 속사</td></tr>
+<tr><td>👑 <b>뭉게대왕</b></td><td>RPG 챕터1 최종 · 수비대 15웨이브 · 생존자 4분</td><td>부채 탄막+돌진+부슬이 소환. 입버릇 "에취!" — 사실 별빛이 필요했을 뿐…</td></tr></table>
+<p class="tagline">도감 정보는 코드의 TD_FOES·SH_FOES·SV_FOES·RPG_DB 기준 — 수치를 바꾸면 이 페이지도 같이 고쳐 주세요.</p>
+</section>
+
+<!-- ═════════ 내 기록 ═════════ -->
+<section class="page" id="p-records">
+<h1>🏆 내 기록</h1>
+<p class="tagline">이 브라우저로 플레이한 기록을 자동으로 읽어와요. (게임과 같은 주소에서 열어야 보입니다 — 기록이 없으면 "—")</p>
+<div id="rec-wrap"><p>기록을 읽는 중…</p></div>
+<div class="tip">기록은 이 컴퓨터 브라우저에만 저장돼요(localStorage). 다른 컴퓨터에서 하면 그쪽에 따로 쌓입니다.</div>
+</section>
+
 <!-- ═════════ 만들기 도구 ═════════ -->
 <section class="page" id="p-maker">
 <h1>🛠 만들기 도구 — 학생이 제작자가 되는 곳</h1>
@@ -475,16 +508,30 @@ node -e 'const fs=require("fs");const h=fs.readFileSync("index.html","utf8");con
 
 <!-- ═════════ 일지 ═════════ -->
 <section class="page" id="p-log">
-<h1>📜 업데이트 일지</h1>
-<p class="tagline">최근 큰 변화 위주 — 상세는 저장소 <code>작업현황_HANDOFF.md</code>·git 로그.</p>
-<table><tr><th>날짜</th><th>내용</th></tr>
-<tr><td>07-12</td><td>위키 v2 전면 개편(앱 스타일·게임별 페이지) — 관리 주체가 Claude로 인수</td></tr>
-<tr><td>07-11 심야</td><td><b>실험실 10종 완성</b>: 러너·벽돌깨기·별꼬리·오델로 추가, 🧪허브, 🧩퍼즐 출제 공방(자동 검증), 에셋 인벤토리. 하네스 135항목</td></tr>
-<tr><td>07-11 밤</td><td>눈편안 대수술(전체화면 플래시 4건 제거) · 수비대/함대/던전3D 각 +10단계 · ⚔생존자·🥚별빛알 추가</td></tr>
-<tr><td>07-11</td><td>실험실 탄생: 수비대·함대·던전3D 3종 → 각 10단계 진화(맵3·15웨이브·12웨이브 보스·3층 미로)</td></tr>
-<tr><td>07-10~11</td><td>별빛 점프: 캠페인 20→30판 + 캠페인/친구 맵 탭 분리 + 공중 몬스터 발광 렉 수정(중력 부여)</td></tr>
-<tr><td>07-09~10</td><td>메이커 기믹 10종+클리어 조건 · 계정 동시접속 롤백 수정 · 보스 멀미 완화 · HUD 리디자인</td></tr>
-<tr><td>~07-08</td><td>RPG 챕터1+상용감 개편 · 1장 공략집 · 3v3 WebRTC P2P · 에셋 스프라이트화</td></tr></table>
+<h1>📜 업데이트 일지 <span class="badge">현재 v1.65</span></h1>
+<p class="tagline">v1.00(6-29 첫 버전)부터 이어온 버전 기록 — 전체 상세는 저장소 <code>PATCHNOTES.md</code>(67개 버전), 작업 맥락은 <code>작업현황_HANDOFF.md</code>.</p>
+<h2>최근 (v1.55 ~ v1.65)</h2>
+<table><tr><th>버전</th><th>날짜</th><th>내용</th></tr>
+<tr><td><b>v1.65</b></td><td>07-12</td><td><b>위키 v2</b>(앱 스타일·게임별 페이지·검색·도감·내 기록) + 버전 기록 체계 Claude 인수(v1.55~65 소급) + 교사 패널 📖위키 버튼</td></tr>
+<tr><td>v1.64</td><td>07-11</td><td><b>실험실 10종 완성</b>: 러너·벽돌깨기·별꼬리·오델로 + 🧪허브 + 🧩퍼즐 출제 공방(풀리는 퍼즐만 저장) + 에셋 발주 목록</td></tr>
+<tr><td>v1.63</td><td>07-11</td><td><b>눈편안 대수술</b>(전체화면 플래시 4건 제거) · 3종 각 +10단계 · ⚔생존자·🥚별빛알·🧩별조각밀기 추가</td></tr>
+<tr><td>v1.62</td><td>07-11</td><td>실험 3종 ×10 진화: 수비대 맵3·15웨이브·탑6 / 함대 12웨이브·2페이즈 보스 / 던전3D 3층·추격 젤리</td></tr>
+<tr><td>v1.61</td><td>07-11</td><td>🧪 <b>별빛 실험실 탄생</b>: 수비대·함대·던전 3D (교사 전용)</td></tr>
+<tr><td>v1.60</td><td>07-10~11</td><td>점프 캠페인 30판+맵 탭 분리 + <b>공중 몬스터 발광 렉</b> 원인 규명·수정(중력)</td></tr>
+<tr><td>v1.59</td><td>07-10</td><td>점프 메이커 기믹 10종(포탑·톱니·용암…) + 시간·별 클리어 조건</td></tr>
+<tr><td>v1.58</td><td>07-10</td><td>캠페인 최종장 '별 수호전' — 별 픽업 추가로 클리어 가능화</td></tr>
+<tr><td>v1.57</td><td>07-10</td><td>보스 멀미 완화(방향성 킥) + 히트스톱 완화</td></tr>
+<tr><td>v1.56</td><td>07-09</td><td>미니맵 토글·안개 + <b>동시접속 레벨 롤백 수정</b>(진행도 보호 병합)</td></tr>
+<tr><td>v1.55</td><td>07-09</td><td>RPG HUD 소실 버그 방어(렌더 에러 격리) + 온라인 RPG HUD 리디자인</td></tr></table>
+<h2>이정표 (그 이전)</h2>
+<table><tr><th>버전</th><th>내용</th></tr>
+<tr><td>v1.46~54</td><td>RPG 상용감 대개편(추적 카메라·리스폰·의뢰판·워프망) · 온라인 넷코드 구조 수정(P1) · 맵공방 터치/WYSIWYG · 유기성 감사 21건</td></tr>
+<tr><td>v1.44</td><td>🌙 별빛 마을 RPG 챕터1 탄생</td></tr>
+<tr><td>v1.21~38</td><td>전투 리워크(패시브 6종)·게임 템포 조정·에셋 스프라이트화·플랫포머 카메라 멀미 수정</td></tr>
+<tr><td>v1.13</td><td>학생 계정 로그인 + 교사용 패널</td></tr>
+<tr><td>v1.05~10</td><td>온라인 3v3·6인 PVE 베타와 안정화</td></tr>
+<tr><td>v1.00</td><td>2026-06-29 탄생 — HTML 한 파일 아레나 슈팅</td></tr></table>
+<div class="tip"><b>버전 규칙(인수 후에도 동일)</b>: 배포 한 묶음 = +0.01. 배포 시 ①PATCHNOTES.md 맨 위에 항목 추가 ②이 페이지 표 갱신 ③사이드바 "현재 버전" 갱신 — 담당: Claude.</div>
 </section>
 
 </main>
@@ -506,6 +553,43 @@ node -e 'const fs=require("fs");const h=fs.readFileSync("index.html","utf8");con
   cards.forEach(function(c){ c.addEventListener("click",function(){ show(c.dataset.p); }); });
   var h=(location.hash||"").replace("#","");
   if(h) show(h);
+  // 🔎 검색: 페이지 본문 텍스트를 뒤져 일치하는 페이지 버튼만 남김
+  var inp=document.getElementById("wsearch"), sres=document.getElementById("sres");
+  var pageText={};
+  document.querySelectorAll(".page").forEach(function(s){ pageText[s.id.slice(2)]=(s.textContent||"").toLowerCase(); });
+  inp.addEventListener("input", function(){
+    var q=inp.value.trim().toLowerCase();
+    if(!q){ btns.forEach(function(b){ b.style.display=""; }); sres.textContent=""; return; }
+    var n=0;
+    btns.forEach(function(b){
+      var hit=(b.textContent.toLowerCase().indexOf(q)>=0) || (pageText[b.dataset.p]||"").indexOf(q)>=0;
+      b.style.display=hit?"":"none"; if(hit) n++;
+    });
+    sres.textContent=n?("일치하는 페이지 "+n+"개 — 눌러서 이동"):"검색 결과 없음";
+  });
+  // 🏆 내 기록: 게임과 같은 도메인의 localStorage에서 읽기
+  function rec(){
+    function g(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+    function j(k){ try{ return JSON.parse(g(k)); }catch(e){ return null; } }
+    var rows=[];
+    var pf=j("starArena.pfBest.v1"); rows.push(["🦘 별빛 점프", pf?("캠페인 "+Object.keys(pf).filter(function(k){return k.indexOf("pfc_")===0;}).length+"/30 클리어"):"—"]);
+    var td=j("starArena.lab.tdBest"); rows.push(["🏰 별빛 수비대", td&&Object.keys(td).length?Object.keys(td).map(function(k){ var m={m0:"굽잇길",m1:"두 갈래",m2:"나선"}[k]||k; return m+" "+"★".repeat(td[k].stars); }).join(" · "):"—"]);
+    rows.push(["🚀 별빛 함대", g("starArena.lab.shooterBest")?("최고 "+g("starArena.lab.shooterBest")+"점"):"—"]);
+    var ry=j("starArena.lab.rayBest"); rows.push(["🕶 던전 3D", ry?("합계 "+ry.total+"초 · ⭐"+ry.stars+"/15"):"—"]);
+    var sv=j("starArena.lab.svBest"); rows.push(["⚔ 별빛 생존자", sv&&sv.bestT?("최장 "+sv.bestT+"초 · 승리 "+(sv.wins||0)+"회"):"—"]);
+    var eg=j("starArena.lab.egg"); rows.push(["🥚 별빛 알", eg?("별빛 "+(eg.xp||0)+" · 먹이 "+(eg.feeds||0)+"번"):"—"]);
+    var pz=j("starArena.lab.pzBest"); var pzc=j("starArena.lab.pzCustom");
+    rows.push(["🧩 별조각 밀기", (pz&&Object.keys(pz).length?("해결 "+Object.keys(pz).length+"/12판"):"—")+(pzc&&pzc.length?(" · 내 퍼즐 "+pzc.length+"개"):"")]);
+    rows.push(["🏃 별빛 러너", g("starArena.lab.rnBest")?("최장 "+g("starArena.lab.rnBest")+"m"):"—"]);
+    var bk=j("starArena.lab.bkBest"); rows.push(["🧱 벽돌깨기", bk&&bk.score?("최고 "+bk.score+"점 (스테이지 "+bk.stage+")"):"—"]);
+    rows.push(["🐍 별꼬리", g("starArena.lab.snBest")?("최고 "+g("starArena.lab.snBest")+"점"):"—"]);
+    var ot=j("starArena.lab.otWins"); rows.push(["⚫ 별빛 오델로", ot&&(ot.w||ot.l||ot.d)?(ot.w+"승 "+ot.l+"패 "+ot.d+"무"):"—"]);
+    var html='<table><tr><th>게임</th><th>기록</th></tr>';
+    rows.forEach(function(r){ html+="<tr><td>"+r[0]+"</td><td>"+r[1]+"</td></tr>"; });
+    html+="</table>";
+    var w=document.getElementById("rec-wrap"); if(w) w.innerHTML=html;
+  }
+  rec();
 })();
 </script>
 </body>
