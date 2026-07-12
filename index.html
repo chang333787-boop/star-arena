@@ -3545,6 +3545,7 @@ const LabOpenStore={
 };
 /* ── v1.74 학급 랭킹: 게임별 TOP8을 클라우드로 공유(starArenaOnline/labRank/<class>) ──
    로컬 캐시 폴백 — 오프라인이어도 이 기기 랭킹은 동작, 접속되면 학급 전체와 합쳐짐. */
+const GAME_VER="v1.83";   // 화면 표시용 — 배포마다 PATCHNOTES와 함께 갱신(캐시 구버전 진단)
 const LAB_RANK_KEY="starArena.labRank.v1";
 let labRank=(function(){ try{ const s=JSON.parse(localStorage.getItem(LAB_RANK_KEY)); if(s&&typeof s==="object") return s; }catch(e){} return {}; })();
 const LabRankStore={
@@ -5308,12 +5309,13 @@ function svSpawn(){
   const elite=(SV.t>72 && Math.random()<0.08);   // v1.73 정예: 보라 오라·체력 2.2배·별가루 3개
   const em=elite?2.2:1;
   SV.foes.push({ type:type, spec:spec, x:x, y:y, hp:spec.hp*hpMul*em, maxHp:spec.hp*hpMul*em, alive:true, hitT:0, elite:elite });
+  /* v1.83 주의: 적 이속 스케일은 금지 — 카이팅 플레이어에게 적이 "배달"되며 킬 컨베이어→수입 재폭발(봇 83→742킬 실측). 압박은 ifr로만. */
 }
 function svHurt(dmg){
   const p=SV.p;
   if(p.ifr>0) return;
   if(p.shield){ p.shield=false; p.shieldT=Math.max(4, 12-2*(SV.atk.shieldLv||1)); p.ifr=0.8; playSfx("break"); showToast("🛡 별빛 보호막이 막아줬다!"); return; }
-  p.hp-=dmg; p.ifr=0.8; SV.hurtT=0.4; playSfx("hit");
+  p.hp-=dmg; p.ifr=0.65; SV.hurtT=0.4; playSfx("hit");   // v1.83: 무적 단축(0.8→0.65) — 포위 압박은 실감, 능동 플레이는 숨 쉬게
   if(p.hp<=0){ p.hp=0; SV.phase="over"; playSfx("lose");
     try{ const b=svBestLoad(); if(SV.t>b.bestT){ b.bestT=Math.round(SV.t); localStorage.setItem(SV_BEST_KEY, JSON.stringify(b)); } SV.best=b; }catch(e){}
     LabRankStore.submit("sv", Math.floor(SV.t));   // v1.74 랭킹: 생존 초
@@ -14960,6 +14962,10 @@ function drawStartScreen(){
   drawLobbyMiniBanner();  // 🎮 미니게임 광장(교사 개방제)
   const ch=getCharacter(selectedCharacterId), w=getWeapon(selectedWeaponId);
   drawLobbyHero(ch, w);   // v1.68: 캐릭터 쇼케이스(포디움 위 큰 캐릭터 — 박스 카드 대체)
+  ctx.save(); ctx.textAlign="right"; ctx.textBaseline="middle";
+  ctx.fillStyle="#4a5478"; ctx.font="11px 'Malgun Gothic',sans-serif";
+  ctx.fillText(GAME_VER, LOGW-10, LOGH-10);   // v1.83: 버전 스탬프 — 안 맞으면 Ctrl+Shift+R
+  ctx.restore();
   ctx.save(); ctx.textAlign="center"; ctx.fillStyle="#aab4e0"; ctx.font="14px 'Malgun Gothic',sans-serif";
   ctx.fillText("↑↓ 카드 이동 · ←→ 값 변경 · Enter 실행 · Esc 설정", LOGW/2, LOGH-16); ctx.restore();
   drawLobbyCardOverlay();   // v1.70: ℹ 능력 보기

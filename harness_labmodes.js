@@ -1218,6 +1218,17 @@ run("무쌍 v2: 🏅 랭크 성장·🔥 총력전", ()=>{
   check("마지막 30초 = 총력전 발동", ms.spurt===true);
   api.msKey("Escape");
 });
+run("생존자: v1.83 장르 무결성 — 가만히 있으면 죽는다", ()=>{
+  api.svStart();
+  const sv=api.SV;
+  for(let f=0; f<90*60 && sv.phase!=="over"; f++){
+    if(sv.phase==="levelup") api.svKey("Digit1");
+    else api.svUpdate(1/60);
+  }
+  check("정지(AFK) 플레이는 90초 안에 사망", sv.phase==="over" && sv.t<90);
+  check("죽기 전 카드 몇 장은 구경(경제 생존)", sv.level>=2);
+  api.svKey("Escape");
+});
 run("생존자: v1.81 폭주 방지(비용 제곱·상자 쿨다운)", ()=>{
   api.svStart();
   const sv=api.SV; sv.spawnT=9999; sv.foes.length=0; sv.gems.length=0;
