@@ -452,13 +452,48 @@ run("생존자: 시작·자동공격·처치·별가루·레벨업 3택", ()=>{
   api.svPick(pick);
   check("강화 적용+플레이 복귀", SV.phase==="play" && (!wasDmg || SV.atk.dmg>dmg0));
 });
-run("생존자: 강화 8종 효과 적용", ()=>{
+run("생존자: 강화 14종 효과 적용(v1.73)", ()=>{
   api.svStart();
   const SV=api.SV, a=SV.atk, p=SV.p;
   const base={ dmg:a.dmg, cd:a.cd, multi:a.multi, spd:p.spd, orbit:a.orbit, magnet:a.magnet, maxhp:p.maxhp, regen:a.regen };
   for(const u of api.SV_UPS) api.svApplyUp(u.k);
-  check("8종 전부 수치 변화", a.dmg>base.dmg && a.cd<base.cd && a.multi===base.multi+1 && p.spd>base.spd
+  check("기본 8종 수치 변화(+40% 확인)", Math.abs(a.dmg-base.dmg*1.4)<0.001 && a.cd<base.cd && a.multi===base.multi+1 && p.spd>base.spd
     && a.orbit===base.orbit+1 && a.magnet>base.magnet && p.maxhp===base.maxhp+25 && a.regen===base.regen+1);
+  check("신규 6종 부여(사슬·폭발·별똥별·서리·보호막·궤도)", a.chain===1 && a.boom===1 && a.meteor===1 && a.frost===1 && a.shieldLv===1 && a.orbitR>74 && a.orbitSpd>0);
+});
+run("생존자 v1.73: 사슬·폭발·데미지 숫자", ()=>{
+  api.svStart();
+  const SV=api.SV, a=SV.atk, p=SV.p;
+  a.chain=1; a.boom=1;
+  const mk=(x,y,hp)=>({ type:"jelly", spec:{ asset:"soft_jelly", hp:hp, spd:0, dmg:0, xp:1, r:17 }, x:x, y:y, hp:hp, maxHp:hp, alive:true, hitT:0 });
+  const f1=mk(p.x+70, p.y-14, a.dmg), f2=mk(p.x+130, p.y-14, 60), f3=mk(p.x+70, p.y+40, 60);   // f1은 한 방 → 폭발
+  SV.foes.push(f1,f2,f3);
+  let t=0; while(f1.alive && t<3){ api.svUpdate(1/60); t+=1/60; }
+  check("별줄기 처치 → 사슬 or 폭발로 주변 동반 피해", !f1.alive && (f2.hp<60 || f3.hp<60));
+  check("데미지 숫자 생성", SV.dnums.length>0);
+});
+run("생존자 v1.73: 보호막·서리·별똥별", ()=>{
+  api.svStart();
+  const SV=api.SV, a=SV.atk, p=SV.p;
+  api.svApplyUp("shield");
+  p.shieldT=0.01; api.svUpdate(1/60);
+  check("보호막 충전", p.shield===true);
+  const hp0=p.hp; api.svHurt(30);
+  check("보호막 1회 방어(체력 유지·재충전 시작)", p.hp===hp0 && p.shield===false && p.shieldT>0);
+  api.svApplyUp("frost");
+  const slow={ type:"jelly", spec:{ asset:"soft_jelly", hp:99, spd:100, dmg:0, xp:1, r:17 }, x:p.x+100, y:p.y, hp:99, maxHp:99, alive:true, hitT:0 };
+  const fast={ type:"jelly", spec:{ asset:"soft_jelly", hp:99, spd:100, dmg:0, xp:1, r:17 }, x:p.x+900, y:p.y, hp:99, maxHp:99, alive:true, hitT:0 };
+  SV.foes.push(slow,fast);
+  const d1=slow.x, d2=fast.x;
+  for(let i=0;i<30;i++) api.svUpdate(1/60);
+  check("서리 오라: 안쪽 적이 더 느림", (d1-slow.x) < (d2-fast.x)*0.85);
+  api.svApplyUp("meteor");
+  SV.foes.length=0; SV.gems.length=0; SV.xpNext=999999; SV.spawnT=9999;   // 단독 표적·레벨업/스포너 차단
+  const tgt={ type:"jelly", spec:{ asset:"soft_jelly", hp:200, spd:0, dmg:0, xp:1, r:17 }, x:p.x+200, y:p.y, hp:200, maxHp:200, alive:true, hitT:0 };
+  SV.foes.push(tgt);
+  SV.meteorT=0.01; SV.meteorWarn=null;
+  for(let i=0;i<90;i++){ api.svUpdate(1/60); SV.spawnT=9999; }
+  check("별똥별 경고 후 낙하 피해", tgt.hp<200);
 });
 run("생존자: 피격·무적·사망", ()=>{
   api.svStart();
@@ -473,13 +508,13 @@ run("생존자: 피격·무적·사망", ()=>{
 run("생존자: 보스 등장(240s)·승리(300s)", ()=>{
   api.svStart();
   const SV=api.SV;
-  SV.t=239.5; SV.p.hp=9999; SV.p.maxhp=9999;
+  SV.t=139.5; SV.p.hp=9999; SV.p.maxhp=9999;
   for(let i=0;i<60;i++) api.svUpdate(DT);
-  check("240초 보스 스폰", SV.foes.some(f=>f.spec.boss));
+  check("140초 보스 스폰(3분판)", SV.foes.some(f=>f.spec.boss));
   SV.foes.length=0; SV.gems.length=0;
-  SV.t=299.5;
+  SV.t=179.5;
   for(let i=0;i<60 && SV.phase==="play";i++) api.svUpdate(DT);
-  check("300초 생존 → 승리+기록", SV.phase==="win" && JSON.parse(LS["starArena.lab.svBest"]).wins>=1);
+  check("180초 생존 → 승리+기록", SV.phase==="win" && JSON.parse(LS["starArena.lab.svBest"]).wins>=1);
 });
 run("생존자: 수호별 — 겹친 적 전원 동시 타격+넉백(v1.72)", ()=>{
   api.svStart();

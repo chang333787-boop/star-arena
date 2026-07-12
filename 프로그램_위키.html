@@ -54,7 +54,7 @@ details[open] summary{margin-bottom:8px;}
 <body>
 <div class="app">
 <nav class="side" id="side">
-  <div class="logo">⭐ 별빛 아레나 위키<small>현재 버전 <b style="color:#ffe14d">v1.72</b> · 2026-07-12</small></div>
+  <div class="logo">⭐ 별빛 아레나 위키<small>현재 버전 <b style="color:#ffe14d">v1.73</b> · 2026-07-12</small></div>
   <input id="wsearch" type="search" placeholder="🔎 검색 (예: 뭉게대왕, 조작)" style="width:100%;margin:10px 0 2px;padding:7px 10px;border-radius:9px;border:1px solid #2a3560;background:#0a0f28;color:#dfe6ff;font-family:inherit;font-size:13px;">
   <div id="sres" style="font-size:11.5px;color:#8893bb;padding:0 4px;"></div>
   <div class="grp">시작</div>
@@ -102,7 +102,7 @@ details[open] summary{margin-bottom:8px;}
 <div class="gcard" data-p="td"><div class="em">🏰</div><div class="nm">별빛 수비대</div><div class="ds">타워 디펜스</div></div>
 <div class="gcard" data-p="fleet"><div class="em">🚀</div><div class="nm">별빛 함대</div><div class="ds">세로 슈팅</div></div>
 <div class="gcard" data-p="dungeon"><div class="em">🕶</div><div class="nm">던전 3D</div><div class="ds">1인칭 미로</div></div>
-<div class="gcard" data-p="survivor"><div class="em">⚔</div><div class="nm">별빛 생존자</div><div class="ds">5분 버티기</div></div>
+<div class="gcard" data-p="survivor"><div class="em">⚔</div><div class="nm">별빛 생존자</div><div class="ds">3분 버티기</div></div>
 <div class="gcard" data-p="egg"><div class="em">🥚</div><div class="nm">별빛 알</div><div class="ds">펫 부화</div></div>
 <div class="gcard" data-p="puzzle"><div class="em">🧩</div><div class="nm">별조각 밀기</div><div class="ds">두뇌 퍼즐+출제</div></div>
 <div class="gcard" data-p="runner"><div class="em">🏃</div><div class="nm">별빛 러너</div><div class="ds">자동 달리기</div></div>
@@ -277,10 +277,12 @@ details[open] summary{margin-bottom:8px;}
 <h2>🎮 하는 법</h2>
 <ul><li><kbd>WASD</kbd>/<kbd>화살표</kbd>로 <b>이동만</b> — 별줄기가 가까운 적을 자동 공격!</li>
 <li>적이 떨군 <b>별가루</b>를 주우면 경험치 → <b>레벨업 때 3장 중 1장</b>(<kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> 또는 클릭)</li>
-<li>4분에 <b>뭉게대왕</b> 등장 · <b>5분 생존 = 승리!</b></li></ul>
+<li>2분 20초에 <b>뭉게대왕</b> 등장 · <b>3분 생존 = 승리!</b></li></ul>
 <h2>⬆ 강화 8종</h2>
 <table><tr><th>카드</th><th>효과</th></tr>
-<tr><td>🌟 별의 힘 / ⚡ 빠른 손</td><td>공격력 +30% / 공속 +20%</td></tr>
+<tr><td>🌟 별의 힘 / ⚡ 빠른 손</td><td>공격력 +40%(카드에 "젤리 몇 방→몇 방" 표시) / 공속 +20%</td></tr>
+<tr><td>⚡사슬 · 💥폭발 · ☄별똥별</td><td>튕기는 별줄기 · 처치 폭발 · 주기 폭격(경고 원 보고 피하는 적!)</td></tr>
+<tr><td>❄서리 오라 · 🛡보호막 · 🌀궤도 확장</td><td>주변 감속 · 주기 1회 방어 · 수호별 강화</td></tr>
 <tr><td>✨ 갈래 별 / 💫 수호 별</td><td>별줄기 +1개 / 빙글 도는 별 +1개</td></tr>
 <tr><td>👟 바람 신발 / 🧲 별 자석</td><td>이동 +12% / 수집 범위 +40%</td></tr>
 <tr><td>❤ 튼튼함 / 🌿 별빛 숨</td><td>최대체력 +25&amp;회복 / 초당 회복 +1</td></tr></table>
@@ -516,11 +518,12 @@ node -e 'const fs=require("fs");const h=fs.readFileSync("index.html","utf8");con
 
 <!-- ═════════ 일지 ═════════ -->
 <section class="page" id="p-log">
-<h1>📜 업데이트 일지 <span class="badge">현재 v1.72</span></h1>
+<h1>📜 업데이트 일지 <span class="badge">현재 v1.73</span></h1>
 <p class="tagline">v1.00(6-29 첫 버전)부터 이어온 버전 기록 — 전체 상세는 저장소 <code>PATCHNOTES.md</code>(67개 버전), 작업 맥락은 <code>작업현황_HANDOFF.md</code>.</p>
 <h2>최근 (v1.55 ~ v1.65)</h2>
 <table><tr><th>버전</th><th>날짜</th><th>내용</th></tr>
-<tr><td><b>v1.72</b></td><td>07-12</td><td><b>흐름 개선 2차</b> — 별꼬리 등속 활주·수호별 타격감(동시타격 가시화+넉백)·함대/생존자/벽돌 관성 이동</td></tr>
+<tr><td><b>v1.73</b></td><td>07-12</td><td><b>생존자 대확장</b> — 특수효과 6종(사슬·폭발·별똥별·서리·보호막·궤도)·데미지 숫자·공격력 카드 "몇 방→몇 방" 계산 표시·3분판 압축</td></tr>
+<tr><td>v1.72</td><td>07-12</td><td><b>흐름 개선 2차</b> — 별꼬리 등속 활주·수호별 타격감(동시타격 가시화+넉백)·함대/생존자/벽돌 관성 이동</td></tr>
 <tr><td>v1.71</td><td>07-12</td><td><b>쾌적성 대패스</b>(글로우 교체·보간 이동·뒤집기 애니) + <b>공방 3종</b>: 수비대 길·함대 편대·퍼즐 — 만들기→검증→제출→승인→친구 작품</td></tr>
 <tr><td>v1.70</td><td>07-12</td><td><b>미니게임 일일 보상</b>(첫 성취 +15~30G, 하루 1회) + 로비 ℹ능력 보기 오버레이</td></tr>
 <tr><td>v1.69</td><td>07-12</td><td><b>유기성 감사 2차</b> — 캠페인 판수 표기(19→20)·"(실험)" 꼬리표 16곳 제거·프레임당 기록 파싱 5곳 캐시·로그인 씬 통일</td></tr>
