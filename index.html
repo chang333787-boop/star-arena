@@ -49,6 +49,8 @@
   <span id="fsLabel">전체화면</span>
 </button>
 
+<!-- AI 에셋 공방 연동: 학생 이름·색 메타(있으면 로드, 없으면 조용히 무시). file:// 에서도 동작하도록 classic 스크립트. -->
+<script src="assets/student_meta.js" onerror="void 0"></script>
 <script>
 "use strict";
 
@@ -673,6 +675,27 @@ function _readyImage(path){
 }
 function getCharImage(assetId, key){ return _readyImage(charAssetPath(assetId, key)); }
 function getWeaponImage(assetId, key){ return _readyImage(weaponAssetPath(assetId, key)); }
+
+// AI 에셋 공방 연동: assets/student_meta.js 가 window.AW_STUDENT_META 를 세팅했으면 이름·색을 덮어써요.
+// (그림은 이미 고정 슬롯 경로로 자동 로드되므로 코드 수정 불필요. 이 함수는 이름/색만 반영.)
+function applyStudentMeta(){
+  const M = (typeof window!=="undefined") ? window.AW_STUDENT_META : null;
+  if(!M || typeof M!=="object") return;
+  try{
+    const chars = M.characters||{};
+    for(const c of STUDENT_CHARACTERS){
+      const o = chars[c.id]; if(!o) continue;
+      if(o.name) c.name = String(o.name).slice(0,20);
+      if(o.color) c.color = o.color;
+      if(o.subColor) c.subColor = o.subColor;
+    }
+    const wpn = M.weapons||{};
+    for(const w of STUDENT_WEAPONS){
+      const o = wpn[w.id]; if(!o) continue;
+      if(o.name) w.name = String(o.name).slice(0,20);
+    }
+  }catch(e){}
+}
 
 // 모든 학생 에셋을 미리 불러오기 시도. ASSETS_ENABLED=false 면 아무것도 하지 않음(오늘).
 function loadGameAssets(){
@@ -3562,7 +3585,7 @@ const LabOpenStore={
 };
 /* ── v1.74 학급 랭킹: 게임별 TOP8을 클라우드로 공유(starArenaOnline/labRank/<class>) ──
    로컬 캐시 폴백 — 오프라인이어도 이 기기 랭킹은 동작, 접속되면 학급 전체와 합쳐짐. */
-const GAME_VER="v1.86";   // 화면 표시용 — 배포마다 PATCHNOTES와 함께 갱신(캐시 구버전 진단)
+const GAME_VER="v1.87";   // 화면 표시용 — 배포마다 PATCHNOTES와 함께 갱신(캐시 구버전 진단)
 const LAB_RANK_KEY="starArena.labRank.v1";
 let labRank=(function(){ try{ const s=JSON.parse(localStorage.getItem(LAB_RANK_KEY)); if(s&&typeof s==="object") return s; }catch(e){} return {}; })();
 const LabRankStore={
@@ -5932,7 +5955,193 @@ const PZ_LEVELS=[
     "#.##$##.#",
     "#.......#",
     "#########"
-  ] }
+  ] },
+  { name:"별빛 미로", min:22, rows:[
+    "########",
+    "#.*..o.#",
+    "#.$..$.#",
+    "#......#",
+    "#o..o$##",
+    "#......#",
+    "########"
+  ] },
+  { name:"두 갈래 창고", min:22, rows:[
+    "#########",
+    "#.o.$...#",
+    "#..$*$o.#",
+    "#..$#...#",
+    "#.#.....#",
+    "#..o....#",
+    "#....o..#",
+    "#########"
+  ] },
+  { name:"좁은 길목", min:22, rows:[
+    "#########",
+    "#....o.o#",
+    "#.....$.#",
+    "#o$...*.#",
+    "#.......#",
+    "#...#.$.#",
+    "#...o.$.#",
+    "#########"
+  ] },
+  { name:"조용한 별", min:23, rows:[
+    "########",
+    "#...#..#",
+    "#...#$.#",
+    "#......#",
+    "#..o..##",
+    "#*$....#",
+    "#.o..#.#",
+    "########"
+  ] },
+  { name:"돌아드는 길", min:23, rows:[
+    "########",
+    "#....*.#",
+    "#o$..$.#",
+    "#..o...#",
+    "#.#...o#",
+    "#$.....#",
+    "#......#",
+    "########"
+  ] },
+  { name:"구석 조심!", min:24, rows:[
+    "#########",
+    "#..o.*..#",
+    "#....$..#",
+    "#......##",
+    "#.....#.#",
+    "#.$.....#",
+    "#....o$.#",
+    "###.o...#",
+    "#########"
+  ] },
+  { name:"엇갈린 별", min:24, rows:[
+    "########",
+    "#...o..#",
+    "#o#....#",
+    "#..*o..#",
+    "#..$...#",
+    "#$...$.#",
+    "#......#",
+    "########"
+  ] },
+  { name:"미끄럼 창고", min:25, rows:[
+    "#########",
+    "#.#..#..#",
+    "#*$.....#",
+    "##$..#..#",
+    "#...#...#",
+    "#..#....#",
+    "#....o.o#",
+    "#########"
+  ] },
+  { name:"별의 수수께끼", min:25, rows:[
+    "#########",
+    "#.o.....#",
+    "#..*$...#",
+    "#.##$.#.#",
+    "#.......#",
+    "#.o.$...#",
+    "#.o.....#",
+    "#########"
+  ] },
+  { name:"얽힌 통로", min:26, rows:[
+    "#########",
+    "#...##*##",
+    "#.$#o.$.#",
+    "#.......#",
+    "#.......#",
+    "##..#...#",
+    "#.#.o...#",
+    "#.......#",
+    "#########"
+  ] },
+  { name:"깊은 창고", min:26, rows:[
+    "#########",
+    "#.*..o.##",
+    "#.$#.$.##",
+    "#....#.##",
+    "#.......#",
+    "#.......#",
+    "#......o#",
+    "#..#.#..#",
+    "#########"
+  ] },
+  { name:"별빛 매듭", min:27, rows:[
+    "#########",
+    "#.......#",
+    "#$.$*.$.#",
+    "#..#....#",
+    "#....o..#",
+    "#o.o....#",
+    "#.......#",
+    "#########"
+  ] },
+  { name:"빙글 미로", min:27, rows:[
+    "########",
+    "#......#",
+    "#.....o#",
+    "#.$#...#",
+    "#...#.o#",
+    "#..*$..#",
+    "#.....##",
+    "########"
+  ] },
+  { name:"외길의 별", min:29, rows:[
+    "#########",
+    "#..#....#",
+    "#.*$....#",
+    "#.......#",
+    "#.....#.#",
+    "#...#.o.#",
+    "#.$...o.#",
+    "#......##",
+    "#########"
+  ] },
+  { name:"별 감옥", min:29, rows:[
+    "#########",
+    "#.......#",
+    "##..o#..#",
+    "#.#..#.o#",
+    "#.....#.#",
+    "#.....$*#",
+    "#..##.$.#",
+    "#.......#",
+    "#########"
+  ] },
+  { name:"미로의 심장", min:30, rows:[
+    "#########",
+    "#......##",
+    "#*$...$.#",
+    "#......o#",
+    "#.......#",
+    "#....#..#",
+    "#$.#...o#",
+    "#o......#",
+    "#########"
+  ] },
+  { name:"별빛 함정", min:32, rows:[
+    "#########",
+    "#o....*.#",
+    "#.$#..$.#",
+    "#o.#..o.#",
+    "#...#...#",
+    "#....#..#",
+    "#....$..#",
+    "#.......#",
+    "#########"
+  ] },
+  { name:"별 지킴이의 시험", min:35, rows:[
+    "#########",
+    "#.o...$.#",
+    "#.#.#..o#",
+    "#.*.$.#.#",
+    "#.$.....#",
+    "#......o#",
+    "#.......#",
+    "#########"
+  ] },
 ];
 /* ── ⑥ 🧩 별조각 밀기 — 퍼즐 공방(소코반) · 전 퍼즐 BFS 솔버 사전검증(하네스) ── */
 const PZ_BEST_KEY="starArena.lab.pzBest";
@@ -6175,20 +6384,28 @@ function pzRender(){
     ctx.fillStyle="#9fe6c8"; ctx.font="bold 32px 'Malgun Gothic',sans-serif"; ctx.fillText("🧩 별조각 밀기", LOGW/2, 60);
     ctx.fillStyle="#8893bb"; ctx.font="14px 'Malgun Gothic',sans-serif";
     ctx.fillText("별조각(⭐)을 밀어서 별자리 홈(⭕)에 쏙! — 당길 수는 없어요. 구석 조심!", LOGW/2, 94);
-    const best=pzBestLoad(), cols=3, bw=330, bh=96;
+    const best=pzBestLoad(), cols=3, bw=330, bh=84, pitch=96, top=124;   // v1.87: 30판 → 스크롤
+    const totalRows=Math.ceil(PZ_LEVELS.length/cols), visRows=5;
+    const selRow=Math.floor(PZ.idx/cols);
+    const scrollRow=clamp(selRow-2, 0, Math.max(0, totalRows-visRows));
     for(let i=0;i<PZ_LEVELS.length;i++){
       const col=i%cols, row=Math.floor(i/cols);
-      const bx=LOGW/2+(col-1)*(bw+18)-bw/2, by=130+row*(bh+14);
+      if(row<scrollRow || row>=scrollRow+visRows) continue;   // 보이는 줄만 그림·클릭
+      const bx=LOGW/2+(col-1)*(bw+18)-bw/2, by=top+(row-scrollRow)*pitch;
       const sel=(i===PZ.idx), rec=best[""+i];
       ctx.fillStyle=sel?"rgba(70,110,190,0.92)":"rgba(30,38,66,0.85)"; roundRect(bx,by,bw,bh,12); ctx.fill();
       ctx.strokeStyle=sel?"#ffffff":"#56608a"; ctx.lineWidth=sel?3:1.5; roundRect(bx,by,bw,bh,12); ctx.stroke();
       ctx.fillStyle="#fff"; ctx.font="bold 17px 'Malgun Gothic',sans-serif";
-      ctx.fillText((i+1)+". "+PZ_LEVELS[i].name, bx+bw/2, by+26);
+      ctx.fillText((i+1)+". "+PZ_LEVELS[i].name, bx+bw/2, by+24);
       ctx.font="12px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#8fa0d0";
-      ctx.fillText("최소 "+PZ_LEVELS[i].min+"수", bx+bw/2, by+48);
+      ctx.fillText("최소 "+PZ_LEVELS[i].min+"수", bx+bw/2, by+44);
       ctx.fillStyle="#ffe14d"; ctx.font="bold 15px 'Malgun Gothic',sans-serif";
-      ctx.fillText(rec?("★".repeat(rec.stars)+"☆".repeat(3-rec.stars)+" ("+rec.moves+"수)"):"미해결", bx+bw/2, by+72);
+      ctx.fillText(rec?("★".repeat(rec.stars)+"☆".repeat(3-rec.stars)+" ("+rec.moves+"수)"):"미해결", bx+bw/2, by+66);
       (function(idx){ uiHit(bx,by,bw,bh,function(){ if(PZ.idx===idx) pzBegin(idx); else PZ.idx=idx; }); })(i);
+    }
+    if(totalRows>visRows){   // 스크롤 위치 안내(윗줄/아랫줄 더 있음)
+      ctx.fillStyle="#7d8ab5"; ctx.font="12px 'Malgun Gothic',sans-serif";
+      ctx.fillText((scrollRow>0?"▲ ":"")+((PZ.idx+1))+" / "+PZ_LEVELS.length+"판"+(scrollRow+visRows<totalRows?" ▼":""), LOGW/2, top-14);
     }
     drawButton("🛠 만들기 (E)", LOGW/2-320, LOGH-58, 290, 44, false, function(){ pzEditStart(); });
     drawButton("📂 내 서랍 (C) "+pzCustomLoad().length, LOGW/2, LOGH-58, 290, 44, false, function(){ PZ.phase="custom"; PZ.cidx=0; });
@@ -18640,6 +18857,7 @@ function startLoopOnce(){
   loadProfile();               // 게스트 기본값(미로그인 시 화면 안 깨지게)
   loadAccounts();              // 학급 계정(별도 저장)
   loadSession();               // 로그인 세션
+  try{ applyStudentMeta(); }catch(e){}   // AI 에셋 공방 연동: 학생 이름·색 반영(있으면)
   loadGameAssets();            // ASSETS_ENABLED=false 면 아무것도 안 함(오늘)
   OnlineManager.initFirebaseIfAvailable();
   applyProfileSelections();
