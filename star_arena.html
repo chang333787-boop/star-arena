@@ -1952,7 +1952,7 @@ const STATE = { START:"start", SHOP:"shop",
   TD:"td", SHOOTER:"shooter", RAY3D:"ray3d",          /* LAB-1: 관리자 실험 게임틀(수비대·함대·던전3D) — 교사 패널 전용 진입 */
   SURVIVOR:"survivor", EGG:"egg", PUZZLE:"puzzle",     /* LAB-3: 실험 ④생존자 ⑤별빛알 ⑥별조각밀기 */
   RUNNER:"runner", BREAKOUT:"breakout", SNAKE:"snake", OTHELLO:"othello", LABHUB:"labhub",
-  MUSOU:"musou" };   /* v1.79: ⑪⚔ 별빛 무쌍 */   /* LAB-4: ⑦러너 ⑧벽돌 ⑨별꼬리 ⑩오델로 + 허브 */
+  MUSOU:"musou", GOMOKU:"gomoku" };   /* v1.79: ⑪⚔ 별빛 무쌍 · v1.90: ⑫⚫ 별빛 오목 */   /* LAB-4: ⑦러너 ⑧벽돌 ⑨별꼬리 ⑩오델로 + 허브 */
 let gameState = STATE.SPLASH;
 let splashTimer = 0;
 let loginMsg = "";          // 로그인 안내/오류
@@ -2314,6 +2314,7 @@ function handleKeyPress(code){
   if(gameState === STATE.BREAKOUT){ bkKey(code); return; }  // LAB-4 실험: 벽돌깨기
   if(gameState === STATE.SNAKE){ snKey(code); return; }     // LAB-4 실험: 별꼬리
   if(gameState === STATE.MUSOU){ msKey(code); return; }     // v1.79: 별빛 무쌍
+  if(gameState === STATE.GOMOKU){ gmKey(code); return; }    // v1.90: 별빛 오목
   if(gameState === STATE.OTHELLO){ otKey(code); return; }   // LAB-4 실험: 별빛 오델로
   if(gameState === STATE.LABHUB){ lhKey(code); return; }    // LAB-4: 실험실 허브
   if(gameState === STATE.EDITOR){ handleEditorKey(code); return; }        // OVERNIGHT-1: 맵공방
@@ -3585,7 +3586,7 @@ const LabOpenStore={
 };
 /* ── v1.74 학급 랭킹: 게임별 TOP8을 클라우드로 공유(starArenaOnline/labRank/<class>) ──
    로컬 캐시 폴백 — 오프라인이어도 이 기기 랭킹은 동작, 접속되면 학급 전체와 합쳐짐. */
-const GAME_VER="v1.89";   // 화면 표시용 — 배포마다 PATCHNOTES와 함께 갱신(캐시 구버전 진단)
+const GAME_VER="v1.90";   // 화면 표시용 — 배포마다 PATCHNOTES와 함께 갱신(캐시 구버전 진단)
 const LAB_RANK_KEY="starArena.labRank.v1";
 let labRank=(function(){ try{ const s=JSON.parse(localStorage.getItem(LAB_RANK_KEY)); if(s&&typeof s==="object") return s; }catch(e){} return {}; })();
 const LabRankStore={
@@ -7713,6 +7714,161 @@ function msRender(){
   }
   ctx.restore();
 }
+/* ── ⑫ ⚫ 별빛 오목 — 5목(자유 오목: 금수 없음, 초등 친화) · AI/둘이서 ── */
+const GM_N=15, GM_WINS_KEY="starArena.lab.gmWins";
+let GM=null;
+function gmWins(){ try{ const s=JSON.parse(localStorage.getItem(GM_WINS_KEY)); if(s) return s; }catch(e){} return {w:0,l:0,d:0}; }
+function gmStart(mode){
+  const b=[]; for(let r=0;r<GM_N;r++){ b.push([]); for(let c=0;c<GM_N;c++) b[r].push(0); }
+  GM={ b:b, turn:1, cur:{c:7,r:7}, mode:mode||"ai", over:false, winner:0, last:null, moves:0,
+       aiT:0, wins:gmWins() };
+  gameState=STATE.GOMOKU;
+  showToast(mode==="pvp"?"⚫ 별빛 오목 — ⭐ vs 🌙 둘이서! 먼저 다섯 개 나란히!":"⚫ 별빛 오목 — 먼저 다섯 개 나란히 놓으면 승리!");
+}
+function gmIn(c,r){ return c>=0&&r>=0&&c<GM_N&&r<GM_N; }
+function gmRun(b,c,r,dx,dy,who){ let n=0,cc=c+dx,rr=r+dy; while(gmIn(cc,rr)&&b[rr][cc]===who){ n++; cc+=dx; rr+=dy; } return n; }
+function gmWinAt(b,c,r,who){   // (c,r)에 who 돌 → 5목?
+  const D=[[1,0],[0,1],[1,1],[1,-1]];
+  for(const [dx,dy] of D){ if(1+gmRun(b,c,r,dx,dy,who)+gmRun(b,c,r,-dx,-dy,who)>=5) return true; }
+  return false;
+}
+/* 한 칸에 who를 놓았다 가정한 위협 점수(공격/수비 공용) — 연속 개수 + 양끝 열림 */
+function gmScore(b,c,r,who){
+  const D=[[1,0],[0,1],[1,1],[1,-1]]; let sc=0;
+  for(const [dx,dy] of D){
+    const f=gmRun(b,c,r,dx,dy,who), bk=gmRun(b,c,r,-dx,-dy,who), tot=1+f+bk;
+    // 양끝 칸이 열렸는지(빈칸=열림)
+    const fc=c+(f+1)*dx, fr=r+(f+1)*dy, bc=c-(bk+1)*dx, br=r-(bk+1)*dy;
+    const openF=gmIn(fc,fr)&&b[fr][fc]===0, openB=gmIn(bc,br)&&b[br][bc]===0;
+    const open=(openF?1:0)+(openB?1:0);
+    if(tot>=5) sc+=1e9;
+    else if(tot===4) sc+=(open===2?1.2e7:(open===1?1.2e5:0));
+    else if(tot===3) sc+=(open===2?1.5e4:(open===1?1.2e3:0));
+    else if(tot===2) sc+=(open===2?260:(open===1?30:0));
+    else if(tot===1) sc+=(open===2?18:(open===1?4:0));
+  }
+  return sc;
+}
+function gmAiMove(){
+  if(GM.over) return;
+  const b=GM.b, me=2, op=1;
+  // 후보: 기존 돌 반경 2 이내 빈칸(첫 수는 중앙)
+  if(GM.moves===0){ gmPlace(7,7,me); return; }
+  const cand={}; 
+  for(let r=0;r<GM_N;r++)for(let c=0;c<GM_N;c++){ if(b[r][c]===0) continue;
+    for(let dr=-2;dr<=2;dr++)for(let dc=-2;dc<=2;dc++){ const nc=c+dc,nr=r+dr;
+      if(gmIn(nc,nr)&&b[nr][nc]===0) cand[nc+","+nr]=1; } }
+  let best=null, bestV=-1;
+  for(const k in cand){ const [c,r]=k.split(",").map(Number);
+    const atk=gmScore(b,c,r,me), def=gmScore(b,c,r,op);
+    // 즉승 최우선 → 상대 즉승 방어 → 공격 우세 + 방어 가중
+    let v=atk + def*0.92;
+    if(atk>=1e9) v+=1e12;            // 내가 이기는 수
+    else if(def>=1e9) v+=1e11;       // 상대 5목 저지
+    v += (7-Math.abs(c-7))+(7-Math.abs(r-7));   // 중앙 미세 가중(동점 분산)
+    if(v>bestV){ bestV=v; best={c,r}; } }
+  if(best) gmPlace(best.c,best.r,me);
+}
+function gmPlace(c,r,who){
+  if(GM.over||!gmIn(c,r)||GM.b[r][c]!==0) return false;
+  GM.b[r][c]=who; GM.last={c:c,r:r}; GM.moves++; playSfx("click");
+  if(gmWinAt(GM.b,c,r,who)){ GM.over=true; GM.winner=who; gmEnd(); return true; }
+  if(GM.moves>=GM_N*GM_N){ GM.over=true; GM.winner=0; gmEnd(); return true; }
+  GM.turn=(who===1)?2:1;
+  if(GM.mode==="ai" && GM.turn===2) GM.aiT=0.35;
+  return true;
+}
+function gmEnd(){
+  playSfx(GM.winner?"win":"hit");
+  if(GM.mode==="ai"){ const w=gmWins(); if(GM.winner===1) w.w++; else if(GM.winner===2) w.l++; else w.d++;
+    try{ localStorage.setItem(GM_WINS_KEY, JSON.stringify(w)); }catch(e){} GM.wins=w;
+    if(GM.winner===1){ labReward("gm",20); LabRankStore.submit("gm", w.w); } }
+}
+function gmKey(code){
+  if(code==="Escape"){ GM=null; labBack(); return; }
+  if(!GM) return;
+  if(code==="KeyT"){ gmStart(GM.mode==="ai"?"pvp":"ai"); return; }   // AI↔둘이서
+  if(code==="KeyR"){ gmStart(GM.mode); return; }
+  if(GM.over){ if(code==="Enter"||code==="NumpadEnter") gmStart(GM.mode); return; }
+  if(GM.mode==="ai" && GM.turn!==1) return;   // AI 차례엔 입력 무시
+  if(code==="ArrowLeft") GM.cur.c=(GM.cur.c+GM_N-1)%GM_N;
+  else if(code==="ArrowRight") GM.cur.c=(GM.cur.c+1)%GM_N;
+  else if(code==="ArrowUp") GM.cur.r=(GM.cur.r+GM_N-1)%GM_N;
+  else if(code==="ArrowDown") GM.cur.r=(GM.cur.r+1)%GM_N;
+  else if(code==="Enter"||code==="NumpadEnter"||code==="Space"){
+    if(!gmPlace(GM.cur.c, GM.cur.r, GM.mode==="pvp"?GM.turn:1)) showToast("이미 돌이 있어요!");
+  }
+}
+function gmUpdate(dt){
+  if(!GM||GM.over) return;
+  if(GM.mode==="ai" && GM.turn===2){ GM.aiT-=dt; if(GM.aiT<=0) gmAiMove(); }
+}
+function gmRender(){
+  if(!GM) return;
+  ctx.fillStyle="#0e1230"; ctx.fillRect(0,0,LOGW,LOGH);
+  const cell=Math.min(40, Math.floor(560/GM_N)), bw=cell*(GM_N-1);
+  const ox=Math.round(LOGW/2-bw/2), oy=96;
+  // 상단 정보
+  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillStyle="#9fe6c8"; ctx.font="bold 24px 'Malgun Gothic',sans-serif";
+  ctx.fillText("⚫ 별빛 오목", LOGW/2, 40);
+  ctx.fillStyle="#cbd4f5"; ctx.font="bold 16px 'Malgun Gothic',sans-serif";
+  const s=gmScoreCount();
+  ctx.fillText("⭐ "+s[1]+"   vs   "+(GM.mode==="pvp"?"🌙":"☁")+" "+s[2]+"    ·    "+(GM.over?"게임 끝!":(GM.mode==="pvp"?(GM.turn===1?"⭐ 친구 차례":"🌙 친구 차례"):(GM.turn===1?"내 차례!":"☁ 생각 중..."))), LOGW/2, 68);
+  // 판(바둑판 나뭇결)
+  ctx.fillStyle="#c8a45a"; roundRect(ox-cell*0.7, oy-cell*0.7, bw+cell*1.4, bw+cell*1.4, 10); ctx.fill();
+  ctx.strokeStyle="rgba(60,40,20,0.55)"; ctx.lineWidth=1.4;
+  for(let i=0;i<GM_N;i++){
+    ctx.beginPath(); ctx.moveTo(ox, oy+i*cell); ctx.lineTo(ox+bw, oy+i*cell); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(ox+i*cell, oy); ctx.lineTo(ox+i*cell, oy+bw); ctx.stroke();
+  }
+  // 화점(별점) 3-3,3-11,7-7...
+  ctx.fillStyle="rgba(60,40,20,0.7)";
+  for(const [hc,hr] of [[3,3],[11,3],[3,11],[11,11],[7,7]]){ ctx.beginPath(); ctx.arc(ox+hc*cell, oy+hr*cell, 3.5, 0, Math.PI*2); ctx.fill(); }
+  // 돌
+  for(let r=0;r<GM_N;r++)for(let c=0;c<GM_N;c++){ const v=GM.b[r][c]; if(!v) continue;
+    const x=ox+c*cell, y=oy+r*cell, rad=cell*0.42;
+    if(v===1){ ctx.fillStyle="#2a2f52"; ctx.beginPath(); ctx.arc(x,y,rad,0,Math.PI*2); ctx.fill();
+      drawStar(x,y,5,rad*0.62,rad*0.28,"#ffe14d"); }
+    else { ctx.fillStyle="#eaf0ff"; ctx.beginPath(); ctx.arc(x,y,rad,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle="#9fb0d8"; ctx.lineWidth=1.5; ctx.stroke();
+      ctx.fillStyle="#8a93b8"; ctx.font=Math.round(rad*1.1)+"px 'Malgun Gothic',sans-serif"; ctx.fillText(GM.mode==="pvp"?"🌙":"☁", x, y+1); }
+  }
+  // 마지막 착수 표시
+  if(GM.last){ const x=ox+GM.last.c*cell, y=oy+GM.last.r*cell;
+    ctx.strokeStyle="#ff7a7a"; ctx.lineWidth=2.5; ctx.beginPath(); ctx.arc(x,y,cell*0.5,0,Math.PI*2); ctx.stroke(); }
+  // 커서 + 클릭영역
+  const canPlay=!GM.over && !(GM.mode==="ai"&&GM.turn===2);
+  for(let r=0;r<GM_N;r++)for(let c=0;c<GM_N;c++){ const x=ox+c*cell, y=oy+r*cell;
+    if(canPlay && GM.b[r][c]===0 && c===GM.cur.c && r===GM.cur.r){ ctx.strokeStyle="rgba(255,255,255,0.8)"; ctx.lineWidth=2; ctx.strokeRect(x-cell*0.45,y-cell*0.45,cell*0.9,cell*0.9); }
+    (function(cc,rr){ uiHit(x-cell*0.45, y-cell*0.45, cell*0.9, cell*0.9, function(){ if(canPlay){ GM.cur={c:cc,r:rr}; if(!gmPlace(cc,rr,GM.mode==="pvp"?GM.turn:1)) showToast("이미 돌이 있어요!"); } }); })(c,r);
+  }
+  // 모드 버튼
+  { const bw2=104, bx1=16, by1=44;
+    ctx.fillStyle=GM.mode==="ai"?"rgba(95,160,255,0.4)":"rgba(30,38,66,0.85)"; roundRect(bx1,by1,bw2,26,13); ctx.fill();
+    ctx.fillStyle="#dfe6ff"; ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.fillText("🤖 AI 대결", bx1+bw2/2, by1+14);
+    uiHit(bx1,by1,bw2,26,function(){ if(GM.mode!=="ai") gmStart("ai"); });
+    ctx.fillStyle=GM.mode==="pvp"?"rgba(95,160,255,0.4)":"rgba(30,38,66,0.85)"; roundRect(bx1+bw2+8,by1,bw2,26,13); ctx.fill();
+    ctx.fillStyle="#dfe6ff"; ctx.fillText("👥 둘이서", bx1+bw2+8+bw2/2, by1+14);
+    uiHit(bx1+bw2+8,by1,bw2,26,function(){ if(GM.mode!=="pvp") gmStart("pvp"); });
+  }
+  ctx.textAlign="right"; ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
+  ctx.fillText(GM.mode==="pvp"?"👥 둘이서 모드":("전적 "+GM.wins.w+"승 "+GM.wins.l+"패"), LOGW-16, 24);
+  ctx.textAlign="center"; ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
+  ctx.fillText("클릭/화살표+Enter · T 모드전환(AI↔둘이서) · R 새 판 · Esc 나가기", LOGW/2, LOGH-14);
+  if(GM.over){
+    ctx.fillStyle="rgba(8,10,22,0.8)"; ctx.fillRect(0,0,LOGW,LOGH);
+    const res=GM.winner===0?"🤝 무승부!":(GM.mode==="pvp"?(GM.winner===1?"🎉 ⭐ 별빛 친구 승리!":"🎉 🌙 달빛 친구 승리!"):(GM.winner===1?"🎉 별빛 승리!":"☁ 먹구름 승리..."));
+    ctx.fillStyle=GM.winner===1?"#7dffb0":(GM.winner===2?"#ff9a9a":"#ffd97d");
+    ctx.font="bold 42px 'Malgun Gothic',sans-serif"; ctx.fillText(res, LOGW/2, LOGH/2-30);
+    if(GM.mode==="ai"){ ctx.fillStyle="#cbd4f5"; ctx.font="16px 'Malgun Gothic',sans-serif";
+      ctx.fillText("전적 "+GM.wins.w+"승 "+GM.wins.l+"패", LOGW/2, LOGH/2+8);
+      labRankDraw("gm", LOGW/2, LOGH/2+52, "승"); }
+    ctx.fillStyle="#8893bb"; ctx.font="15px 'Malgun Gothic',sans-serif"; ctx.fillText("Enter 다시 · T 모드전환 · Esc 나가기", LOGW/2, LOGH-40);
+  }
+  ctx.restore();
+}
+function gmScoreCount(){ let a=0,b=0; for(let r=0;r<GM_N;r++)for(let c=0;c<GM_N;c++){ if(GM.b[r][c]===1)a++; else if(GM.b[r][c]===2)b++; } return {1:a,2:b}; }
 const LAB_GAMES=[
   { key:"td", emoji:"🏰", name:"별빛 수비대",   desc:"길목에 탑을 지어 방어",   run:function(){ tdStart(); } },
   { key:"fleet", emoji:"🚀", name:"별빛 함대",     desc:"편대를 격추하는 슈팅",     run:function(){ shOpen(); } },
@@ -7724,7 +7880,8 @@ const LAB_GAMES=[
   { key:"bk", emoji:"🧱", name:"벽돌깨기",      desc:"별공 튕겨 벽돌 부수기",    run:function(){ bkStart(); } },
   { key:"sn", emoji:"🐍", name:"별꼬리",        desc:"별을 먹고 길어지는 뱀",    run:function(){ snStart(); } },
   { key:"ot", emoji:"⚫", name:"별빛 오델로",   desc:"먹구름 AI와 두뇌 대결",    run:function(){ otStart(); } },
-  { key:"ms", emoji:"🗡", name:"별빛 무쌍",     desc:"천 명을 쓸어담는 액션",    run:function(){ msStart(); } } ];
+  { key:"ms", emoji:"🗡", name:"별빛 무쌍",     desc:"천 명을 쓸어담는 액션",    run:function(){ msStart(); } },
+  { key:"gm", emoji:"⚫", name:"별빛 오목",     desc:"먼저 다섯 개! 5목 두뇌",   run:function(){ gmStart("ai"); } } ];
 let LH=null;
 function lhList(){   // 현재 허브에 보이는 게임 인덱스 목록(학생=개방된 것만)
   if(!LH || LH.mode!=="student") return LAB_GAMES.map(function(g,i){ return i; });
@@ -7767,6 +7924,7 @@ function lhRecordCalc(i){   // 카드에 보여줄 한 줄 기록
     if(i===8){ const b=snBest(); return b?("🏆 "+b+"점"):""; }
     if(i===9){ const w=otWins(); return (w.w||w.l||w.d)?(w.w+"승 "+w.l+"패"):""; }
     if(i===10){ const b=msBest(); return b.kills?("🏆 "+b.kills+"격파·"+b.combo+"콤보"):""; }
+    if(i===11){ const w=gmWins(); return (w.w||w.l)?(w.w+"승 "+w.l+"패"):""; }
   }catch(e){}
   return "";
 }
@@ -13827,6 +13985,7 @@ function update(dt){
   if(gameState===STATE.BREAKOUT){ bkUpdate(dt); return; }
   if(gameState===STATE.SNAKE){ snUpdate(dt); return; }
   if(gameState===STATE.MUSOU){ msUpdate(dt); return; }
+  if(gameState===STATE.GOMOKU){ gmUpdate(dt); return; }
   if(gameState===STATE.OTHELLO){ otUpdate(dt); return; }
   if(gameState===STATE.LABHUB){ lhUpdate(dt); return; }
   if(gameState!==STATE.PLAYING) return;
@@ -13965,6 +14124,7 @@ function render(){
   if(gameState===STATE.BREAKOUT){ bkRender(); drawToast(); return; }
   if(gameState===STATE.SNAKE){ snRender(); drawToast(); return; }
   if(gameState===STATE.MUSOU){ msRender(); drawToast(); return; }
+  if(gameState===STATE.GOMOKU){ gmRender(); drawToast(); return; }
   if(gameState===STATE.OTHELLO){ otRender(); drawToast(); return; }
   if(gameState===STATE.LABHUB){ lhRender(); drawToast(); return; }
   drawBackground();

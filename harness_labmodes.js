@@ -29,6 +29,7 @@ script+=`;globalThis.__api={ STATE, keysDown,
   snStart, snKey, snUpdate, snRender,
   otStart, otKey, otUpdate, otRender, otFlips, otMoves, otPlace, otCount, otAiMove,
   msStart, msKey, msUpdate, msRender, msSwing, msUlt, msSpawnFoe, msBest, MS_FOES, MS_WEAPONS, msHurt, msApplyPick, msKillFoe, get MS(){return MS;},
+  gmStart, gmKey, gmUpdate, gmRender, gmPlace, gmAiMove, gmWinAt, gmScore, gmWins, GM_N, get GM(){return GM;},
   LAB_GAMES, lhStart, lhKey, lhRender, lhList,
   LabOpenStore, labToggle, labOpenCount, labBack, drawLobbyMiniBanner, activateMenuRow, handleAdminKey,
   get labOpen(){return labOpen;}, get labFrom(){return labFrom;}, setLabFrom:v=>{labFrom=v;}, setState:(s)=>{ gameState=s; },
@@ -795,7 +796,7 @@ run("오델로: 규칙·뒤집기·AI·종국", ()=>{
 });
 run("실험실 허브: 진입·숫자 라우팅", ()=>{
   api.lhStart();
-  check("허브 진입(11종 카드)", api.gameState==="labhub" && api.LAB_GAMES.length===11);
+  check("허브 진입(12종 카드)", api.gameState==="labhub" && api.LAB_GAMES.length===12);
   api.lhKey("Digit7");
   check("7키 → 러너 실행", api.gameState==="runner");
   api.rnKey("Escape");
@@ -869,7 +870,7 @@ run("학생 허브: 개방된 게임만 + Esc 귀환 라우팅", ()=>{
 });
 run("교사 허브: 전체 10종 + O키 개방 토글", ()=>{
   api.lhStart("teacher");
-  check("교사 모드: 11종 전부", api.lhList().length===11 && api.labFrom==="teacherhub");
+  check("교사 모드: 12종 전부", api.lhList().length===12 && api.labFrom==="teacherhub");
   const k=api.LAB_GAMES[0].key, before=!!api.labOpen[k];
   api.lhKey("KeyO");
   check("O키 → 선택 게임 개방 토글", !!api.labOpen[k]===!before);
@@ -1086,8 +1087,43 @@ run("배포 규율: 화면 버전 스탬프 = PATCHNOTES 최신", ()=>{
   const gv=(html.match(/const GAME_VER="(v[\d.]+)"/)||[])[1];
   check("GAME_VER("+gv+") == PATCHNOTES 최신("+latest+")", !!gv && gv===latest);
 });
+run("오목: 진입·착수·턴 교대·5목 승리", ()=>{
+  check("LAB_GAMES 12종 + gm 키", api.LAB_GAMES.length===12 && api.LAB_GAMES[11].key==="gm");
+  api.gmStart("pvp");   // 둘이서(AI 개입 없이 순수 로직)
+  const GM=api.GM;
+  check("진입=gomoku·15x15·1P 선", api.gameState==="gomoku" && GM.b.length===15 && GM.turn===1);
+  api.gmPlace(7,7,1);
+  check("착수 후 2P 차례", GM.b[7][7]===1 && GM.turn===2 && GM.last.c===7);
+  check("점유 칸 재착수 거부", api.gmPlace(7,7,2)===false);
+  // 가로 5목: (2,0)~(6,0) 1P
+  api.gmStart("pvp"); const G2=api.GM;
+  for(let c=2;c<=5;c++) G2.b[0][c]=1;
+  G2.moves=4;
+  check("승리 전엔 안 끝남", G2.over===false);
+  api.gmPlace(6,0,1);
+  check("가로 5목 → 1P 승리", G2.over===true && G2.winner===1);
+  // 대각선 5목 판정 함수 직접
+  const eb=[]; for(let r=0;r<15;r++){ eb.push([]); for(let c=0;c<15;c++) eb[r].push(0); }
+  for(let i=0;i<5;i++) eb[3+i][3+i]=2;
+  check("대각선 5목 판정", api.gmWinAt(eb,5,5,2)===true && api.gmWinAt(eb,5,6,2)===false);
+});
+run("오목: AI — 즉승 잡기·상대 5목 저지", ()=>{
+  api.gmStart("ai"); const GM=api.GM;
+  // AI(2P)가 4목이면 5번째로 이겨야
+  for(let c=3;c<=6;c++) GM.b[7][c]=2;   // 2P 4연속(3~6,7)
+  GM.turn=2; GM.moves=8; GM.aiT=0;
+  api.gmAiMove();
+  check("AI: 자기 4목 → 5목 완성해 승리", GM.over===true && GM.winner===2 && (GM.b[7][2]===2||GM.b[7][7]===2));
+  // 상대(1P) 열린 4목 → AI가 막아야
+  api.gmStart("ai"); const G2=api.GM;
+  for(let c=3;c<=6;c++) G2.b[7][c]=1;   // 1P 4연속(열린 4목: 2와 7 양쪽 열림)
+  G2.turn=2; G2.moves=8; G2.aiT=0;
+  api.gmAiMove();
+  const blocked=(G2.b[7][2]===2 || G2.b[7][7]===2);
+  check("AI: 상대 열린 4목 양끝 중 하나 저지", blocked);
+});
 run("무쌍: 진입·개막 포위진·11번째 게임 등록", ()=>{
-  check("LAB_GAMES 11종 + ms 키", api.LAB_GAMES.length===11 && api.LAB_GAMES[10].key==="ms");
+  check("LAB_GAMES 12종 + ms 키", api.LAB_GAMES.length===12 && api.LAB_GAMES[10].key==="ms");
   api.msStart();
   check("진입=musou·개막 46기 포위", api.gameState==="musou" && api.MS.foes.length>=40);
   check("3분 시간제·게이지 0 시작", api.MS.phase==="play" && api.MS.gauge===0);

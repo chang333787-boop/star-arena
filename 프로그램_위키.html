@@ -54,7 +54,7 @@ details[open] summary{margin-bottom:8px;}
 <body>
 <div class="app">
 <nav class="side" id="side">
-  <div class="logo">⭐ 별빛 아레나 위키<small>현재 버전 <b style="color:#ffe14d">v1.89</b> · 2026-07-12</small></div>
+  <div class="logo">⭐ 별빛 아레나 위키<small>현재 버전 <b style="color:#ffe14d">v1.90</b> · 2026-07-12</small></div>
   <input id="wsearch" type="search" placeholder="🔎 검색 (예: 뭉게대왕, 조작)" style="width:100%;margin:10px 0 2px;padding:7px 10px;border-radius:9px;border:1px solid #2a3560;background:#0a0f28;color:#dfe6ff;font-family:inherit;font-size:13px;">
   <div id="sres" style="font-size:11.5px;color:#8893bb;padding:0 4px;"></div>
   <div class="grp">시작</div>
@@ -77,6 +77,7 @@ details[open] summary{margin-bottom:8px;}
   <button class="nav-btn" data-p="snake">🐍 별꼬리</button>
   <button class="nav-btn" data-p="othello">⚫ 별빛 오델로</button>
   <button class="nav-btn" data-p="musou">🗡 별빛 무쌍</button>
+  <button class="nav-btn" data-p="gomoku">⚫ 별빛 오목</button>
   <div class="grp">만들기 · 관리</div>
   <button class="nav-btn" data-p="maker">🛠 만들기 도구</button>
   <button class="nav-btn" data-p="assets">🎨 에셋 도감</button>
@@ -110,6 +111,7 @@ details[open] summary{margin-bottom:8px;}
 <div class="gcard" data-p="brick"><div class="em">🧱</div><div class="nm">벽돌깨기</div><div class="ds">아케이드</div></div>
 <div class="gcard" data-p="snake"><div class="em">🐍</div><div class="nm">별꼬리</div><div class="ds">스네이크</div></div>
 <div class="gcard" data-p="othello"><div class="em">⚫</div><div class="nm">별빛 오델로</div><div class="ds">AI와 보드 대결</div></div>
+<div class="gcard" data-p="gomoku"><div class="em">⚫</div><div class="nm">별빛 오목</div><div class="ds">먼저 5개 나란히</div></div>
 <div class="gcard" data-p="musou"><div class="em">🗡</div><div class="nm">별빛 무쌍</div><div class="ds">천 명을 쓸어담는 액션</div></div>
 </div>
 <h2>🚪 들어가는 법</h2>
@@ -431,6 +433,23 @@ details[open] summary{margin-bottom:8px;}
 <li>설계: 실패 스트레스 없는 파워 판타지(소프트 부활) — 별빛 폭발은 전체 플래시 금지, 확장 링+가장자리 비네트(눈편안 규칙)</li></ul></details>
 </section>
 
+<!-- ═════════ 오목 ═════════ -->
+<section class="page" id="p-gomoku">
+<h1>⚫ 별빛 오목 <span class="badge">실험 12 · 5목 두뇌</span></h1>
+<p class="tagline">먼저 <b>다섯 개를 나란히!</b> 가로·세로·대각선 어디로든 5개면 승리 — 초등 친화 자유 오목(금수 없음).</p>
+<h2>🎮 규칙</h2>
+<ul><li>⭐(별)이 먼저, ☁/🌙이 나중. 번갈아 한 칸씩 놓아요.</li>
+<li>가로·세로·대각선 중 <b>내 돌 5개가 한 줄</b>이 되면 이겨요. 클릭 또는 <kbd>화살표</kbd>+<kbd>Enter</kbd>.</li>
+<li>🤖 AI 대결 / 👥 둘이서(한 키보드) — <kbd>T</kbd>로 전환. AI전 승수는 🏫 우리 반 랭킹에 올라가요.</li></ul>
+<h2>💡 이기는 법</h2>
+<ul><li><b>열린 3(양끝 뚫린 3개)</b>을 만들면 상대가 다 못 막아요 — 두 방향 위협을 동시에!</li>
+<li>상대가 4개를 나란히 놓기 직전이면 <b>반드시 막기</b>. AI도 그렇게 막아요.</li>
+<li>가운데(화점 근처)에서 시작하는 게 유리해요.</li></ul>
+<details><summary>🔧 관리자 노트</summary>
+<ul><li>15×15 자유 오목(렌주 금수 미적용 — 초등 대상). AI=위협 기반 그리디 <code>gmScore</code>(즉승·상대 열린4목 저지·중앙 가중), 반경 2 후보만 평가(속도). 더 강하게=후보 반경↑·2수 look-ahead.</li>
+<li>전적 <code>starArena.lab.gmWins</code>. 온라인 대전은 다음 버전 예정.</li></ul></details>
+</section>
+
 <!-- ═════════ 몬스터 도감 ═════════ -->
 <section class="page" id="p-dex">
 <h1>👾 먹구름단 몬스터 도감</h1>
@@ -468,6 +487,7 @@ details[open] summary{margin-bottom:8px;}
 <tr><td>🧩 퍼즐</td><td>푼 퍼즐 수</td></tr>
 <tr><td>🏃 러너 / 🧱 벽돌 / 🐍 별꼬리</td><td>거리 / 점수 / 점수</td></tr>
 <tr><td>⚫ 오델로</td><td>AI전 승수(둘이서 모드는 제외)</td></tr>
+<tr><td>⚫ 오목</td><td>AI전 승수(둘이서 모드는 제외)</td></tr>
 <tr><td>🥚 별빛알</td><td>모은 별빛</td></tr>
 <tr><td>🗡 별빛 무쌍</td><td>격파 수(적장은 +25!) — 3분 동안 몇 명 쓸었나</td></tr>
 <tr><td>🦘 별빛 점프</td><td>캠페인 별조각 총합(선택 화면 우상단 👑) — 친구 맵은 제외</td></tr>
@@ -571,11 +591,12 @@ node -e 'const fs=require("fs");const h=fs.readFileSync("index.html","utf8");con
 
 <!-- ═════════ 일지 ═════════ -->
 <section class="page" id="p-log">
-<h1>📜 업데이트 일지 <span class="badge">현재 v1.89</span></h1>
+<h1>📜 업데이트 일지 <span class="badge">현재 v1.90</span></h1>
 <p class="tagline">v1.00(6-29 첫 버전)부터 이어온 버전 기록 — 전체 상세는 저장소 <code>PATCHNOTES.md</code>(67개 버전), 작업 맥락은 <code>작업현황_HANDOFF.md</code>.</p>
 <h2>최근 (v1.55 ~ v1.65)</h2>
 <table><tr><th>버전</th><th>날짜</th><th>내용</th></tr>
-<tr><td><b>v1.89</b></td><td>07-13</td><td><b>전 게임 멀미 제거</b> — 던전3D 회전 완만화+머리흔들림 제거·무쌍 카메라 데드존·플랫포머 떨림 완화</td></tr>
+<tr><td><b>v1.90</b></td><td>07-13</td><td><b>신작 ⚫ 별빛 오목(실험 12호)</b> — 15×15 자유 오목, AI(위협 기반)·둘이서, 먼저 5개 나란히</td></tr>
+<tr><td>v1.89</td><td>07-13</td><td><b>전 게임 멀미 제거</b> — 던전3D 회전 완만화+머리흔들림 제거·무쌍 카메라 데드존·플랫포머 떨림 완화</td></tr>
 <tr><td>v1.88</td><td>07-13</td><td><b>별꼬리 입력 씹힘 수정</b> — 방향 버퍼 1→2칸, 빠른 두 번 꺾기도 안 씹히고 억울한 역주행 죽음 없음(아이 연타 대응)</td></tr>
 <tr><td>v1.87</td><td>07-13</td><td><b>별조각 밀기 30판 확장</b> — 11탄 수준 하드 18판 추가(min 22~35, 솔버 전수 검증)·선택 화면 스크롤</td></tr>
 <tr><td>v1.86</td><td>07-13</td><td><b>개방·랭킹 동기화 버그 수정</b> — DB 보안 규칙에 labOpen·labRank 경로 누락으로 클라우드 쓰기 거부되던 것 수정(교사 기기 로컬에만 열리던 문제)</td></tr>
