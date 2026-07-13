@@ -3237,7 +3237,7 @@ function pfRender(){
       ctx.strokeStyle="#c9ecff"; ctx.strokeRect(x+1,y+1,54,54);
     } else if(ch==="b"){   // P1.5 부서지는 블록(밟으면 붕괴·아래서 박기·총알)
       const cr=PF.crumble[r+","+c];
-      const shake=(cr!==undefined)?Math.sin(uiTime*40)*2:0;
+      const shake=(cr!==undefined)?Math.sin(uiTime*16)*1:0;   // v1.89 멀미: 6.4Hz±2 → 2.5Hz±1(부드럽게)
       ctx.save(); if(shake) ctx.translate(shake,0);
       ctx.fillStyle="#a97a4a"; ctx.fillRect(x,y,56,56);
       ctx.strokeStyle="#7a5230"; ctx.lineWidth=2;
@@ -3585,7 +3585,7 @@ const LabOpenStore={
 };
 /* ── v1.74 학급 랭킹: 게임별 TOP8을 클라우드로 공유(starArenaOnline/labRank/<class>) ──
    로컬 캐시 폴백 — 오프라인이어도 이 기기 랭킹은 동작, 접속되면 학급 전체와 합쳐짐. */
-const GAME_VER="v1.88";   // 화면 표시용 — 배포마다 PATCHNOTES와 함께 갱신(캐시 구버전 진단)
+const GAME_VER="v1.89";   // 화면 표시용 — 배포마다 PATCHNOTES와 함께 갱신(캐시 구버전 진단)
 const LAB_RANK_KEY="starArena.labRank.v1";
 let labRank=(function(){ try{ const s=JSON.parse(localStorage.getItem(LAB_RANK_KEY)); if(s&&typeof s==="object") return s; }catch(e){} return {}; })();
 const LabRankStore={
@@ -4990,11 +4990,14 @@ function rayUpdate(dt){
   if(RAY.introT>0) RAY.introT-=dt;
   if(RAY.caughtInv>0) RAY.caughtInv-=dt;
   if(RAY.clearMsgT>0){ RAY.clearMsgT-=dt; if(RAY.clearMsgT<=0 && RAY.nextFloor!==undefined){ const nf=RAY.nextFloor; RAY.nextFloor=undefined; rayLoadFloor(nf); } return; }
-  const rot=2.6;
+  const rot=2.3;   // v1.89 멀미: 최고 회전속 살짝 낮춤
   const run=(keysDown.has("ShiftLeft")||keysDown.has("ShiftRight"));
   const spd=(run?4.7:3.1), strafe=(run?3.6:2.5);
-  if(keysDown.has("ArrowLeft"))  RAY.ang-=rot*dt;
-  if(keysDown.has("ArrowRight")) RAY.ang+=rot*dt;
+  let rin=0;   // v1.89 멀미: 회전 가속/감속 완만 — 1인칭 '홱' 돌기 제거(관전 멀미 최대 완화)
+  if(keysDown.has("ArrowLeft"))  rin-=1;
+  if(keysDown.has("ArrowRight")) rin+=1;
+  RAY.rotV=(RAY.rotV||0)+((rin*rot)-(RAY.rotV||0))*Math.min(1,dt*8);
+  RAY.ang+=RAY.rotV*dt;
   const dx=Math.cos(RAY.ang), dy=Math.sin(RAY.ang);
   let mx=0,my=0, moving=false;
   if(keysDown.has("ArrowUp")||keysDown.has("KeyW")){ mx+=dx*spd*dt; my+=dy*spd*dt; moving=true; }
@@ -5096,7 +5099,7 @@ function rayRender(){
   if(!RAY || !RAY.map) return;
   const colW=LOGW/RAY_N;
   const F=RAY_FLOORS[RAY.floor]||RAY_FLOORS[0];
-  const bobOff=Math.sin(RAY.bob)*3;   // LAB-3: 4→3px(멀미 배려)
+  const bobOff=0;   // v1.89 멀미: 머리 흔들림 완전 제거(수평선 상하 진동 = 관전 멀미 주범)
   ctx.fillStyle="#0a0d24"; ctx.fillRect(0,0,LOGW,LOGH/2+bobOff);
   ctx.fillStyle="#161a34"; ctx.fillRect(0,LOGH/2+bobOff,LOGW,LOGH/2-bobOff+4);
   ctx.fillStyle="#dfe6ff";
@@ -7530,8 +7533,10 @@ function msUpdate(dt){
   MS.fx=MS.fx.filter(e=>e.t<e.dur);
   for(const tx of MS.texts) tx.t+=dt;
   MS.texts=MS.texts.filter(tx=>tx.t<0.6);
-  const tx2=clamp(p.x-LOGW/2, 0, MS_W-LOGW), ty2=clamp(p.y-LOGH/2, 0, MS_H-LOGH);
-  MS.camX+=(tx2-MS.camX)*Math.min(1, dt*7); MS.camY+=(ty2-MS.camY)*Math.min(1, dt*7);
+  { const tcx=clamp(p.x-LOGW/2, 0, MS_W-LOGW), tcy=clamp(p.y-LOGH/2, 0, MS_H-LOGH);   // v1.89 멀미: 데드존 34px
+    const dxc=tcx-MS.camX, dyc=tcy-MS.camY, dz=34;
+    if(Math.abs(dxc)>dz) MS.camX+=(dxc-Math.sign(dxc)*dz)*Math.min(1, dt*6);
+    if(Math.abs(dyc)>dz) MS.camY+=(dyc-Math.sign(dyc)*dz)*Math.min(1, dt*6); }
 }
 function msApplyPick(g){
   const p=MS.p;
