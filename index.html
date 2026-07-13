@@ -3585,7 +3585,7 @@ const LabOpenStore={
 };
 /* ── v1.74 학급 랭킹: 게임별 TOP8을 클라우드로 공유(starArenaOnline/labRank/<class>) ──
    로컬 캐시 폴백 — 오프라인이어도 이 기기 랭킹은 동작, 접속되면 학급 전체와 합쳐짐. */
-const GAME_VER="v1.87";   // 화면 표시용 — 배포마다 PATCHNOTES와 함께 갱신(캐시 구버전 진단)
+const GAME_VER="v1.88";   // 화면 표시용 — 배포마다 PATCHNOTES와 함께 갱신(캐시 구버전 진단)
 const LAB_RANK_KEY="starArena.labRank.v1";
 let labRank=(function(){ try{ const s=JSON.parse(localStorage.getItem(LAB_RANK_KEY)); if(s&&typeof s==="object") return s; }catch(e){} return {}; })();
 const LabRankStore={
@@ -6853,6 +6853,16 @@ function snStart(pvp){
   gameState=STATE.SNAKE;
   showToast(pvp?"👥 별꼬리 대결 — ⭐화살표 vs 🌙WASD! 먼저 부딪히면 져요!":"🐍 별꼬리 — 별조각을 먹고 길~어지자! 벽과 내 꼬리 조심!");
 }
+/* v1.88 입력 씹힘 수정: 방향 버퍼 2칸(nextDir + dq). 한 스텝 안 빠른 두 번 꺾기도 살림.
+   반대·같음 판정은 '커밋된 dir'이 아니라 '마지막 대기 방향' 기준 — 아이들 연타 코너에서 억울한 역주행 죽음 방지. */
+function snTurn(which, nc){
+  const dk=which===2?"dir2":"dir", nk=which===2?"nextDir2":"nextDir", bk=which===2?"dq2":"dq";
+  const cur=SN[dk], head=SN[nk], last=SN[bk]||head;   // 마지막으로 예약된 방향
+  if(nc.c===-last.c && nc.r===-last.r) return;          // 180° 반대 금지(직전 예약 기준)
+  if(nc.c===last.c && nc.r===last.r) return;            // 같은 방향 무시
+  if(head.c===cur.c && head.r===cur.r) SN[nk]=nc;       // 이번 스텝 방향 아직 미정 → 즉시 반영
+  else SN[bk]=nc;                                       // 이미 정해짐 → 다음 스텝용 버퍼(1칸)
+}
 function snKey(code){
   if(code==="Escape"){ SN=null; labBack(); return; }
   if(!SN) return;
@@ -6860,23 +6870,21 @@ function snKey(code){
   if(code==="KeyR"){ snStart(SN.pvp); return; }
   if(code==="KeyP"){ SN.paused=!SN.paused; return; }
   if(SN.over){ if(code==="Enter"||code==="NumpadEnter") snStart(SN.pvp); return; }
-  const d=SN.dir;
   if(SN.pvp){   // v1.75: ⭐화살표 / 🌙WASD 분리
-    if(code==="ArrowLeft" && d.c!==1) SN.nextDir={c:-1,r:0};
-    else if(code==="ArrowRight" && d.c!==-1) SN.nextDir={c:1,r:0};
-    else if(code==="ArrowUp" && d.r!==1) SN.nextDir={c:0,r:-1};
-    else if(code==="ArrowDown" && d.r!==-1) SN.nextDir={c:0,r:1};
-    const d2=SN.dir2;
-    if(code==="KeyA" && d2.c!==1) SN.nextDir2={c:-1,r:0};
-    else if(code==="KeyD" && d2.c!==-1) SN.nextDir2={c:1,r:0};
-    else if(code==="KeyW" && d2.r!==1) SN.nextDir2={c:0,r:-1};
-    else if(code==="KeyS" && d2.r!==-1) SN.nextDir2={c:0,r:1};
+    if(code==="ArrowLeft") snTurn(1,{c:-1,r:0});
+    else if(code==="ArrowRight") snTurn(1,{c:1,r:0});
+    else if(code==="ArrowUp") snTurn(1,{c:0,r:-1});
+    else if(code==="ArrowDown") snTurn(1,{c:0,r:1});
+    else if(code==="KeyA") snTurn(2,{c:-1,r:0});
+    else if(code==="KeyD") snTurn(2,{c:1,r:0});
+    else if(code==="KeyW") snTurn(2,{c:0,r:-1});
+    else if(code==="KeyS") snTurn(2,{c:0,r:1});
     return;
   }
-  if((code==="ArrowLeft"||code==="KeyA") && d.c!==1) SN.nextDir={c:-1,r:0};
-  else if((code==="ArrowRight"||code==="KeyD") && d.c!==-1) SN.nextDir={c:1,r:0};
-  else if((code==="ArrowUp"||code==="KeyW") && d.r!==1) SN.nextDir={c:0,r:-1};
-  else if((code==="ArrowDown"||code==="KeyS") && d.r!==-1) SN.nextDir={c:0,r:1};
+  if(code==="ArrowLeft"||code==="KeyA") snTurn(1,{c:-1,r:0});
+  else if(code==="ArrowRight"||code==="KeyD") snTurn(1,{c:1,r:0});
+  else if(code==="ArrowUp"||code==="KeyW") snTurn(1,{c:0,r:-1});
+  else if(code==="ArrowDown"||code==="KeyS") snTurn(1,{c:0,r:1});
 }
 function snUpdate(dt){
   if(!SN||SN.over||SN.paused) return;
@@ -6887,6 +6895,7 @@ function snUpdate(dt){
   SN.prev=SN.body.map(function(b){ return {c:b.c, r:b.r}; });   // 직전 칸(렌더 보간 기준)
   if(SN.pvp){ snStepPvp(); return; }   // v1.75: 2인전은 동시 스텝 규칙
   SN.dir=SN.nextDir;
+  if(SN.dq){ SN.nextDir=SN.dq; SN.dq=null; }   // v1.88: 버퍼된 두 번째 꺾임을 다음 스텝용으로 승격
   const h=SN.body[0], nc=h.c+SN.dir.c, nr=h.r+SN.dir.r;
   if(nc<0||nr<0||nc>=SN_COLS||nr>=SN_ROWS || SN.body.some((b,i)=>i<SN.body.length-1 && b.c===nc && b.r===nr)){
     SN.over=true; playSfx("lose");
@@ -6908,6 +6917,8 @@ function snUpdate(dt){
 function snStepPvp(){
   SN.prev2=SN.body2.map(function(b){ return {c:b.c, r:b.r}; });
   SN.dir=SN.nextDir; SN.dir2=SN.nextDir2;
+  if(SN.dq){ SN.nextDir=SN.dq; SN.dq=null; }   // v1.88: 두 뱀 각자 버퍼 승격
+  if(SN.dq2){ SN.nextDir2=SN.dq2; SN.dq2=null; }
   const h1=SN.body[0], h2=SN.body2[0];
   const n1={c:h1.c+SN.dir.c, r:h1.r+SN.dir.r}, n2={c:h2.c+SN.dir2.c, r:h2.r+SN.dir2.r};
   function wall(n){ return n.c<0||n.r<0||n.c>=SN_COLS||n.r>=SN_ROWS; }

@@ -756,6 +756,22 @@ run("별꼬리: 성장·벽·자기충돌·역방향 금지", ()=>{
   api.snUpdate(DT);
   check("벽 충돌 → 게임오버", api.SN.over===true);
 });
+run("별꼬리: v1.88 입력 버퍼 — 빠른 코너에도 안 씹히고 억울한 죽음 없음", ()=>{
+  const SN=api.SN;
+  // 위로 진행 중, 목 아래로 이어진 몸 — 역주행(아래)이면 즉사하는 배치
+  api.snStart();
+  api.SN.body=[{c:6,r:6},{c:6,r:7},{c:6,r:8}]; api.SN.prev=api.SN.body.map(b=>({c:b.c,r:b.r}));
+  api.SN.dir={c:0,r:-1}; api.SN.nextDir={c:0,r:-1}; api.SN.dq=null;
+  // 한 스텝 안에 '왼쪽 → 아래' 빠른 두 번 꺾기(아이들 연타)
+  api.snKey("ArrowLeft"); api.snKey("ArrowDown");
+  check("첫 입력=왼쪽 즉시 반영, 둘째=아래는 버퍼로 보존", api.SN.nextDir.c===-1 && api.SN.dq && api.SN.dq.r===1);
+  api.SN.stepT=api.SN.stepIv; api.snUpdate(1/60);
+  check("스텝1: 아래로 역주행 안 하고 왼쪽으로 — 안 죽음", api.SN.over===false && api.SN.body[0].c===5 && api.SN.body[0].r===6);
+  check("버퍼된 '아래'가 다음 방향으로 승격(씹힘 없음)", api.SN.nextDir.r===1 && api.SN.dq===null);
+  api.SN.stepT=api.SN.stepIv; api.snUpdate(1/60);
+  check("스텝2: 버퍼대로 아래로 이동", api.SN.over===false && api.SN.body[0].r===7);
+  api.snKey("Escape");
+});
 run("오델로: 규칙·뒤집기·AI·종국", ()=>{
   api.otStart();
   const OT=api.OT;
