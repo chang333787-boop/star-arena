@@ -14,6 +14,18 @@
           ".read": "auth != null",
           ".write": "auth != null"
         }
+      },
+      "labOpen": {
+        "$classCode": {
+          ".read": "auth != null",
+          ".write": "auth != null"
+        }
+      },
+      "labRank": {
+        "$classCode": {
+          ".read": "auth != null",
+          ".write": "auth != null"
+        }
       }
     },
     "classes": {

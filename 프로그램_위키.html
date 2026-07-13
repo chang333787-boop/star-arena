@@ -54,7 +54,7 @@ details[open] summary{margin-bottom:8px;}
 <body>
 <div class="app">
 <nav class="side" id="side">
-  <div class="logo">⭐ 별빛 아레나 위키<small>현재 버전 <b style="color:#ffe14d">v1.85</b> · 2026-07-12</small></div>
+  <div class="logo">⭐ 별빛 아레나 위키<small>현재 버전 <b style="color:#ffe14d">v1.86</b> · 2026-07-12</small></div>
   <input id="wsearch" type="search" placeholder="🔎 검색 (예: 뭉게대왕, 조작)" style="width:100%;margin:10px 0 2px;padding:7px 10px;border-radius:9px;border:1px solid #2a3560;background:#0a0f28;color:#dfe6ff;font-family:inherit;font-size:13px;">
   <div id="sres" style="font-size:11.5px;color:#8893bb;padding:0 4px;"></div>
   <div class="grp">시작</div>
@@ -571,11 +571,12 @@ node -e 'const fs=require("fs");const h=fs.readFileSync("index.html","utf8");con
 
 <!-- ═════════ 일지 ═════════ -->
 <section class="page" id="p-log">
-<h1>📜 업데이트 일지 <span class="badge">현재 v1.85</span></h1>
+<h1>📜 업데이트 일지 <span class="badge">현재 v1.86</span></h1>
 <p class="tagline">v1.00(6-29 첫 버전)부터 이어온 버전 기록 — 전체 상세는 저장소 <code>PATCHNOTES.md</code>(67개 버전), 작업 맥락은 <code>작업현황_HANDOFF.md</code>.</p>
 <h2>최근 (v1.55 ~ v1.65)</h2>
 <table><tr><th>버전</th><th>날짜</th><th>내용</th></tr>
-<tr><td><b>v1.85</b></td><td>07-12</td><td><b>생존자 멀미 수술 + 구름 포수</b> — 카메라 데드존·별가루 벡션 제거·격자 대비↓ / 🏹 원거리 적 추가(방치 처벌 3축 완성)</td></tr>
+<tr><td><b>v1.86</b></td><td>07-13</td><td><b>개방·랭킹 동기화 버그 수정</b> — DB 보안 규칙에 labOpen·labRank 경로 누락으로 클라우드 쓰기 거부되던 것 수정(교사 기기 로컬에만 열리던 문제)</td></tr>
+<tr><td>v1.85</td><td>07-12</td><td><b>생존자 멀미 수술 + 구름 포수</b> — 카메라 데드존·별가루 벡션 제거·격자 대비↓ / 🏹 원거리 적 추가(방치 처벌 3축 완성)</td></tr>
 <tr><td>v1.84</td><td>07-12</td><td><b>생존자 터렛 무적 종결</b> — 정예가 수호별 벽을 뚫음(직접 피하기 필수)·광역 4종 트림: 풀빌드도 방치하면 죽는다(봇 검증)</td></tr>
 <tr><td>v1.83</td><td>07-12</td><td><b>생존자 최종 조율</b> — 무적 0.65초(정지 플레이는 1분 내 사망, 봇 검증)·로비에 버전 스탬프(캐시 구버전 진단)</td></tr>
 <tr><td>v1.82</td><td>07-12</td><td><b>생존자 마감 수리</b> — 이월 경험치 60% 완충(진공 대량 입금도 연쇄 1회로)·젬 가치 floor: 초반 연속 레벨업 종결</td></tr>

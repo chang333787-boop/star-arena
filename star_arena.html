@@ -3528,24 +3528,41 @@ function pfTouchAt(p, on){
 const LAB_OPEN_KEY="starArena.labOpen.v1";
 let labOpen=(function(){ try{ const s=JSON.parse(localStorage.getItem(LAB_OPEN_KEY)); if(s&&typeof s==="object") return s; }catch(e){} return {}; })();
 function labOpenSaveLocal(){ try{ localStorage.setItem(LAB_OPEN_KEY, JSON.stringify(labOpen)); }catch(e){} }
+let cloudLabStatus="";   // v1.86: 개방 동기화 상태(관리자 화면 표시 — 규칙 미게시면 여기에 경고)
 const LabOpenStore={
-  _on:false,
+  _on:false, _flushed:false,
   ready(){ try{ return !!(OnlineManager && OnlineManager.available && OnlineManager.db); }catch(e){ return false; } },
   _ref(){ return OnlineManager.db.ref("starArenaOnline/labOpen/"+ADMIN_CONFIG.classCode); },
   watch(){   // 멱등 — 로비/허브/패널이 그려질 때마다 불러도 1회만 구독
     if(this._on || !this.ready()) return;
     this._on=true;
+    const self=this;
     try{ this._ref().on("value", function(snap){ const v=snap&&snap.val();
-      if(v&&typeof v==="object"){ labOpen=v; labOpenSaveLocal(); } }); }catch(e){ this._on=false; }
+        if(v&&typeof v==="object"){ labOpen=v; labOpenSaveLocal(); cloudLabStatus="학급 개방 동기화됨 ("+Object.keys(v).filter(function(k){return v[k];}).length+"개 열림)"; } },
+      function(err){ self._on=false;   // v1.86: 구독 실패(대개 DB 규칙) — 조용히 넘기지 않고 표시
+        cloudLabStatus=(err&&err.code==="PERMISSION_DENIED")?"⚠ DB 규칙에 labOpen 없음 — database.rules.json 게시 필요":"오프라인 — 개방이 이 기기에만"; });
+    }catch(e){ this._on=false; }
+  },
+  flushLocal(){   // v1.86: (교사 화면 전용) 규칙 게시 후, 이 기기의 개방 상태를 학급 클라우드로 밀어올림 — 재게시 즉시 학생 반영
+    if(this._flushed || !this.ready()) return;
+    this._flushed=true;
+    if(!Object.keys(labOpen).length) return;
+    try{ this._ref().update(labOpen, function(err){ if(!err) cloudLabStatus="학급 개방 동기화됨"; }); }catch(e){}
   },
   set(key,val){
     labOpen[key]=!!val; labOpenSaveLocal();
-    if(this.ready()){ try{ const o={}; o[key]=!!val; this._ref().update(o); }catch(e){} }
+    if(!this.ready()){ cloudLabStatus="오프라인 — 개방이 이 기기에만 적용돼요"; return; }
+    const o={}; o[key]=!!val;
+    try{ this._ref().update(o, function(err){   // v1.86: 완료 콜백으로 성공/실패 확인 — 거짓 성공 방지
+      if(err){ cloudLabStatus=(err.code==="PERMISSION_DENIED")?"⚠ DB 규칙 미게시 — 학생 화면엔 아직 안 보여요":("동기화 실패: "+err.code);
+        showToast("⚠ 클라우드 저장 실패 — 학생에겐 아직 안 보여요! (DB 규칙 게시 필요, 위키 참고)"); }
+      else cloudLabStatus="학급 개방 동기화됨";
+    }); }catch(e){}
   }
 };
 /* ── v1.74 학급 랭킹: 게임별 TOP8을 클라우드로 공유(starArenaOnline/labRank/<class>) ──
    로컬 캐시 폴백 — 오프라인이어도 이 기기 랭킹은 동작, 접속되면 학급 전체와 합쳐짐. */
-const GAME_VER="v1.85";   // 화면 표시용 — 배포마다 PATCHNOTES와 함께 갱신(캐시 구버전 진단)
+const GAME_VER="v1.86";   // 화면 표시용 — 배포마다 PATCHNOTES와 함께 갱신(캐시 구버전 진단)
 const LAB_RANK_KEY="starArena.labRank.v1";
 let labRank=(function(){ try{ const s=JSON.parse(localStorage.getItem(LAB_RANK_KEY)); if(s&&typeof s==="object") return s; }catch(e){} return {}; })();
 const LabRankStore={
@@ -3578,7 +3595,8 @@ const LabRankStore={
     const o={}; let n=0;
     for(const k in this._dirty){ o[k]=labRank[k]||[]; n++; }
     this._dirty={};
-    if(n){ try{ this._ref().update(o); }catch(e){} }
+    if(n){ try{ this._ref().update(o, function(err){   // v1.86: 규칙 미게시면 랭킹도 조용히 실패 — 상태에 남김
+      if(err && err.code==="PERMISSION_DENIED") cloudLabStatus="⚠ DB 규칙에 labRank 없음 — database.rules.json 게시 필요"; }); }catch(e){} }
   },
   submit(key, score){
     const lower=!!LAB_RANK_LOWER[key];
@@ -14064,11 +14082,15 @@ function drawAdminScreen(){
   } else { ctx.fillStyle="#9a90b8"; ctx.font="15px 'Malgun Gothic',sans-serif"; ctx.fillText("왼쪽에서 학생을 선택하세요 (없으면 [➕ 계정]으로 생성)", rx+22, ry2+50); }
   // ── 우중: 🎮 미니게임 개방 스위치 ──
   {
+    try{ LabOpenStore.flushLocal(); }catch(e){}   // v1.86: 교사 화면 진입 시 이 기기 개방 상태를 클라우드로(규칙 게시 후 즉시 반영)
     const gy=366, gh=112;
     ctx.fillStyle="rgba(22,36,44,0.92)"; roundRect(rx,gy,rw,gh,14); ctx.fill();
     ctx.strokeStyle="#3f6a5c"; ctx.lineWidth=1.5; roundRect(rx,gy,rw,gh,14); ctx.stroke();
     ctx.fillStyle="#9fe6c8"; ctx.font="bold 14px 'Malgun Gothic',sans-serif";
     ctx.fillText("🎮 미니게임 개방 — 켜면 학생 로비 광장에 등장 ("+labOpenCount()+"/"+LAB_GAMES.length+")", rx+18, gy+24);
+    if(cloudLabStatus){ ctx.textAlign="right";   // v1.86: 동기화 상태(규칙 미게시면 빨간 경고)
+      ctx.fillStyle=(cloudLabStatus.indexOf("⚠")>=0)?"#ff8a8a":"#7dffb0"; ctx.font="11px 'Malgun Gothic',sans-serif";
+      ctx.fillText(cloudLabStatus, rx+rw-16, gy+24); ctx.textAlign="left"; }
     ctx.textAlign="center"; ctx.textBaseline="middle";
     const cw=112, chh=30, gap=6;   // v1.79: 11종 → 6열
     for(let i=0;i<LAB_GAMES.length;i++){

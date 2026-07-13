@@ -18,6 +18,14 @@
 - 봇 3종 상주 체계: afk(막픽)/afksmart(방어빌드 우선픽)/kite — afk류 90초 내 사망이 장르 무결성(하네스 상주). 
 - **GAME_VER 스탬프**(로비 우하단): 배포마다 갱신 필수(PATCHNOTES와 세트). 교사 "버전 이상해요" → 화면 스탬프 확인 → 다르면 Ctrl+Shift+R(GitHub Pages 캐시 ~10분).
 
+## 최신 상태 (2026-07-13, v1.86 — 개방/랭킹 클라우드 동기화 버그 수정)
+
+### 🐛 v1.86 — "미니게임 열었는데 애들은 안 열림" = DB 규칙 경로 누락(교사 지적, 정확했음)
+- **근본 원인**: `database.rules.json`이 화이트리스트(루트 `.write:false`). rooms·editorMaps·classes(계정)만 허용 → v1.67 labOpen·v1.74 labRank 경로 추가 시 **규칙 미갱신**으로 클라우드 쓰기 PERMISSION_DENIED, 빈 catch라 무표시. 교사 기기 로컬에만 개방됨. 클라우드 `/starArenaOnline`에 editorMaps·rooms는 있는데 labOpen·labRank는 아예 없음이 결정적 증거.
+- 수정: ①database.rules.json에 labOpen·labRank(editorMaps와 동일 패턴) 추가 → `firebase deploy --only database --project classgame-a1b3e` 게시 완료 ②LabOpenStore.set에 update 완료 콜백 → 실패 시 경고 토스트+cloudLabStatus(관리자 화면) ③flushLocal(교사 콘솔 진입 시 로컬 개방→클라우드) ④LabRankStore.flush도 실패 표면화.
+- ⚠️ **CLI 활성 프로젝트 함정(중대)**: `firebase deploy`가 `.firebaserc` default(classgame)가 아니라 **당시 활성 프로젝트 picturebook-8731f로 나감**. 항상 `--project classgame-a1b3e` 명시할 것. picturebook에 star-arena 규칙이 실수 배포됨 → 원복 필요(picturebook-repo에서 재배포, auto모드선 차단되어 교사 실행 대기).
+- **신규 클라우드 경로 추가 체크리스트**: DB 경로 코드 추가 시 ①database.rules.json에 경로 추가 ②`firebase deploy --only database --project classgame-a1b3e` ③쓰기 실패 표면화(빈 catch 금지) 3종 세트.
+
 ### 🌀 v1.85 — 멀미 수술(교사 "원래 멀미나는 장르야?") + 구름 포수
 - **톱다운 멀미 2대 원인(신규 교훈)**: ①카메라 플레이어 하드락(관성 잔흔들림→전화면 증폭) → 데드존 26px+lerp 6/s ②**수집물 전역 드리프트 = 벡션**(전 화면 입자가 플레이어 향해 상시 흐름) → 자석 밖 완전 정지·자석 반경으로 보상(190)·진공은 짧은 이벤트만. +배경 격자 대비 절반. 플랫포머 v1.38(스크롤)·RPG v1.40(보스)에 이은 3번째 멀미 사례 — 신모드 낼 때 카메라·전역 입자 흐름 체크리스트에 추가.
 - 🏹 포수(t>75, 10%, 250~360 유지, 3.2s 조준탄 145px/s·7dmg, 탄 상한 24): 방치 처벌 3축(접촉·정예 관통·원거리) 완성 — 치트 터렛 봇 사망 93~96s(손 뗀 지 3~6초).
