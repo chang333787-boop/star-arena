@@ -3586,7 +3586,7 @@ const LabOpenStore={
 };
 /* ── v1.74 학급 랭킹: 게임별 TOP8을 클라우드로 공유(starArenaOnline/labRank/<class>) ──
    로컬 캐시 폴백 — 오프라인이어도 이 기기 랭킹은 동작, 접속되면 학급 전체와 합쳐짐. */
-const GAME_VER="v1.90";   // 화면 표시용 — 배포마다 PATCHNOTES와 함께 갱신(캐시 구버전 진단)
+const GAME_VER="v1.91";   // 화면 표시용 — 배포마다 PATCHNOTES와 함께 갱신(캐시 구버전 진단)
 const LAB_RANK_KEY="starArena.labRank.v1";
 let labRank=(function(){ try{ const s=JSON.parse(localStorage.getItem(LAB_RANK_KEY)); if(s&&typeof s==="object") return s; }catch(e){} return {}; })();
 const LabRankStore={
@@ -3645,6 +3645,85 @@ function labRankDraw(key, cx, y, unit){   // 결과 화면용 학급 TOP3
   for(let i=0;i<3;i++){ const r=top[i];
     ctx.fillStyle=r?"#cbd4f5":"#5f6a94";
     ctx.fillText(M[i]+" "+(r?(r.n+" — "+r.s+(unit||"")):"—"), cx, y+20+i*19); }
+  ctx.restore();
+}
+
+/* ── v1.91 온라인 보드게임 전송 계층(BoardNet) — 턴제 전용 경량 동기화
+   판 상태 전체를 한 노드에 두고 '착수한 쪽만 통째로 쓰기'(턴 게이팅) → 병합 충돌 없음.
+   경로: starArenaOnline/board/<class>/<code> = {game,board,turn,status,p1name,p2name,hostUid,guestUid,winner,moveN,ts} */
+function bnBoardToStr(b){ let s=""; for(let r=0;r<b.length;r++) for(let c=0;c<b[r].length;c++) s+=b[r][c]; return s; }
+function bnStrToBoard(s, n){ const b=[]; for(let r=0;r<n;r++){ b.push([]); for(let c=0;c<n;c++) b[r].push(+s[r*n+c]||0); } return b; }
+const BoardNet={
+  ref:null, code:null, role:null, game:null, data:null, onSync:null, _cb:null, err:"",
+  ready(){ try{ return !!(OnlineManager && OnlineManager.available && OnlineManager.db && OnlineManager.uid); }catch(e){ return false; } },
+  _base(){ return "starArenaOnline/board/"+ADMIN_CONFIG.classCode; },
+  myPlayer(){ return this.role==="host"?1:2; },
+  _watch(){ const self=this; if(!this.ref) return;
+    this._cb=function(snap){ self.data=snap.val(); if(self.onSync) self.onSync(self.data); };
+    this.ref.on("value", this._cb); },
+  host(game, boardStr, onSync, onDone){
+    if(!this.ready()){ if(onDone) onDone(false,"온라인 연결이 아직이에요"); return; }
+    const self=this;
+    const tryC=function(n){
+      const code=OnlineManager.generateRoomCode(), ref=OnlineManager.db.ref(self._base()+"/"+code);
+      ref.get().then(function(s){ const v=s.val();
+        if(v && v.status && v.status!=="ended"){ if(n>0){ tryC(n-1); return; } if(onDone) onDone(false,"방 코드 충돌"); return; }
+        const ts=firebase.database.ServerValue.TIMESTAMP;
+        ref.set({ game:game, board:boardStr, turn:1, status:"waiting",
+          p1name:((profile&&profile.nickname)||"별빛이").slice(0,8), p2name:null,
+          hostUid:OnlineManager.uid, guestUid:null, winner:0, moveN:0, ts:ts }).then(function(){
+          self.ref=ref; self.code=code; self.role="host"; self.game=game; self.onSync=onSync; self.err="";
+          try{ ref.child("status").onDisconnect().set("ended"); }catch(e){}
+          self._watch(); if(onDone) onDone(true, code);
+        }).catch(function(){ if(onDone) onDone(false,"방 생성 실패"); });
+      }).catch(function(){ if(onDone) onDone(false,"방 생성 오류"); });
+    }; tryC(5);
+  },
+  join(code, game, onSync, onDone){
+    if(!this.ready()){ if(onDone) onDone(false,"온라인 연결이 아직이에요"); return; }
+    code=String(code||"").toUpperCase().trim();
+    if(code.length<4){ if(onDone) onDone(false,"코드는 4글자예요"); return; }
+    const self=this, ref=OnlineManager.db.ref(this._base()+"/"+code);
+    ref.get().then(function(s){ const v=s.val();
+      if(!v || !v.status){ if(onDone) onDone(false,"그런 방이 없어요"); return; }
+      if(v.status==="ended"){ if(onDone) onDone(false,"이미 끝난 방이에요"); return; }
+      if(v.game!==game){ if(onDone) onDone(false,"다른 게임 방이에요"); return; }
+      if(v.guestUid && v.guestUid!==OnlineManager.uid){ if(onDone) onDone(false,"방이 가득 찼어요"); return; }
+      ref.update({ guestUid:OnlineManager.uid, p2name:((profile&&profile.nickname)||"친구").slice(0,8),
+        status:"playing", ts:firebase.database.ServerValue.TIMESTAMP }).then(function(){
+        self.ref=ref; self.code=code; self.role="guest"; self.game=game; self.onSync=onSync; self.err="";
+        try{ ref.child("status").onDisconnect().set("ended"); }catch(e){}
+        self._watch(); if(onDone) onDone(true, code);
+      }).catch(function(){ if(onDone) onDone(false,"입장 실패"); });
+    }).catch(function(){ if(onDone) onDone(false,"입장 오류"); });
+  },
+  send(patch){ if(this.ref){ try{ patch.ts=firebase.database.ServerValue.TIMESTAMP; this.ref.update(patch); }catch(e){} } },
+  leave(){ try{ if(this.ref){ if(this._cb) this.ref.off("value", this._cb);
+      this.ref.child("status").onDisconnect().cancel(); this.ref.child("status").set("ended"); } }catch(e){}
+    this.ref=null; this.code=null; this.role=null; this.game=null; this.data=null; this.onSync=null; this._cb=null; }
+};
+/* 공유 온라인 로비 오버레이 — 오델로·오목 공통 */
+function bnMenuOverlay(title, onCreate, onJoin, onBack){
+  ctx.fillStyle="rgba(8,10,22,0.86)"; ctx.fillRect(0,0,LOGW,LOGH);
+  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillStyle="#9fe6c8"; ctx.font="bold 32px 'Malgun Gothic',sans-serif"; ctx.fillText("🌐 "+title+" 온라인 대전", LOGW/2, LOGH/2-140);
+  ctx.fillStyle="#cbd4f5"; ctx.font="16px 'Malgun Gothic',sans-serif";
+  ctx.fillText("친구와 다른 컴퓨터에서 한 판! 한 명은 방을 만들고, 다른 한 명은 코드로 들어와요.", LOGW/2, LOGH/2-96);
+  drawButton("🏠 방 만들기", LOGW/2, LOGH/2-20, 320, 56, false, onCreate);
+  drawButton("🚪 코드로 입장", LOGW/2, LOGH/2+56, 320, 56, false, onJoin);
+  if(BoardNet.err){ ctx.fillStyle="#ff9a9a"; ctx.font="15px 'Malgun Gothic',sans-serif"; ctx.fillText("⚠ "+BoardNet.err, LOGW/2, LOGH/2+120); }
+  ctx.fillStyle="#8893bb"; ctx.font="14px 'Malgun Gothic',sans-serif"; ctx.fillText("Esc 나가기", LOGW/2, LOGH-30);
+  ctx.restore();
+}
+function bnWaitOverlay(){
+  ctx.fillStyle="rgba(8,10,22,0.9)"; ctx.fillRect(0,0,LOGW,LOGH);
+  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillStyle="#9fe6c8"; ctx.font="bold 26px 'Malgun Gothic',sans-serif"; ctx.fillText("친구를 기다리는 중…", LOGW/2, LOGH/2-120);
+  ctx.fillStyle="#cbd4f5"; ctx.font="17px 'Malgun Gothic',sans-serif"; ctx.fillText("아래 방 코드를 친구에게 알려주세요!", LOGW/2, LOGH/2-72);
+  ctx.fillStyle="#ffe14d"; ctx.font="bold 90px 'Malgun Gothic',sans-serif"; ctx.fillText(BoardNet.code||"----", LOGW/2, LOGH/2+10);
+  const dots=".".repeat(1+(Math.floor(uiTime*2)%3));
+  ctx.fillStyle="#8fb0ff"; ctx.font="18px 'Malgun Gothic',sans-serif"; ctx.fillText("연결 대기"+dots, LOGW/2, LOGH/2+100);
+  ctx.fillStyle="#8893bb"; ctx.font="14px 'Malgun Gothic',sans-serif"; ctx.fillText("Esc 취소", LOGW/2, LOGH-30);
   ctx.restore();
 }
 const LAB_MAKER_MODES={ puzzle:"🧩 별조각 밀기", tdpath:"🏰 수비대 길", fleet:"🚀 함대 편대" };   // v1.71 공방 3종
@@ -7044,6 +7123,45 @@ function otStart(pvp){
   gameState=STATE.OTHELLO;
   showToast("⚫ 별빛 오델로 — ⭐를 놓아 ☁먹구름을 뒤집자!");
 }
+/* v1.91 공유 온라인 액션(오델로·오목 공통) */
+function bnStartHost(game, boardStr, onSync){
+  BoardNet.err=""; showToast("방 만드는 중…");
+  BoardNet.host(game, boardStr, onSync, function(ok,codeOrErr){
+    if(ok) showToast("🏠 방 생성! 코드 "+codeOrErr+" — 친구에게 알려줘요");
+    else { BoardNet.err=codeOrErr; showToast("⚠ "+codeOrErr); } });
+}
+function bnStartJoin(game, onSync){
+  let code=null; try{ code=window.prompt("친구 방 코드 4글자를 입력하세요"); }catch(e){}
+  if(!code) return;
+  BoardNet.err="";
+  BoardNet.join(code, game, onSync, function(ok,codeOrErr){
+    if(ok) showToast("🚪 입장 성공! 게임 시작");
+    else { BoardNet.err=codeOrErr; showToast("⚠ "+codeOrErr); } });
+}
+function otStartOnline(){
+  const b=[]; for(let r=0;r<8;r++){ b.push(new Array(8).fill(0)); }
+  b[3][3]=2; b[4][4]=2; b[3][4]=1; b[4][3]=1;
+  OT={ b:b, turn:1, cur:{c:2,r:3}, aiT:0, over:false, msg:"", passMsgT:0, lastMove:null, wins:otWins(), anims:{}, pvp:false, online:true };
+  gameState=STATE.OTHELLO;
+}
+function otCanPlay(){   // 지금 내가 착수 가능?
+  if(!OT||OT.over) return false;
+  if(OT.online) return !!(BoardNet.data && BoardNet.data.status==="playing" && OT.turn===BoardNet.myPlayer());
+  return (OT.turn===1||OT.pvp);
+}
+function otOnlineSend(){
+  if(!OT.online) return;
+  const s=otCount(OT.b);
+  BoardNet.send({ board:bnBoardToStr(OT.b), turn:OT.turn, over:!!OT.over,
+    winner:OT.over?(s.p>s.a?1:(s.p<s.a?2:0)):0, moveN:((BoardNet.data&&BoardNet.data.moveN)||0)+1 });
+}
+function otOnlineSync(data){   // 상대 착수 수신 → 판 반영(로직 재실행 없이 결과만 채택)
+  if(!OT||!OT.online||!data) return;
+  if(data.status==="playing" && !OT._started){ OT._started=true; showToast(BoardNet.myPlayer()===1?"🌐 상대 입장! ⭐ 내가 먼저!":"🌐 게임 시작! 상대(⭐)가 먼저 둬요"); }
+  if(data.board){ OT.b=bnStrToBoard(data.board,8); }
+  OT.turn=data.turn||1; OT.over=!!data.over;
+}
+function otLeaveOnline(){ if(OT&&OT.online){ try{ BoardNet.leave(); }catch(e){} } }
 function otFlips(b, c, r, who){
   if(b[r][c]!==0) return [];
   const opp=(who===1)?2:1, all=[];
@@ -7079,12 +7197,13 @@ function otPlace(c, r, who){
   else {
     OT.over=true;
     const s=otCount(OT.b);
-    if(!OT.pvp){ try{ const w=otWins(); if(s.p>s.a) w.w++; else if(s.p<s.a) w.l++; else w.d++;
+    if(!OT.pvp && !OT.online){ try{ const w=otWins(); if(s.p>s.a) w.w++; else if(s.p<s.a) w.l++; else w.d++;
       localStorage.setItem(OT_WINS_KEY, JSON.stringify(w)); OT.wins=w;
-      if(s.p>s.a){ labReward("ot", 20); LabRankStore.submit("ot", w.w); } }catch(e){} }   // v1.74: 전적·랭킹은 AI전만
+      if(s.p>s.a){ labReward("ot", 20); LabRankStore.submit("ot", w.w); } }catch(e){} }   // v1.74: 전적·랭킹은 AI전만(온라인 제외)
     playSfx(s.p>s.a?"win":(s.p<s.a?"lose":"clear"));
   }
-  if(OT.turn===2) OT.aiT=0.75;
+  if(OT.turn===2 && !OT.online) OT.aiT=0.75;
+  if(OT.online) otOnlineSend();   // v1.91: 내 착수 결과를 상대에게
   return true;
 }
 function otAiMove(){
@@ -7102,12 +7221,22 @@ function otAiMove(){
   if(best) otPlace(best.c, best.r, 2);
 }
 function otKey(code){
-  if(code==="Escape"){ OT=null; labBack(); return; }
+  if(code==="Escape"){ otLeaveOnline(); OT=null; labBack(); return; }
   if(!OT) return;
-  if(code==="KeyT"){ otStart(!OT.pvp); showToast(OT.pvp?"👥 둘이서 한 판! (한 키보드)":"🤖 먹구름 AI와 대결!"); return; }   // v1.74: 종료 후에도 전환 가능
-  if(code==="KeyR"){ otStart(OT.pvp); return; }   // 새 판은 현재 모드 유지
+  if(OT.online){   // 온라인: 모드 토글·R 없음(방 종료는 Esc)
+    if(OT.over) return;
+    if(!otCanPlay()) return;
+    if(code==="ArrowLeft") OT.cur.c=(OT.cur.c+7)%8;
+    else if(code==="ArrowRight") OT.cur.c=(OT.cur.c+1)%8;
+    else if(code==="ArrowUp") OT.cur.r=(OT.cur.r+7)%8;
+    else if(code==="ArrowDown") OT.cur.r=(OT.cur.r+1)%8;
+    else if(code==="Enter"||code==="NumpadEnter"||code==="Space"){ if(!otPlace(OT.cur.c, OT.cur.r, OT.turn)) showToast("거긴 못 놓아요!"); }
+    return;
+  }
+  if(code==="KeyT"){ otStart(!OT.pvp); showToast(OT.pvp?"👥 둘이서 한 판! (한 키보드)":"🤖 먹구름 AI와 대결!"); return; }
+  if(code==="KeyR"){ otStart(OT.pvp); return; }
   if(OT.over){ if(code==="Enter"||code==="NumpadEnter") otStart(OT.pvp); return; }
-  if(OT.turn!==1 && !OT.pvp) return;   // v1.74: 2인전은 ☁ 차례도 사람이
+  if(OT.turn!==1 && !OT.pvp) return;
   if(code==="ArrowLeft") OT.cur.c=(OT.cur.c+7)%8;
   else if(code==="ArrowRight") OT.cur.c=(OT.cur.c+1)%8;
   else if(code==="ArrowUp") OT.cur.r=(OT.cur.r+7)%8;
@@ -7115,21 +7244,24 @@ function otKey(code){
   else if(code==="Enter"||code==="NumpadEnter"||code==="Space"){
     if(!otPlace(OT.cur.c, OT.cur.r, OT.pvp?OT.turn:1)) showToast("거긴 못 놓아요! (뒤집을 수 있는 곳만)");
   }
-
 }
 function otUpdate(dt){
   if(!OT||OT.over) return;
   if(OT.passMsgT>0) OT.passMsgT-=dt;
-  if(OT.turn===2 && !OT.pvp){ OT.aiT-=dt; if(OT.aiT<=0) otAiMove(); }   // v1.74: 2인전은 AI 없음
+  if(OT.turn===2 && !OT.pvp && !OT.online){ OT.aiT-=dt; if(OT.aiT<=0) otAiMove(); }   // v1.74/91: 2인전·온라인은 AI 없음
 }
 function otRender(){
   if(!OT) return;
+  if(OT.online && !BoardNet.ref){ bnMenuOverlay("오델로",
+    function(){ bnStartHost("othello", bnBoardToStr(OT.b), otOnlineSync); },
+    function(){ bnStartJoin("othello", otOnlineSync); }); return; }
+  if(OT.online && BoardNet.data && BoardNet.data.status==="waiting"){ bnWaitOverlay(); return; }
   ctx.fillStyle="#0c1226"; ctx.fillRect(0,0,LOGW,LOGH);
   ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
   const cell=72, ox=LOGW/2-4*cell, oy=76;
   ctx.fillStyle="#14224a"; roundRect(ox-14, oy-14, cell*8+28, cell*8+28, 14); ctx.fill();
   ctx.strokeStyle="#3a4470"; ctx.lineWidth=3; roundRect(ox-14, oy-14, cell*8+28, cell*8+28, 14); ctx.stroke();
-  const legal=((OT.turn===1||OT.pvp) && !OT.over)?otMoves(OT.b,OT.turn):[];
+  const legal=otCanPlay()?otMoves(OT.b,OT.turn):[];
   for(let r=0;r<8;r++) for(let c=0;c<8;c++){
     const x=ox+c*cell, y=oy+r*cell;
     ctx.fillStyle=((c+r)%2)?"#182a58":"#16264f"; ctx.fillRect(x, y, cell-2, cell-2);
@@ -7161,9 +7293,9 @@ function otRender(){
     if(OT.lastMove && OT.lastMove.c===c && OT.lastMove.r===r){
       ctx.strokeStyle="#ffffff"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(x+cell/2, y+cell/2, cell*0.42, 0, Math.PI*2); ctx.stroke();
     }
-    (function(cc,rr){ uiHit(x, y, cell-2, cell-2, function(){ if((OT.turn===1||OT.pvp) && !OT.over){ OT.cur={c:cc,r:rr}; if(!otPlace(cc,rr,OT.pvp?OT.turn:1)) showToast("거긴 못 놓아요!"); } }); })(c,r);
+    (function(cc,rr){ uiHit(x, y, cell-2, cell-2, function(){ if(otCanPlay()){ OT.cur={c:cc,r:rr}; if(!otPlace(cc,rr,(OT.online||OT.pvp)?OT.turn:1)) showToast("거긴 못 놓아요!"); } }); })(c,r);
   }
-  if((OT.turn===1||OT.pvp) && !OT.over){
+  if(otCanPlay()){
     const x=ox+OT.cur.c*cell, y=oy+OT.cur.r*cell;
     ctx.strokeStyle="#7dffb0"; ctx.lineWidth=3; ctx.strokeRect(x+2, y+2, cell-6, cell-6);
   }
@@ -7172,30 +7304,45 @@ function otRender(){
   ctx.textAlign="left"; ctx.fillStyle="#9fe6c8"; ctx.font="bold 17px 'Malgun Gothic',sans-serif";
   ctx.fillText("⚫ 별빛 오델로", 16, 22);
   ctx.textAlign="center"; ctx.fillStyle="#fff"; ctx.font="bold 18px 'Malgun Gothic',sans-serif";
-  ctx.fillText("⭐ "+s.p+"  vs  ☁ "+s.a+"    ·    "+(OT.over?"게임 끝!":(OT.pvp?(OT.turn===1?"⭐ 친구 차례!":"☁ 친구 차례!"):(OT.turn===1?"내 차례!":"☁ 생각 중..."))), LOGW/2, 22);
+  let otSt;
+  if(OT.over) otSt="게임 끝!";
+  else if(OT.online){ const me=BoardNet.myPlayer(); otSt=(OT.turn===me)?("✋ 내 차례! ("+(me===1?"⭐":"☁")+")"):"⏳ 상대 차례…"; }
+  else if(OT.pvp) otSt=(OT.turn===1?"⭐ 친구 차례!":"☁ 친구 차례!");
+  else otSt=(OT.turn===1?"내 차례!":"☁ 생각 중...");
+  ctx.fillText("⭐ "+s.p+"  vs  ☁ "+s.a+"    ·    "+otSt, LOGW/2, 22);
   ctx.textAlign="right"; ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
-  ctx.fillText(OT.pvp?"👥 둘이서 모드":("전적 "+w.w+"승 "+w.l+"패 "+w.d+"무"), LOGW-16, 22);
+  ctx.fillText(OT.online?("🌐 온라인 "+(BoardNet.role==="host"?"방장 ⭐":"참가 ☁")):(OT.pvp?"👥 둘이서 모드":("전적 "+w.w+"승 "+w.l+"패 "+w.d+"무")), LOGW-16, 22);
   // v1.74: 모드 전환 버튼(새 판으로 시작)
   {
-    const bw2=104, bx1=16, by1=44;
-    ctx.textAlign="center";
-    ctx.fillStyle=!OT.pvp?"rgba(95,160,255,0.4)":"rgba(30,38,66,0.85)"; roundRect(bx1,by1,bw2,26,13); ctx.fill();
-    ctx.fillStyle="#dfe6ff"; ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.fillText("🤖 AI 대결", bx1+bw2/2, by1+14);
-    uiHit(bx1,by1,bw2,26,function(){ if(OT.pvp) otStart(false); });
-    ctx.fillStyle=OT.pvp?"rgba(95,160,255,0.4)":"rgba(30,38,66,0.85)"; roundRect(bx1+bw2+8,by1,bw2,26,13); ctx.fill();
-    ctx.fillStyle="#dfe6ff"; ctx.fillText("👥 둘이서", bx1+bw2+8+bw2/2, by1+14);
-    uiHit(bx1+bw2+8,by1,bw2,26,function(){ if(!OT.pvp) otStart(true); });
+    const bw2=90, gap=6, bx1=16, by1=44; ctx.textAlign="center"; ctx.font="bold 12px 'Malgun Gothic',sans-serif";
+    const modeAI=!OT.pvp&&!OT.online, modePV=OT.pvp&&!OT.online, modeON=!!OT.online;
+    ctx.fillStyle=modeAI?"rgba(95,160,255,0.4)":"rgba(30,38,66,0.85)"; roundRect(bx1,by1,bw2,26,13); ctx.fill();
+    ctx.fillStyle="#dfe6ff"; ctx.fillText("🤖 AI", bx1+bw2/2, by1+14);
+    uiHit(bx1,by1,bw2,26,function(){ if(!modeAI){ otLeaveOnline(); otStart(false); } });
+    ctx.fillStyle=modePV?"rgba(95,160,255,0.4)":"rgba(30,38,66,0.85)"; roundRect(bx1+bw2+gap,by1,bw2,26,13); ctx.fill();
+    ctx.fillStyle="#dfe6ff"; ctx.fillText("👥 둘이서", bx1+bw2+gap+bw2/2, by1+14);
+    uiHit(bx1+bw2+gap,by1,bw2,26,function(){ if(!modePV){ otLeaveOnline(); otStart(true); } });
+    ctx.fillStyle=modeON?"rgba(95,160,255,0.4)":"rgba(30,38,66,0.85)"; roundRect(bx1+(bw2+gap)*2,by1,bw2,26,13); ctx.fill();
+    ctx.fillStyle="#dfe6ff"; ctx.fillText("🌐 온라인", bx1+(bw2+gap)*2+bw2/2, by1+14);
+    uiHit(bx1+(bw2+gap)*2,by1,bw2,26,function(){ if(!modeON) otStartOnline(); });
   }
   ctx.textAlign="center"; ctx.fillStyle="#8893bb";
-  ctx.fillText("클릭/화살표+Enter · 노란 점=가능 · T 모드 전환(AI↔둘이서) · R 새 판 · Esc 나가기", LOGW/2, LOGH-16);
+  ctx.fillText(OT.online?"클릭/화살표+Enter · 노란 점=가능 · 방 코드는 우상단 · Esc 방 나가기":"클릭/화살표+Enter · 노란 점=가능 · T 모드 전환 · R 새 판 · Esc 나가기", LOGW/2, LOGH-16);
+  if(OT.online && BoardNet.data && BoardNet.data.status==="ended" && !OT.over){   // 상대가 방을 나감
+    ctx.fillStyle="rgba(8,10,22,0.82)"; ctx.fillRect(0,LOGH/2-60,LOGW,120);
+    ctx.fillStyle="#ffd97d"; ctx.font="bold 30px 'Malgun Gothic',sans-serif"; ctx.fillText("🚪 상대가 나갔어요", LOGW/2, LOGH/2-8);
+    ctx.fillStyle="#dfe6ff"; ctx.font="16px 'Malgun Gothic',sans-serif"; ctx.fillText("Esc 로 나가서 새 방을 만들어요", LOGW/2, LOGH/2+28); }
   if(OT.passMsgT>0){ ctx.fillStyle="#ffd97d"; ctx.font="bold 22px 'Malgun Gothic',sans-serif"; ctx.fillText(OT.msg, LOGW/2, 60); }
   if(OT.over){
-    const res=OT.pvp?((s.p>s.a)?"🎉 ⭐별빛 친구 승리!":((s.p<s.a)?"🎉 ☁먹구름 친구 승리!":"🤝 무승부!")):((s.p>s.a)?"🎉 별빛 승리!":((s.p<s.a)?"☁ 먹구름 승리...":"🤝 무승부!"));
+    let res;
+    if(OT.online){ const me=BoardNet.myPlayer(), iWon=(me===1?s.p>s.a:s.a>s.p), tie=(s.p===s.a);
+      res=tie?"🤝 무승부!":(iWon?"🎉 내가 이겼다!":"😢 아쉽게 졌어요"); }
+    else res=OT.pvp?((s.p>s.a)?"🎉 ⭐별빛 친구 승리!":((s.p<s.a)?"🎉 ☁먹구름 친구 승리!":"🤝 무승부!")):((s.p>s.a)?"🎉 별빛 승리!":((s.p<s.a)?"☁ 먹구름 승리...":"🤝 무승부!"));
     ctx.fillStyle="rgba(8,10,22,0.7)"; ctx.fillRect(0,LOGH/2-70,LOGW,140);
     ctx.fillStyle=(s.p>s.a)?"#7dffb0":((s.p<s.a)?"#ff8a8a":"#ffd97d");
     ctx.font="bold 42px 'Malgun Gothic',sans-serif"; ctx.fillText(res, LOGW/2, LOGH/2-18);
     ctx.fillStyle="#dfe6ff"; ctx.font="17px 'Malgun Gothic',sans-serif";
-    ctx.fillText("⭐ "+s.p+" : "+s.a+" ☁   ·   Enter 새 판 · Esc 나가기", LOGW/2, LOGH/2+26);
+    ctx.fillText("⭐ "+s.p+" : "+s.a+" ☁   ·   "+(OT.online?"Esc 로 나가기":"Enter 새 판 · Esc 나가기"), LOGW/2, LOGH/2+26);
   }
   ctx.restore();
 }
@@ -7723,7 +7870,26 @@ function gmStart(mode){
   GM={ b:b, turn:1, cur:{c:7,r:7}, mode:mode||"ai", over:false, winner:0, last:null, moves:0,
        aiT:0, wins:gmWins() };
   gameState=STATE.GOMOKU;
-  showToast(mode==="pvp"?"⚫ 별빛 오목 — ⭐ vs 🌙 둘이서! 먼저 다섯 개 나란히!":"⚫ 별빛 오목 — 먼저 다섯 개 나란히 놓으면 승리!");
+  showToast(mode==="online"?"🌐 온라인 오목 — 방을 만들거나 코드로 입장!":(mode==="pvp"?"⚫ 별빛 오목 — ⭐ vs 🌙 둘이서! 먼저 다섯 개 나란히!":"⚫ 별빛 오목 — 먼저 다섯 개 나란히 놓으면 승리!"));
+}
+function gmStartOnline(){ gmStart("online"); }
+function gmLeaveOnline(){ if(GM&&GM.mode==="online"){ try{ BoardNet.leave(); }catch(e){} } }
+function gmCanPlay(){
+  if(!GM||GM.over) return false;
+  if(GM.mode==="online") return !!(BoardNet.data && BoardNet.data.status==="playing" && GM.turn===BoardNet.myPlayer());
+  if(GM.mode==="ai") return GM.turn===1;
+  return true;
+}
+function gmOnlineSend(){
+  BoardNet.send({ board:bnBoardToStr(GM.b), turn:GM.turn, over:!!GM.over, winner:GM.winner||0,
+    lc:GM.last?GM.last.c:-1, lr:GM.last?GM.last.r:-1, moveN:((BoardNet.data&&BoardNet.data.moveN)||0)+1 });
+}
+function gmOnlineSync(data){
+  if(!GM||GM.mode!=="online"||!data) return;
+  if(data.status==="playing" && !GM._started){ GM._started=true; showToast(BoardNet.myPlayer()===1?"🌐 상대 입장! ⭐ 내가 먼저!":"🌐 게임 시작! 상대(⭐)가 먼저 둬요"); }
+  if(data.board){ GM.b=bnStrToBoard(data.board,GM_N); }
+  GM.turn=data.turn||1; GM.over=!!data.over; GM.winner=data.winner||0;
+  if(data.lc>=0) GM.last={c:data.lc,r:data.lr};
 }
 function gmIn(c,r){ return c>=0&&r>=0&&c<GM_N&&r<GM_N; }
 function gmRun(b,c,r,dx,dy,who){ let n=0,cc=c+dx,rr=r+dy; while(gmIn(cc,rr)&&b[rr][cc]===who){ n++; cc+=dx; rr+=dy; } return n; }
@@ -7772,10 +7938,10 @@ function gmAiMove(){
 function gmPlace(c,r,who){
   if(GM.over||!gmIn(c,r)||GM.b[r][c]!==0) return false;
   GM.b[r][c]=who; GM.last={c:c,r:r}; GM.moves++; playSfx("click");
-  if(gmWinAt(GM.b,c,r,who)){ GM.over=true; GM.winner=who; gmEnd(); return true; }
-  if(GM.moves>=GM_N*GM_N){ GM.over=true; GM.winner=0; gmEnd(); return true; }
-  GM.turn=(who===1)?2:1;
-  if(GM.mode==="ai" && GM.turn===2) GM.aiT=0.35;
+  if(gmWinAt(GM.b,c,r,who)){ GM.over=true; GM.winner=who; gmEnd(); }
+  else if(GM.moves>=GM_N*GM_N){ GM.over=true; GM.winner=0; gmEnd(); }
+  else { GM.turn=(who===1)?2:1; if(GM.mode==="ai" && GM.turn===2) GM.aiT=0.35; }
+  if(GM.mode==="online") gmOnlineSend();   // v1.91: 내 착수 결과 상대에게
   return true;
 }
 function gmEnd(){
@@ -7785,8 +7951,17 @@ function gmEnd(){
     if(GM.winner===1){ labReward("gm",20); LabRankStore.submit("gm", w.w); } }
 }
 function gmKey(code){
-  if(code==="Escape"){ GM=null; labBack(); return; }
+  if(code==="Escape"){ gmLeaveOnline(); GM=null; labBack(); return; }
   if(!GM) return;
+  if(GM.mode==="online"){
+    if(GM.over || !gmCanPlay()) return;
+    if(code==="ArrowLeft") GM.cur.c=(GM.cur.c+GM_N-1)%GM_N;
+    else if(code==="ArrowRight") GM.cur.c=(GM.cur.c+1)%GM_N;
+    else if(code==="ArrowUp") GM.cur.r=(GM.cur.r+GM_N-1)%GM_N;
+    else if(code==="ArrowDown") GM.cur.r=(GM.cur.r+1)%GM_N;
+    else if(code==="Enter"||code==="NumpadEnter"||code==="Space"){ if(!gmPlace(GM.cur.c, GM.cur.r, GM.turn)) showToast("이미 돌이 있어요!"); }
+    return;
+  }
   if(code==="KeyT"){ gmStart(GM.mode==="ai"?"pvp":"ai"); return; }   // AI↔둘이서
   if(code==="KeyR"){ gmStart(GM.mode); return; }
   if(GM.over){ if(code==="Enter"||code==="NumpadEnter") gmStart(GM.mode); return; }
@@ -7805,6 +7980,10 @@ function gmUpdate(dt){
 }
 function gmRender(){
   if(!GM) return;
+  if(GM.mode==="online" && !BoardNet.ref){ bnMenuOverlay("오목",
+    function(){ bnStartHost("gomoku", bnBoardToStr(GM.b), gmOnlineSync); },
+    function(){ bnStartJoin("gomoku", gmOnlineSync); }); return; }
+  if(GM.mode==="online" && BoardNet.data && BoardNet.data.status==="waiting"){ bnWaitOverlay(); return; }
   ctx.fillStyle="#0e1230"; ctx.fillRect(0,0,LOGW,LOGH);
   const cell=Math.min(40, Math.floor(560/GM_N)), bw=cell*(GM_N-1);
   const ox=Math.round(LOGW/2-bw/2), oy=96;
@@ -7814,7 +7993,12 @@ function gmRender(){
   ctx.fillText("⚫ 별빛 오목", LOGW/2, 40);
   ctx.fillStyle="#cbd4f5"; ctx.font="bold 16px 'Malgun Gothic',sans-serif";
   const s=gmScoreCount();
-  ctx.fillText("⭐ "+s[1]+"   vs   "+(GM.mode==="pvp"?"🌙":"☁")+" "+s[2]+"    ·    "+(GM.over?"게임 끝!":(GM.mode==="pvp"?(GM.turn===1?"⭐ 친구 차례":"🌙 친구 차례"):(GM.turn===1?"내 차례!":"☁ 생각 중..."))), LOGW/2, 68);
+  let gmSt;
+  if(GM.over) gmSt="게임 끝!";
+  else if(GM.mode==="online"){ const me=BoardNet.myPlayer(); gmSt=(GM.turn===me)?("✋ 내 차례! ("+(me===1?"⭐":"☁")+")"):"⏳ 상대 차례…"; }
+  else if(GM.mode==="pvp") gmSt=(GM.turn===1?"⭐ 친구 차례":"🌙 친구 차례");
+  else gmSt=(GM.turn===1?"내 차례!":"☁ 생각 중...");
+  ctx.fillText("⭐ "+s[1]+"   vs   "+(GM.mode==="pvp"?"🌙":"☁")+" "+s[2]+"    ·    "+gmSt, LOGW/2, 68);
   // 판(바둑판 나뭇결)
   ctx.fillStyle="#c8a45a"; roundRect(ox-cell*0.7, oy-cell*0.7, bw+cell*1.4, bw+cell*1.4, 10); ctx.fill();
   ctx.strokeStyle="rgba(60,40,20,0.55)"; ctx.lineWidth=1.4;
@@ -7838,27 +8022,34 @@ function gmRender(){
   if(GM.last){ const x=ox+GM.last.c*cell, y=oy+GM.last.r*cell;
     ctx.strokeStyle="#ff7a7a"; ctx.lineWidth=2.5; ctx.beginPath(); ctx.arc(x,y,cell*0.5,0,Math.PI*2); ctx.stroke(); }
   // 커서 + 클릭영역
-  const canPlay=!GM.over && !(GM.mode==="ai"&&GM.turn===2);
+  const canPlay=gmCanPlay();
   for(let r=0;r<GM_N;r++)for(let c=0;c<GM_N;c++){ const x=ox+c*cell, y=oy+r*cell;
     if(canPlay && GM.b[r][c]===0 && c===GM.cur.c && r===GM.cur.r){ ctx.strokeStyle="rgba(255,255,255,0.8)"; ctx.lineWidth=2; ctx.strokeRect(x-cell*0.45,y-cell*0.45,cell*0.9,cell*0.9); }
-    (function(cc,rr){ uiHit(x-cell*0.45, y-cell*0.45, cell*0.9, cell*0.9, function(){ if(canPlay){ GM.cur={c:cc,r:rr}; if(!gmPlace(cc,rr,GM.mode==="pvp"?GM.turn:1)) showToast("이미 돌이 있어요!"); } }); })(c,r);
+    (function(cc,rr){ uiHit(x-cell*0.45, y-cell*0.45, cell*0.9, cell*0.9, function(){ if(canPlay){ GM.cur={c:cc,r:rr}; if(!gmPlace(cc,rr,(GM.mode==="pvp"||GM.mode==="online")?GM.turn:1)) showToast("이미 돌이 있어요!"); } }); })(c,r);
   }
   // 모드 버튼
-  { const bw2=104, bx1=16, by1=44;
+  { const bw2=90, gap=6, bx1=16, by1=44; ctx.font="bold 12px 'Malgun Gothic',sans-serif";
     ctx.fillStyle=GM.mode==="ai"?"rgba(95,160,255,0.4)":"rgba(30,38,66,0.85)"; roundRect(bx1,by1,bw2,26,13); ctx.fill();
-    ctx.fillStyle="#dfe6ff"; ctx.font="bold 12px 'Malgun Gothic',sans-serif"; ctx.fillText("🤖 AI 대결", bx1+bw2/2, by1+14);
-    uiHit(bx1,by1,bw2,26,function(){ if(GM.mode!=="ai") gmStart("ai"); });
-    ctx.fillStyle=GM.mode==="pvp"?"rgba(95,160,255,0.4)":"rgba(30,38,66,0.85)"; roundRect(bx1+bw2+8,by1,bw2,26,13); ctx.fill();
-    ctx.fillStyle="#dfe6ff"; ctx.fillText("👥 둘이서", bx1+bw2+8+bw2/2, by1+14);
-    uiHit(bx1+bw2+8,by1,bw2,26,function(){ if(GM.mode!=="pvp") gmStart("pvp"); });
+    ctx.fillStyle="#dfe6ff"; ctx.fillText("🤖 AI", bx1+bw2/2, by1+14);
+    uiHit(bx1,by1,bw2,26,function(){ if(GM.mode!=="ai"){ gmLeaveOnline(); gmStart("ai"); } });
+    ctx.fillStyle=GM.mode==="pvp"?"rgba(95,160,255,0.4)":"rgba(30,38,66,0.85)"; roundRect(bx1+bw2+gap,by1,bw2,26,13); ctx.fill();
+    ctx.fillStyle="#dfe6ff"; ctx.fillText("👥 둘이서", bx1+bw2+gap+bw2/2, by1+14);
+    uiHit(bx1+bw2+gap,by1,bw2,26,function(){ if(GM.mode!=="pvp"){ gmLeaveOnline(); gmStart("pvp"); } });
+    ctx.fillStyle=GM.mode==="online"?"rgba(95,160,255,0.4)":"rgba(30,38,66,0.85)"; roundRect(bx1+(bw2+gap)*2,by1,bw2,26,13); ctx.fill();
+    ctx.fillStyle="#dfe6ff"; ctx.fillText("🌐 온라인", bx1+(bw2+gap)*2+bw2/2, by1+14);
+    uiHit(bx1+(bw2+gap)*2,by1,bw2,26,function(){ if(GM.mode!=="online") gmStartOnline(); });
   }
   ctx.textAlign="right"; ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
-  ctx.fillText(GM.mode==="pvp"?"👥 둘이서 모드":("전적 "+GM.wins.w+"승 "+GM.wins.l+"패"), LOGW-16, 24);
+  ctx.fillText(GM.mode==="online"?("🌐 온라인 "+(BoardNet.role==="host"?"방장 ⭐":"참가 ☁")):(GM.mode==="pvp"?"👥 둘이서 모드":("전적 "+GM.wins.w+"승 "+GM.wins.l+"패")), LOGW-16, 24);
   ctx.textAlign="center"; ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
-  ctx.fillText("클릭/화살표+Enter · T 모드전환(AI↔둘이서) · R 새 판 · Esc 나가기", LOGW/2, LOGH-14);
+  ctx.fillText(GM.mode==="online"?"클릭/화살표+Enter · 방 코드는 우상단 · Esc 방 나가기":"클릭/화살표+Enter · T 모드전환 · R 새 판 · Esc 나가기", LOGW/2, LOGH-14);
+  if(GM.mode==="online" && BoardNet.data && BoardNet.data.status==="ended" && !GM.over){
+    ctx.fillStyle="rgba(8,10,22,0.82)"; ctx.fillRect(0,LOGH/2-60,LOGW,120);
+    ctx.fillStyle="#ffd97d"; ctx.font="bold 30px 'Malgun Gothic',sans-serif"; ctx.fillText("🚪 상대가 나갔어요", LOGW/2, LOGH/2-8);
+    ctx.fillStyle="#dfe6ff"; ctx.font="16px 'Malgun Gothic',sans-serif"; ctx.fillText("Esc 로 나가서 새 방을 만들어요", LOGW/2, LOGH/2+28); }
   if(GM.over){
     ctx.fillStyle="rgba(8,10,22,0.8)"; ctx.fillRect(0,0,LOGW,LOGH);
-    const res=GM.winner===0?"🤝 무승부!":(GM.mode==="pvp"?(GM.winner===1?"🎉 ⭐ 별빛 친구 승리!":"🎉 🌙 달빛 친구 승리!"):(GM.winner===1?"🎉 별빛 승리!":"☁ 먹구름 승리..."));
+    const res=GM.winner===0?"🤝 무승부!":(GM.mode==="online"?((GM.winner===BoardNet.myPlayer())?"🎉 내가 이겼다!":"😢 아쉽게 졌어요"):(GM.mode==="pvp"?(GM.winner===1?"🎉 ⭐ 별빛 친구 승리!":"🎉 🌙 달빛 친구 승리!"):(GM.winner===1?"🎉 별빛 승리!":"☁ 먹구름 승리...")));
     ctx.fillStyle=GM.winner===1?"#7dffb0":(GM.winner===2?"#ff9a9a":"#ffd97d");
     ctx.font="bold 42px 'Malgun Gothic',sans-serif"; ctx.fillText(res, LOGW/2, LOGH/2-30);
     if(GM.mode==="ai"){ ctx.fillStyle="#cbd4f5"; ctx.font="16px 'Malgun Gothic',sans-serif";

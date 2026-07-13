@@ -54,7 +54,7 @@ details[open] summary{margin-bottom:8px;}
 <body>
 <div class="app">
 <nav class="side" id="side">
-  <div class="logo">⭐ 별빛 아레나 위키<small>현재 버전 <b style="color:#ffe14d">v1.90</b> · 2026-07-12</small></div>
+  <div class="logo">⭐ 별빛 아레나 위키<small>현재 버전 <b style="color:#ffe14d">v1.91</b> · 2026-07-12</small></div>
   <input id="wsearch" type="search" placeholder="🔎 검색 (예: 뭉게대왕, 조작)" style="width:100%;margin:10px 0 2px;padding:7px 10px;border-radius:9px;border:1px solid #2a3560;background:#0a0f28;color:#dfe6ff;font-family:inherit;font-size:13px;">
   <div id="sres" style="font-size:11.5px;color:#8893bb;padding:0 4px;"></div>
   <div class="grp">시작</div>
@@ -392,7 +392,8 @@ details[open] summary{margin-bottom:8px;}
 <h2>🎮 규칙</h2>
 <ul><li>상대 돌을 <b>내 돌 사이에 끼우면 전부 뒤집혀요</b>. 놓을 수 있는 곳은 <b>노란 점</b>으로 표시!</li>
 <li>클릭 또는 <kbd>화살표</kbd>+<kbd>Enter</kbd> · 둘 곳 없으면 자동 패스 · 판이 차면 많은 쪽 승리.</li>
-<li><b>👥 둘이서 모드</b>: 왼쪽 위 버튼이나 <kbd>T</kbd>로 전환 — 한 키보드로 번갈아 두는 친구 대결! (전적·랭킹은 AI전만 기록)</li></ul>
+<li><b>👥 둘이서 모드</b>: 왼쪽 위 버튼이나 <kbd>T</kbd>로 전환 — 한 키보드로 번갈아 두는 친구 대결! (전적·랭킹은 AI전만 기록)</li>
+<li><b>🌐 온라인 대전</b>: [🏠 방 만들기]로 4글자 코드를 받아 친구에게 알려주고, 친구는 [🚪 코드로 입장] — 다른 컴퓨터에서 실시간 대국! 방장=⭐(선), 참가=☁(후).</li></ul>
 <h2>💡 이기는 법</h2>
 <ul><li><b>모서리 4칸이 왕좌</b> — 절대 안 뒤집혀요. AI도 모서리를 노리니 먼저!</li>
 <li>모서리 대각선 옆(X칸)은 함정 — 상대에게 모서리를 내줘요.</li>
@@ -440,7 +441,8 @@ details[open] summary{margin-bottom:8px;}
 <h2>🎮 규칙</h2>
 <ul><li>⭐(별)이 먼저, ☁/🌙이 나중. 번갈아 한 칸씩 놓아요.</li>
 <li>가로·세로·대각선 중 <b>내 돌 5개가 한 줄</b>이 되면 이겨요. 클릭 또는 <kbd>화살표</kbd>+<kbd>Enter</kbd>.</li>
-<li>🤖 AI 대결 / 👥 둘이서(한 키보드) — <kbd>T</kbd>로 전환. AI전 승수는 🏫 우리 반 랭킹에 올라가요.</li></ul>
+<li>🤖 AI 대결 / 👥 둘이서(한 키보드) — <kbd>T</kbd>로 전환. AI전 승수는 🏫 우리 반 랭킹에 올라가요.</li>
+<li><b>🌐 온라인</b>: 방 코드로 다른 컴퓨터의 친구와 실시간 오목! (오델로와 같은 방식)</li></ul>
 <h2>💡 이기는 법</h2>
 <ul><li><b>열린 3(양끝 뚫린 3개)</b>을 만들면 상대가 다 못 막아요 — 두 방향 위협을 동시에!</li>
 <li>상대가 4개를 나란히 놓기 직전이면 <b>반드시 막기</b>. AI도 그렇게 막아요.</li>
@@ -591,11 +593,12 @@ node -e 'const fs=require("fs");const h=fs.readFileSync("index.html","utf8");con
 
 <!-- ═════════ 일지 ═════════ -->
 <section class="page" id="p-log">
-<h1>📜 업데이트 일지 <span class="badge">현재 v1.90</span></h1>
+<h1>📜 업데이트 일지 <span class="badge">현재 v1.91</span></h1>
 <p class="tagline">v1.00(6-29 첫 버전)부터 이어온 버전 기록 — 전체 상세는 저장소 <code>PATCHNOTES.md</code>(67개 버전), 작업 맥락은 <code>작업현황_HANDOFF.md</code>.</p>
 <h2>최근 (v1.55 ~ v1.65)</h2>
 <table><tr><th>버전</th><th>날짜</th><th>내용</th></tr>
-<tr><td><b>v1.90</b></td><td>07-13</td><td><b>신작 ⚫ 별빛 오목(실험 12호)</b> — 15×15 자유 오목, AI(위협 기반)·둘이서, 먼저 5개 나란히</td></tr>
+<tr><td><b>v1.91</b></td><td>07-13</td><td><b>오델로·오목 온라인 대전</b> — 방 코드로 다른 컴퓨터끼리 실시간 대국(BoardNet 턴제 동기화)</td></tr>
+<tr><td>v1.90</td><td>07-13</td><td><b>신작 ⚫ 별빛 오목(실험 12호)</b> — 15×15 자유 오목, AI(위협 기반)·둘이서, 먼저 5개 나란히</td></tr>
 <tr><td>v1.89</td><td>07-13</td><td><b>전 게임 멀미 제거</b> — 던전3D 회전 완만화+머리흔들림 제거·무쌍 카메라 데드존·플랫포머 떨림 완화</td></tr>
 <tr><td>v1.88</td><td>07-13</td><td><b>별꼬리 입력 씹힘 수정</b> — 방향 버퍼 1→2칸, 빠른 두 번 꺾기도 안 씹히고 억울한 역주행 죽음 없음(아이 연타 대응)</td></tr>
 <tr><td>v1.87</td><td>07-13</td><td><b>별조각 밀기 30판 확장</b> — 11탄 수준 하드 18판 추가(min 22~35, 솔버 전수 검증)·선택 화면 스크롤</td></tr>

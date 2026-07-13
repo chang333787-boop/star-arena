@@ -26,6 +26,15 @@
           ".read": "auth != null",
           ".write": "auth != null"
         }
+      },
+      "board": {
+        "$classCode": {
+          ".read": "auth != null",
+          "$roomCode": {
+            ".read": "auth != null",
+            ".write": "auth != null"
+          }
+        }
       }
     },
     "classes": {

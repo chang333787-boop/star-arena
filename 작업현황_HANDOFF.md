@@ -25,6 +25,14 @@
 - 선택 화면 스크롤(cols3·visRows5·selRow-2 클램프, 보이는 줄만 렌더/uiHit). 하네스 count 12→30 + **전 판 독립 솔버 재검증(풀림+min 정확)** 상주.
 - ⚠ 소코반 판 추가 규칙: 박스 기호는 '$'·홈 'o'·플레이어 '*' — **박스/플레이어가 홈 위 시작 불가**(겹침 기호 없음, 생성기서 배제). min은 반드시 솔버 실측값.
 
+## 최신 상태 (2026-07-13, v1.91 — 오델로·오목 온라인 / v1.90 오목 / v1.89 멀미제거 / v1.88 별꼬리입력 / v1.87 퍼즐30)
+
+### 🌐 v1.91 — 오델로·오목 온라인 대전(교사 "오델로 온라인으로")
+- **BoardNet**(신규 턴제 전송 계층): `starArenaOnline/board/<class>/<code>` 한 노드에 판 상태 전체 = {game,board(직렬문자열),turn,status,p1name,p2name,hostUid,guestUid,winner,moveN}. **착수한 쪽만 통째로 .update** → 병합 충돌 없음. host/join/send/leave + onDisconnect status="ended". 아레나 실시간 룸(입력·WebRTC·호스트권위)과 별개(턴제엔 과함).
+- 게임 글루: ot/gm 각각 xxStartOnline·xxCanPlay(turn===myPlayer && status playing)·xxOnlineSend(착수 후)·xxOnlineSync(watch 수신 → 판 통째 반영, 로직 재실행 안 함). 방장=1P(⭐), 참가=2P(☁). 온라인은 AI 없음·전적/랭킹 미반영.
+- UI: 공유 로비 오버레이 bnMenuOverlay(방 만들기/코드입장 prompt)·bnWaitOverlay(코드 대형 표시). 3번째 모드 버튼 🌐. 상대 이탈(status ended) 감지 오버레이.
+- DB 규칙에 board/$class/$code 추가·게시(v1.86 교훈, --project classgame-a1b3e). 모의 클라우드 하네스 301항목(직렬왕복·턴게이팅·전파·승리동기화). **⚠ 2대 실기기 대국은 교실 확인 필요**(로직만 검증됨).
+
 ## 최신 상태 (2026-07-13, v1.86 — 개방/랭킹 클라우드 동기화 버그 수정)
 
 ### 🐛 v1.86 — "미니게임 열었는데 애들은 안 열림" = DB 규칙 경로 누락(교사 지적, 정확했음)

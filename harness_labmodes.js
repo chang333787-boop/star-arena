@@ -30,6 +30,7 @@ script+=`;globalThis.__api={ STATE, keysDown,
   otStart, otKey, otUpdate, otRender, otFlips, otMoves, otPlace, otCount, otAiMove,
   msStart, msKey, msUpdate, msRender, msSwing, msUlt, msSpawnFoe, msBest, MS_FOES, MS_WEAPONS, msHurt, msApplyPick, msKillFoe, get MS(){return MS;},
   gmStart, gmKey, gmUpdate, gmRender, gmPlace, gmAiMove, gmWinAt, gmScore, gmWins, GM_N, get GM(){return GM;},
+  BoardNet, bnBoardToStr, bnStrToBoard, otStartOnline, otCanPlay, otOnlineSync, gmStartOnline, gmCanPlay, gmOnlineSync, otRender, gmRender2:gmRender,
   LAB_GAMES, lhStart, lhKey, lhRender, lhList,
   LabOpenStore, labToggle, labOpenCount, labBack, drawLobbyMiniBanner, activateMenuRow, handleAdminKey,
   get labOpen(){return labOpen;}, get labFrom(){return labFrom;}, setLabFrom:v=>{labFrom=v;}, setState:(s)=>{ gameState=s; },
@@ -1121,6 +1122,48 @@ run("오목: AI — 즉승 잡기·상대 5목 저지", ()=>{
   api.gmAiMove();
   const blocked=(G2.b[7][2]===2 || G2.b[7][7]===2);
   check("AI: 상대 열린 4목 양끝 중 하나 저지", blocked);
+});
+run("온라인 보드: 직렬화 왕복 + 턴 게이팅 + 착수 전파(모의)", ()=>{
+  // 직렬화 왕복(오목 15x15)
+  const nb=[]; for(let r=0;r<15;r++){ nb.push([]); for(let c=0;c<15;c++) nb[r].push((c+r)%3); }
+  const rt=api.bnStrToBoard(api.bnBoardToStr(nb),15);
+  check("직렬화→역직렬화 동일", JSON.stringify(rt)===JSON.stringify(nb));
+  // 송신 캡처 목킹
+  let sent=null; const realSend=api.BoardNet.send; api.BoardNet.send=function(p){ sent=p; };
+  // ── 오델로: 방장(1P) ──
+  api.otStartOnline();
+  api.BoardNet.role="host"; api.BoardNet.data={status:"playing", moveN:0};
+  check("방장=1P·내 차례(turn1)엔 착수 가능", api.BoardNet.myPlayer()===1 && api.OT.turn===1 && api.otCanPlay()===true);
+  // 합법 수 하나 둠(초기판 오델로: (2,3)/(3,2)/(4,5)/(5,4) 중)
+  const OT=api.OT; OT.cur={c:2,r:3};
+  api.otKey("Enter");
+  check("착수 후 상대 차례(turn2)로 전환·내 착수 불가", api.OT.turn===2 && api.otCanPlay()===false);
+  check("송신 patch: 직렬 판+turn2+moveN 증가", sent && typeof sent.board==="string" && sent.board.length===64 && sent.turn===2 && sent.moveN===1);
+  // ── 상대 착수 수신 → 판/차례 반영 ──
+  const oppBoard=sent.board.split(""); // 상대가 아무 데나 둔 척: turn을 1로 돌려보냄
+  api.otOnlineSync({ status:"playing", board:sent.board, turn:1, over:false });
+  check("수신 동기화: 차례가 나(1P)로 돌아옴 → 착수 가능", api.OT.turn===1 && api.otCanPlay()===true);
+  // 상대 이탈
+  api.otOnlineSync({ status:"ended", board:sent.board, turn:1, over:false });
+  api.BoardNet.data={status:"ended"};
+  check("상대 이탈(status ended) → 착수 불가", api.otCanPlay()===false);
+  // ── 오목: 참가자(2P) 게이팅 + 승리 전파 ──
+  api.gmStartOnline();
+  api.BoardNet.role="guest"; api.BoardNet.data={status:"playing", moveN:0};
+  check("참가자=2P", api.BoardNet.myPlayer()===2);
+  api.GM.turn=1; check("상대(1P) 차례엔 착수 불가", api.gmCanPlay()===false);
+  api.GM.turn=2; check("내(2P) 차례엔 착수 가능", api.gmCanPlay()===true);
+  // 2P가 4목 → 5목 완성 착수 시 승리 전파
+  const GM=api.GM; for(let c=3;c<=6;c++) GM.b[7][c]=2; GM.moves=8; GM.turn=2; sent=null;
+  api.gmPlace(2,7,2);   // c=2,r=7 다섯 번째 → 7행 가로 5목(2~6)
+  check("오목 승리 착수 → over·winner 전파", GM.over===true && GM.winner===2 && sent && sent.over===true && sent.winner===2);
+  // 수신으로 판 통째 반영
+  api.gmStartOnline(); api.BoardNet.role="guest"; api.BoardNet.data={status:"playing"};
+  const bstr="2".padEnd(225,"0");
+  api.gmOnlineSync({ status:"playing", board:bstr, turn:1, over:false, lc:0, lr:0 });
+  check("오목 수신 동기화: 판 반영", api.GM.b[0][0]===2 && api.GM.turn===1);
+  api.BoardNet.send=realSend;
+  try{ api.BoardNet.leave(); }catch(e){}
 });
 run("무쌍: 진입·개막 포위진·11번째 게임 등록", ()=>{
   check("LAB_GAMES 12종 + ms 키", api.LAB_GAMES.length===12 && api.LAB_GAMES[10].key==="ms");
