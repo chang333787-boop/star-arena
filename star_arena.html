@@ -795,20 +795,76 @@ function setCameraForMap(map){
   const c=(map && map.gridCols)||STUDENT_COLS, r=(map && map.gridRows)||STUDENT_ROWS;
   if(c<=STUDENT_COLS && r<=STUDENT_ROWS){
     ARENA.x=ARENA_BASE.x; ARENA.y=ARENA_BASE.y; ARENA.w=ARENA_BASE.w; ARENA.h=ARENA_BASE.h;
-    CAM.on=false; CAM.scale=1; CAM.ox=0; CAM.oy=0;
+    CAM.on=false; CAM.chase=false; CAM.scale=1; CAM.ox=0; CAM.oy=0;
     return;
   }
+  // v1.92: 큰 맵 = RPG식 추적 카메라(정상 크기 유지·스크롤). 구 줌아웃(통째 축소)은 교사 요청으로 폐지.
   ARENA.x=ARENA_BASE.x; ARENA.y=ARENA_BASE.y;
-  ARENA.w=c*STUDENT_CELL; ARENA.h=r*STUDENT_CELL+16;   // 기본 맵과 동일한 하단 여유 16px 유지
-  const s=Math.min(ARENA_BASE.w/ARENA.w, ARENA_BASE.h/ARENA.h);
-  CAM.on=true; CAM.scale=s;
-  CAM.ox=ARENA_BASE.x + (ARENA_BASE.w-ARENA.w*s)/2 - ARENA.x*s;   // 월드 ARENA가 기본 화면 틀 안에 중앙 정렬
-  CAM.oy=ARENA_BASE.y + (ARENA_BASE.h-ARENA.h*s)/2 - ARENA.y*s;
+  ARENA.w=c*STUDENT_CELL; ARENA.h=r*STUDENT_CELL+16;
+  CAM.on=true; CAM.chase=true; CAM.scale=1;
+  CAM.wx=undefined; CAM.wy=undefined;   // 첫 프레임에 플레이어 중심 스냅
+  CAM.ox=0; CAM.oy=0;
+}
+/* v1.92 아레나 추적 카메라 갱신(매 프레임, 렌더 직전) — 데드존+스무딩(멀미 완화), 경계 클램프, 좁은 축은 중앙 고정 */
+function arenaFocus(){
+  if(gameState===STATE.ONLINE_PLAYING){ try{ const s=OnlineManager.onlineState; const f=s&&s.fighters&&OnlineManager.mySlot&&s.fighters[OnlineManager.mySlot]; if(f) return {x:f.x,y:f.y}; }catch(e){} return null; }
+  if(typeof player!=="undefined" && player) return {x:player.x, y:player.y};
+  return null;
+}
+function updateArenaCam(){
+  if(!CAM.on || !CAM.chase) return;
+  const viewW=ARENA_BASE.w, viewH=ARENA_BASE.h;
+  const dt=Math.min(0.05, Math.max(0.001, uiTime-(CAM._t||uiTime))); CAM._t=uiTime;
+  const f=arenaFocus();
+  let tx, ty;
+  if(ARENA.w>viewW) tx=clamp((f?f.x:ARENA.x+ARENA.w/2)-viewW/2, ARENA.x, ARENA.x+ARENA.w-viewW);
+  else tx=ARENA.x-(viewW-ARENA.w)/2;   // 월드가 뷰보다 좁으면 중앙 고정
+  if(ARENA.h>viewH) ty=clamp((f?f.y:ARENA.y+ARENA.h/2)-viewH/2, ARENA.y, ARENA.y+ARENA.h-viewH);
+  else ty=ARENA.y-(viewH-ARENA.h)/2;
+  if(CAM.wx===undefined){ CAM.wx=tx; CAM.wy=ty; }
+  const dzx=110, dzy=70;   // 데드존 — 잔움직임엔 화면 안 흔들림
+  const ddx=tx-CAM.wx, ddy=ty-CAM.wy;
+  if(ARENA.w<=viewW) CAM.wx=tx; else if(Math.abs(ddx)>dzx) CAM.wx+=(ddx-Math.sign(ddx)*dzx)*Math.min(1,dt*5);
+  if(ARENA.h<=viewH) CAM.wy=ty; else if(Math.abs(ddy)>dzy) CAM.wy+=(ddy-Math.sign(ddy)*dzy)*Math.min(1,dt*5);
+  CAM.ox=ARENA_BASE.x - CAM.wx; CAM.oy=ARENA_BASE.y - CAM.wy;
 }
 let _camPushed=false;
-function worldBegin(){ if(CAM.on && !_camPushed){ ctx.save(); ctx.translate(CAM.ox,CAM.oy); ctx.scale(CAM.scale,CAM.scale); _camPushed=true; } }
+function worldBegin(){ if(CAM.on && !_camPushed){ ctx.save();
+  if(CAM.chase){ ctx.beginPath(); ctx.rect(ARENA_BASE.x, ARENA_BASE.y, ARENA_BASE.w, ARENA_BASE.h); ctx.clip(); }   // v1.92: 추적=뷰포트 클립
+  ctx.translate(CAM.ox,CAM.oy); ctx.scale(CAM.scale,CAM.scale); _camPushed=true; } }
 function worldEnd(){ if(_camPushed){ ctx.restore(); _camPushed=false; } }
 function logicalToWorld(p){ if(!CAM.on||!p) return p; return { x:(p.x-CAM.ox)/CAM.scale, y:(p.y-CAM.oy)/CAM.scale }; }
+/* v1.92 대형 맵 미니맵(우하단) — 추적 카메라라 전장이 한눈에 안 보이므로 위치 파악용 */
+function drawArenaMinimap(){
+  if(!CAM.chase) return;
+  const mw=180, mh=Math.max(56, Math.round(mw*ARENA.h/ARENA.w));
+  const mx=LOGW-mw-16, my=LOGH-mh-16;
+  const sx=mw/ARENA.w, sy=mh/ARENA.h;
+  const w2m=function(wx,wy){ return { x:mx+(wx-ARENA.x)*sx, y:my+(wy-ARENA.y)*sy }; };
+  ctx.save();
+  ctx.fillStyle="rgba(8,12,26,0.74)"; roundRect(mx-5,my-5,mw+10,mh+10,8); ctx.fill();
+  ctx.strokeStyle="rgba(140,160,220,0.45)"; ctx.lineWidth=1.5; roundRect(mx-5,my-5,mw+10,mh+10,8); ctx.stroke();
+  // 목표(존/수정탑)
+  try{ if(typeof RULE!=="undefined" && RULE){ const o=(RULE.cx!==undefined)?{x:RULE.cx,y:RULE.cy}:((RULE.x!==undefined)?{x:RULE.x,y:RULE.y}:null);
+    if(o){ const p=w2m(o.x,o.y); ctx.fillStyle="#ffe14d"; ctx.beginPath(); ctx.arc(p.x,p.y,4.5,0,Math.PI*2); ctx.fill(); } } }catch(e){}
+  const dot=function(wx,wy,col,rad){ const p=w2m(wx,wy); ctx.fillStyle=col; ctx.beginPath(); ctx.arc(p.x,p.y,rad||2.4,0,Math.PI*2); ctx.fill(); };
+  if(gameState===STATE.ONLINE_PLAYING){
+    try{ const s=OnlineManager.onlineState, meSlot=OnlineManager.mySlot;
+      if(s&&s.fighters){ const myTeam=(typeof tRosterTeam==="function")?tRosterTeam(meSlot):null;
+        for(const k in s.fighters){ const f=s.fighters[k]; if(!f||f.dead) continue;
+          const col=(k===meSlot)?"#ffffff":((myTeam && typeof tRosterTeam==="function" && tRosterTeam(k)===myTeam)?"#7dffb0":"#ff7a7a");
+          dot(f.x,f.y,col,(k===meSlot)?3.6:2.4); } } }catch(e){}
+  } else {
+    try{ for(const e of enemies){ if(e && !e.dead) dot(e.x,e.y,"#ff7a7a"); }
+      for(const a of allies){ if(a && !a.dead) dot(a.x,a.y,"#7dffb0"); }
+      if(player && !player.dead) dot(player.x,player.y,"#ffffff",3.6); }catch(e){}
+  }
+  // 현재 화면 뷰포트
+  ctx.strokeStyle="rgba(255,255,255,0.55)"; ctx.lineWidth=1;
+  const v=w2m(CAM.wx!==undefined?CAM.wx:ARENA.x, CAM.wy!==undefined?CAM.wy:ARENA.y);
+  ctx.strokeRect(v.x, v.y, Math.min(mw,ARENA_BASE.w*sx), Math.min(mh,ARENA_BASE.h*sy));
+  ctx.restore();
+}
 const canvas = document.getElementById("game");
 let ctx = canvas.getContext("2d");   // 정적 월드 레이어 프리렌더 시 잠깐 오프스크린으로 교체(v1.21 성능)
 
@@ -3586,7 +3642,7 @@ const LabOpenStore={
 };
 /* ── v1.74 학급 랭킹: 게임별 TOP8을 클라우드로 공유(starArenaOnline/labRank/<class>) ──
    로컬 캐시 폴백 — 오프라인이어도 이 기기 랭킹은 동작, 접속되면 학급 전체와 합쳐짐. */
-const GAME_VER="v1.91";   // 화면 표시용 — 배포마다 PATCHNOTES와 함께 갱신(캐시 구버전 진단)
+const GAME_VER="v1.92";   // 화면 표시용 — 배포마다 PATCHNOTES와 함께 갱신(캐시 구버전 진단)
 const LAB_RANK_KEY="starArena.labRank.v1";
 let labRank=(function(){ try{ const s=JSON.parse(localStorage.getItem(LAB_RANK_KEY)); if(s&&typeof s==="object") return s; }catch(e){} return {}; })();
 const LabRankStore={
@@ -14322,7 +14378,7 @@ function render(){
   // v1.26 배경 정돈: 실제 게임 맵(바닥·가시·바위·수풀·격자)은 플레이/온라인 화면에서만 렌더.
   // 로비·로그인·상점 등 메뉴 화면은 잔잔한 별밤(starfield)만. (플레이 화면 맵 렌더는 기존 그대로)
   const _worldVisible = gameState===STATE.PLAYING||gameState===STATE.PAUSED||gameState===STATE.OVER||isOnlineState();
-  if(_worldVisible){ worldBegin(); drawStaticWorld(); }   // P4: 대형 맵 = 줌아웃 변환(기본 맵 no-op)
+  if(_worldVisible){ updateArenaCam(); worldBegin(); drawStaticWorld(); }   // v1.92: 대형 맵 = 추적 카메라(기본 맵 no-op)
   else drawMenuStarfield();
   if(_worldVisible && gameState!==STATE.ONLINE_PLAYING) drawPaintGrid();   // GENRE-EXPAND-1 §2.5: 페인트(바닥 위·유닛 아래)
   if(gameState===STATE.PLAYING||gameState===STATE.PAUSED||gameState===STATE.OVER||gameState===STATE.ONLINE_PLAYING) drawPowerups(powerupsView());
@@ -14343,6 +14399,7 @@ function render(){
 
   if(gameState===STATE.ONLINE_PLAYING) renderOnlineMatch();
   worldEnd();                              // P4: 안전망(온라인 로비/결과 등 — 미사용 시 무해)
+  if(_worldVisible && CAM.chase){ try{ drawArenaMinimap(); }catch(e){} }   // v1.92: 대형 맵 미니맵
   if(edTest && gameState===STATE.PLAYING){   // EDIT-TEST-1: 미리하기 상단 배너 + 🔙 버튼(마우스·터치)
     ctx.save(); ctx.fillStyle="rgba(95,200,140,0.92)"; roundRect(LOGW/2-190,8,380,32,10); ctx.fill();
     ctx.fillStyle="#0c2418"; ctx.font="bold 15px 'Malgun Gothic',sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";

@@ -25,7 +25,14 @@
 - 선택 화면 스크롤(cols3·visRows5·selRow-2 클램프, 보이는 줄만 렌더/uiHit). 하네스 count 12→30 + **전 판 독립 솔버 재검증(풀림+min 정확)** 상주.
 - ⚠ 소코반 판 추가 규칙: 박스 기호는 '$'·홈 'o'·플레이어 '*' — **박스/플레이어가 홈 위 시작 불가**(겹침 기호 없음, 생성기서 배제). min은 반드시 솔버 실측값.
 
-## 최신 상태 (2026-07-13, v1.91 — 오델로·오목 온라인 / v1.90 오목 / v1.89 멀미제거 / v1.88 별꼬리입력 / v1.87 퍼즐30)
+## 최신 상태 (2026-07-14, v1.92 — 아레나 대형맵 추적 카메라 / v1.91 온라인 보드 / v1.90 오목 / v1.89 멀미제거)
+
+### 🎥 v1.92 — 대형 아레나 맵: 줌아웃 폐지 → 추적 카메라(교사 "큰맵이 RPG 규칙 안 따르고 축소됨")
+- **설계 반전**: BIG-BATCH-2 P4의 "큰 맵 = 고정 줌아웃(스크롤 없음, 멀미 회피)"를 폐지. setCameraForMap 큰 맵 분기: CAM.on/chase=true, **scale=1**(정상 크기), CAM.wx/wy 월드 뷰포트 좌상단(첫 프레임 스냅).
+- updateArenaCam(렌더 직전 호출): arenaFocus(오프라인=player, 온라인=onlineState.fighters[mySlot]) 추적, 축별 clamp(월드>뷰=추적, 월드≤뷰=중앙 고정), **데드존 110/70+스무딩 dt*5**(v1.89 멀미 원칙). worldBegin이 chase면 ARENA_BASE 뷰포트 clip. logicalToWorld는 scale1이라 조준 정상.
+- drawArenaMinimap(우하단, worldEnd 뒤 화면좌표): 월드축소+아군/적/목표/뷰포트. CAM.chase일 때만.
+- ⚠ 오프스크린 프리렌더(_worldLayerBig)는 그대로 재사용(월드크기 1회 합성→scale1 blit, 클립으로 가시영역만). 기본 22×10=CAM off 픽셀동일. harness_camera 갱신(줌아웃 scale 검증→정상크기·클램프).
+- 멀미 우려 시 손잡이: updateArenaCam 데드존(110/70) 확대 or dt*5 감속. 교사가 다시 멀미하면 조정.
 
 ### 🌐 v1.91 — 오델로·오목 온라인 대전(교사 "오델로 온라인으로")
 - **BoardNet**(신규 턴제 전송 계층): `starArenaOnline/board/<class>/<code>` 한 노드에 판 상태 전체 = {game,board(직렬문자열),turn,status,p1name,p2name,hostUid,guestUid,winner,moveN}. **착수한 쪽만 통째로 .update** → 병합 충돌 없음. host/join/send/leave + onDisconnect status="ended". 아레나 실시간 룸(입력·WebRTC·호스트권위)과 별개(턴제엔 과함).

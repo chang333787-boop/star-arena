@@ -13,7 +13,7 @@ globalThis.localStorage=lsS;
 globalThis.requestAnimationFrame=(cb)=>{ globalThis.__rafCb=cb; return 1; };
 globalThis.cancelAnimationFrame=noop;
 script+=`;globalThis.__api={
-  CAM, ARENA, ARENA_BASE, setCameraForMap, logicalToWorld, worldBegin, worldEnd,
+  CAM, ARENA, ARENA_BASE, setCameraForMap, updateArenaCam, logicalToWorld, worldBegin, worldEnd,
   getMap, MAPS, applyApprovedMaps, saveEditorStore, loadEditorStore, compileEditorMap,
   startGame, setSel:(c,w,d,mp,md)=>{selectedCharacterId=c;selectedWeaponId=w;selectedDifficultyId=d||"normal";selectedMapId=mp||"training";selectedModeId=md||"trio";
     profile.selectedCharacterId=c;profile.selectedWeaponId=w;profile.selectedDifficultyId=selectedDifficultyId;
@@ -62,23 +62,21 @@ run("36×16 + 48×22 승인 → MAPS 등장(gridCols)", ()=>{
   check("에디터 크기 3종(48×22 포함)", api.ED_SIZES.length===3 && api.ED_SIZES[2].cols===48);
 });
 
-console.log("=== 3) 줌아웃 카메라 수치 + 가독성 실측 ===");
-run("scale·중앙 정렬·유닛 크기", ()=>{
+console.log("=== 3) 추적 카메라(정상 크기·스크롤·클램프) — v1.92 ===");
+run("scale 1(안 줄어듦)·chase·경계 클램프", ()=>{
   api.setCameraForMap(api.getMap("ed_b36"));
-  const s36=api.CAM.scale;
-  check("36×16: CAM on + ARENA 확장", api.CAM.on===true && api.ARENA.w===36*56 && api.ARENA.h===16*56+16);
-  check("36×16: scale=화면 맞춤("+s36.toFixed(3)+")", Math.abs(s36-Math.min(1232/(36*56),576/(16*56+16)))<0.001);
-  console.log("      → 36×16 캐릭터 지름 실측: "+(44*s36).toFixed(1)+"px (기본 44px)");
-  api.setCameraForMap(api.getMap("ed_b48"));
-  const s48=api.CAM.scale;
-  check("48×22: CAM on("+s48.toFixed(3)+")", api.CAM.on===true && s48<s36);
-  console.log("      → 48×22 캐릭터 지름 실측: "+(44*s48).toFixed(1)+"px (기본 44px)");
-  // 월드↔화면 왕복
-  const w={x:api.ARENA.x+api.ARENA.w/2, y:api.ARENA.y+api.ARENA.h/2};
+  check("36×16: CAM on + chase + scale 1 + ARENA 확장", api.CAM.on===true && api.CAM.chase===true && api.CAM.scale===1 && api.ARENA.w===36*56 && api.ARENA.h===16*56+16);
+  check("캐릭터 크기 유지: 44px 그대로(구 줌아웃은 축소)", (44*api.CAM.scale)===44);
+  api.updateArenaCam(); api.updateArenaCam();
+  const viewW=api.ARENA_BASE.w, viewH=api.ARENA_BASE.h;
+  check("뷰포트가 월드 안에 클램프", api.CAM.wx>=api.ARENA.x-0.5 && api.CAM.wx<=api.ARENA.x+api.ARENA.w-viewW+0.5 && api.CAM.wy>=api.ARENA.y-0.5 && api.CAM.wy<=api.ARENA.y+api.ARENA.h-viewH+0.5);
+  // 월드↔화면 왕복(scale 1)
+  const w={x:api.ARENA.x+300, y:api.ARENA.y+200};
   const scr={x:w.x*api.CAM.scale+api.CAM.ox, y:w.y*api.CAM.scale+api.CAM.oy};
   const back=api.logicalToWorld(scr);
   check("월드↔화면 왕복 오차 0", Math.abs(back.x-w.x)<0.001 && Math.abs(back.y-w.y)<0.001);
-  check("월드 중앙 → 화면 중앙 부근", Math.abs(scr.x-640)<2 && Math.abs(scr.y-(70+288))<2);
+  api.setCameraForMap(api.getMap("ed_b48")); api.updateArenaCam();
+  check("48×22: CAM on + chase + scale 1", api.CAM.on===true && api.CAM.chase===true && api.CAM.scale===1);
 });
 
 console.log("=== 4) 대형맵 실플레이(모드별 스모크) ===");
@@ -106,7 +104,7 @@ run("mouse 모드 aimPoint = 월드 좌표", ()=>{
   api.MOUSE.x=640; api.MOUSE.y=360; api.MOUSE.seen=true;
   const it=api.getLocalIntent();
   const expect=api.logicalToWorld({x:640,y:360});
-  check("aimPoint 월드 변환(x "+Math.round(it.aimPoint.x)+")", Math.abs(it.aimPoint.x-expect.x)<0.01 && it.aimPoint.x>1000);
+  check("aimPoint = 화면→월드 변환 일치(x "+Math.round(it.aimPoint.x)+")", Math.abs(it.aimPoint.x-expect.x)<0.01);
   api.setControl("keyboard");
 });
 
