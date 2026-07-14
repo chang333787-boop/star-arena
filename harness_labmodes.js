@@ -509,20 +509,31 @@ run("생존자: 피격·무적·사망", ()=>{
   SV.p.ifr=0; api.svHurt(999);
   check("체력 0 → over", SV.phase==="over");
 });
-run("생존자: v1.93 무한 생존 — 주기 보스·10분 승리·처치 랭킹", ()=>{
+run("생존자: v1.95 7분판 — 140초 보스·죽음의 뭉게대왕 피날레·처치 랭킹", ()=>{
   api.svStart();
   const SV=api.SV;
-  SV.t=149.5; SV.p.hp=9999; SV.p.maxhp=9999; SV.kills=137;
+  SV.t=139.5; SV.p.hp=9999; SV.p.maxhp=9999; SV.kills=137;
   for(let i=0;i<60;i++) api.svUpdate(DT);
-  check("150초 첫 보스 스폰", SV.foes.some(f=>f.spec.boss));
+  check("140초 첫 보스 스폰", SV.foes.some(f=>f.spec.boss && !f.reaper));
   SV.foes.length=0; SV.gems.length=0; SV.t=181;
   for(let i=0;i<12;i++) api.svUpdate(DT);
   check("180초엔 승리 안 함(무한 생존)", SV.phase==="play");
-  SV.t=599.4; SV.foes.length=0;
-  for(let i=0;i<80 && SV.phase==="play";i++) api.svUpdate(DT);
+  SV.foes.length=0; SV.t=404.5;
+  for(let i=0;i<40;i++) api.svUpdate(DT);
+  check("405초 죽음의 뭉게대왕 강림(reaper)", !!SV.reaper && SV.reaper.reaper===true);
+  api.svKill(SV.reaper);
+  check("사신은 못 죽임(면역)", SV.reaper.alive===true);
+  SV.foes.length=0; SV.reaper.alive=false; SV.t=419.5;   // 사신 치우고 완주 경로
+  for(let i=0;i<40 && SV.phase==="play";i++) api.svUpdate(DT);
   const b=JSON.parse(LS["starArena.lab.svBest"]);
-  check("600초(10분) → 승리+기록", SV.phase==="win" && b.wins>=1);
-  check("처치 최고 기록(bestK) 저장 + 랭킹 svk 제출", b.bestK>=137 && (api.labRank.svk||[]).length>=1);
+  check("420초(7분) → 완주 승리+기록", SV.phase==="win" && b.wins>=1);
+  check("처치 기록 bestK + 랭킹 svk", b.bestK>=137 && (api.labRank.svk||[]).length>=1);
+  // 사신에게 잡히면 = 완주(win)
+  api.svStart(); const S2=api.SV; S2.p.hp=9999; S2.p.maxhp=9999; S2.t=406;
+  for(let i=0;i<6;i++) api.svUpdate(DT);
+  S2.reaper.x=S2.p.x; S2.reaper.y=S2.p.y;
+  api.svUpdate(DT);
+  check("사신에게 잡히면 완주(win)+caught", S2.phase==="win" && S2.caught===true);
 });
 run("생존자: ☠ 어려움 — 막지 못한 한 방 즉사 + 보호막 예외", ()=>{
   api.svStart(true);
