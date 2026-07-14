@@ -3642,7 +3642,7 @@ const LabOpenStore={
 };
 /* ── v1.74 학급 랭킹: 게임별 TOP8을 클라우드로 공유(starArenaOnline/labRank/<class>) ──
    로컬 캐시 폴백 — 오프라인이어도 이 기기 랭킹은 동작, 접속되면 학급 전체와 합쳐짐. */
-const GAME_VER="v1.93";   // 화면 표시용 — 배포마다 PATCHNOTES와 함께 갱신(캐시 구버전 진단)
+const GAME_VER="v1.94";   // 화면 표시용 — 배포마다 PATCHNOTES와 함께 갱신(캐시 구버전 진단)
 const LAB_RANK_KEY="starArena.labRank.v1";
 let labRank=(function(){ try{ const s=JSON.parse(localStorage.getItem(LAB_RANK_KEY)); if(s&&typeof s==="object") return s; }catch(e){} return {}; })();
 const LabRankStore={
@@ -5422,13 +5422,14 @@ function svStart(hard){
 function svRollChoices(){
   const a=SV.atk;
   const pool=SV_UPS.filter(function(u){
+    if(SV.hard && (u.k==="regen"||u.k==="maxhp")) return false;   // v1.94 어려움: 체력 회복 카드 안 나옴(한 방 죽음이라 무의미)
     if(u.k==="multi") return a.multi<6;
     if(u.k==="orbit") return a.orbit<6;
     if(u.k==="chain") return (a.chain||0)<3;
     if(u.k==="boom") return (a.boom||0)<3;
     if(u.k==="meteor") return (a.meteor||0)<3;
     if(u.k==="frost") return (a.frost||0)<3;
-    if(u.k==="shield") return (a.shieldLv||0)<3;
+    if(u.k==="shield") return SV.hard ? true : (a.shieldLv||0)<3;   // 어려움: 1회용이라 항상 다시 고를 수 있음
     if(u.k==="orbitx") return (a.orbitR||74)<140;
     return true;
   }), out=[];
@@ -5449,7 +5450,9 @@ function svApplyUp(k){
   else if(k==="boom") a.boom=Math.min(3,(a.boom||0)+1);             // 처치 폭발
   else if(k==="meteor"){ a.meteor=Math.min(3,(a.meteor||0)+1); if(SV.meteorT===undefined) SV.meteorT=2; }
   else if(k==="frost") a.frost=Math.min(3,(a.frost||0)+1);          // 감속 오라
-  else if(k==="shield"){ a.shieldLv=Math.min(3,(a.shieldLv||0)+1); if(!p.shield && p.shieldT===undefined) p.shieldT=1; }
+  else if(k==="shield"){ a.shieldLv=Math.min(3,(a.shieldLv||0)+1);
+    if(SV.hard){ p.shield=true; p.shieldExpire=30; showToast("🛡 방어막 1개! (30초 안에 한 방 막아줌)"); }   // v1.94 어려움: 즉시 1회용
+    else if(!p.shield && p.shieldT===undefined) p.shieldT=1; }
   else if(k==="orbitx"){ a.orbitR=Math.min(140,(a.orbitR||74)+18); a.orbitSpd=(a.orbitSpd||0)+0.6; }
 }
 function svDnum(x,y,v,color){   // v1.73: 데미지 숫자 — 강화가 "숫자로 보이게"
@@ -5498,7 +5501,10 @@ function svSpawn(){
 function svHurt(dmg){
   const p=SV.p;
   if(p.ifr>0) return;
-  if(p.shield){ p.shield=false; p.shieldT=Math.max(4, 12-2*(SV.atk.shieldLv||1)); p.ifr=0.8; playSfx("break"); showToast("🛡 별빛 보호막이 막아줬다!"); return; }
+  if(p.shield){ p.shield=false; p.ifr=0.8; playSfx("break");
+    if(SV.hard){ p.shieldExpire=0; showToast("🛡 방어막이 한 방 막았다! (재충전 없음 — 다시 주우세요)"); }
+    else { p.shieldT=Math.max(4, 12-2*(SV.atk.shieldLv||1)); showToast("🛡 별빛 보호막이 막아줬다!"); }
+    return; }
   if(SV.hard) p.hp=0;   // ☠ v1.93 어려움: 막지 못한 한 방 = 즉사
   else p.hp-=dmg;
   p.ifr=0.65; SV.hurtT=0.4; playSfx("hit");
@@ -5622,10 +5628,14 @@ function svUpdate(dt){
       }
     }
   }
-  if(a.shieldLv && !p.shield){   // v1.73 🛡보호막 충전
-    if(p.shieldT===undefined) p.shieldT=Math.max(4, 12-2*a.shieldLv);
-    p.shieldT-=dt;
-    if(p.shieldT<=0){ p.shield=true; playSfx("powerup"); }
+  if(a.shieldLv){
+    if(SV.hard){   // v1.94 어려움: 재충전 없음 — 30초 안 쓰면 사라짐
+      if(p.shield && p.shieldExpire>0){ p.shieldExpire-=dt; if(p.shieldExpire<=0){ p.shield=false; showToast("🛡 방어막이 사라졌다"); } }
+    } else if(!p.shield){   // v1.73 🛡보호막 충전(보통)
+      if(p.shieldT===undefined) p.shieldT=Math.max(4, 12-2*a.shieldLv);
+      p.shieldT-=dt;
+      if(p.shieldT<=0){ p.shield=true; playSfx("powerup"); }
+    }
   }
   for(const dn of SV.dnums) dn.t+=dt;
   SV.dnums=SV.dnums.filter(dn=>dn.t<0.6);
@@ -5815,7 +5825,7 @@ function svRender(){
     ctx.fillText(""+dn.v, dn.x, dn.y-k3*24); ctx.globalAlpha=1; }
   // 플레이어
   {
-    if(p.shield){ ctx.strokeStyle="rgba(140,220,255,"+(0.5+0.3*Math.sin(uiTime*5))+")"; ctx.lineWidth=3;
+    if(p.shield){ const _sb=(SV.hard && (p.shieldExpire||0)<6)?13:5; ctx.strokeStyle="rgba(140,220,255,"+(0.5+0.3*Math.sin(uiTime*_sb))+")"; ctx.lineWidth=3;
       ctx.beginPath(); ctx.arc(p.x, p.y-6, 34, 0, Math.PI*2); ctx.stroke(); }
     if(p.ifr>0 && Math.floor(p.ifr*8)%2===0) ctx.globalAlpha=0.4;
     ctx.save(); ctx.translate(p.x, p.y+14);
@@ -5866,7 +5876,7 @@ function svRender(){
       ctx.strokeStyle="#9db8ff"; ctx.lineWidth=2; roundRect(bx,by,260,220,16); ctx.stroke();
       ctx.font="54px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#fff"; ctx.fillText(c.e, bx+130, by+64);
       ctx.font="bold 22px 'Malgun Gothic',sans-serif"; ctx.fillText(c.n, bx+130, by+124);
-      ctx.font="14px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#cbd4f5"; ctx.fillText(c.d, bx+130, by+152);
+      ctx.font="14px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#cbd4f5"; ctx.fillText((SV.hard && c.k==="shield")?"한 방 막는 1회 방어막 (30초 유효)":c.d, bx+130, by+152);
       if(c.k==="dmg"){   // v1.73: "몇 방→몇 방" 실시간 계산 — 먹을 가치가 보이게
         const jh=14*(1+SV.t/55), b4=Math.ceil(jh/SV.atk.dmg), af=Math.ceil(jh/(SV.atk.dmg*1.4));   // v1.77: 실제 스폰 체력 곡선과 동일 식
         ctx.font="bold 13px 'Malgun Gothic',sans-serif";

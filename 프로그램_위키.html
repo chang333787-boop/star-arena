@@ -54,7 +54,7 @@ details[open] summary{margin-bottom:8px;}
 <body>
 <div class="app">
 <nav class="side" id="side">
-  <div class="logo">⭐ 별빛 아레나 위키<small>현재 버전 <b style="color:#ffe14d">v1.93</b> · 2026-07-12</small></div>
+  <div class="logo">⭐ 별빛 아레나 위키<small>현재 버전 <b style="color:#ffe14d">v1.94</b> · 2026-07-12</small></div>
   <input id="wsearch" type="search" placeholder="🔎 검색 (예: 뭉게대왕, 조작)" style="width:100%;margin:10px 0 2px;padding:7px 10px;border-radius:9px;border:1px solid #2a3560;background:#0a0f28;color:#dfe6ff;font-family:inherit;font-size:13px;">
   <div id="sres" style="font-size:11.5px;color:#8893bb;padding:0 4px;"></div>
   <div class="grp">시작</div>
@@ -281,7 +281,7 @@ details[open] summary{margin-bottom:8px;}
 <h2>🎮 하는 법</h2>
 <ul><li><kbd>WASD</kbd>/<kbd>화살표</kbd>로 <b>이동만</b> — 별줄기가 가까운 적을 자동 공격!</li>
 <li>적이 떨군 <b>별가루</b>를 주우면 경험치 → <b>레벨업 때 3장 중 1장</b>(<kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> 또는 클릭)</li>
-<li><b>난이도 선택</b>: 🙂보통(체력 있음) / ☠어려움(<b>막지 못한 한 방이면 즉사!</b> — 보호막·회피 빌드로 살아남기)</li>
+<li><b>난이도 선택</b>: 🙂보통(체력 있음) / ☠어려움(<b>막지 못한 한 방이면 즉사!</b>). 어려움에선 <b>🛡방어막이 1회용</b>(재충전 없음·30초 안 쓰면 사라짐)이라 아껴 뒀다 위기에! 체력 회복 카드는 안 나와요.</li>
 <li>정해진 승리 시간 없이 <b>무한 생존</b> — 오래 버틸수록 물량 폭증. <b>2분 30초마다 뭉게대왕</b>(갈수록 강함). <b>5분 넘기면 진짜 고수, 10분이면 전설!</b></li>
 <li>랭킹 2종: 🏫 <b>최장 생존</b> + ☠ <b>최다 처치</b> — 둘 다 우리 반 순위에 올라가요.</li></ul>
 <h2>⬆ 강화 8종</h2>
@@ -595,11 +595,12 @@ node -e 'const fs=require("fs");const h=fs.readFileSync("index.html","utf8");con
 
 <!-- ═════════ 일지 ═════════ -->
 <section class="page" id="p-log">
-<h1>📜 업데이트 일지 <span class="badge">현재 v1.93</span></h1>
+<h1>📜 업데이트 일지 <span class="badge">현재 v1.94</span></h1>
 <p class="tagline">v1.00(6-29 첫 버전)부터 이어온 버전 기록 — 전체 상세는 저장소 <code>PATCHNOTES.md</code>(67개 버전), 작업 맥락은 <code>작업현황_HANDOFF.md</code>.</p>
 <h2>최근 (v1.55 ~ v1.65)</h2>
 <table><tr><th>버전</th><th>날짜</th><th>내용</th></tr>
-<tr><td><b>v1.93</b></td><td>07-14</td><td><b>생존자 무한 생존 + ☠어려움</b> — 180초 승리 폐지→최대 10분 무한 생존(5분+ 극악), 어려움=한 방 즉사, 최장 생존·최다 처치 2랭킹</td></tr>
+<tr><td><b>v1.94</b></td><td>07-14</td><td><b>어려움 모드 다듬기</b> — 방어막 1회용(30초 만료·재충전 없음)·체력 회복 카드 제외</td></tr>
+<tr><td>v1.93</td><td>07-14</td><td><b>생존자 무한 생존 + ☠어려움</b> — 180초 승리 폐지→최대 10분 무한 생존(5분+ 극악), 어려움=한 방 즉사, 최장 생존·최다 처치 2랭킹</td></tr>
 <tr><td>v1.92</td><td>07-14</td><td><b>대형 맵 추적 카메라</b> — 큰 맵을 축소하지 않고 정상 크기 유지+플레이어 추적 스크롤(RPG식)·미니맵·멀미 방지 데드존</td></tr>
 <tr><td>v1.91</td><td>07-13</td><td><b>오델로·오목 온라인 대전</b> — 방 코드로 다른 컴퓨터끼리 실시간 대국(BoardNet 턴제 동기화)</td></tr>
 <tr><td>v1.90</td><td>07-13</td><td><b>신작 ⚫ 별빛 오목(실험 12호)</b> — 15×15 자유 오목, AI(위협 기반)·둘이서, 먼저 5개 나란히</td></tr>
