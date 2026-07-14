@@ -20,7 +20,7 @@ script+=`;globalThis.__api={ STATE, keysDown,
   tdStart, tdBegin, tdBuy, tdBuildable, tdStartWave, tdUpdate, tdRender, tdUpgrade, tdSell, tdMouse, tdKey, tdHitFoe, tdBestLoad,
   SH_FOES, shStart, shUpdate, shRender, shKey, shKillFoe, shAddScore, shNextWave,
   RAY_FLOORS, rayGenMaze, rayBfsDist, rayStart, rayLoadFloor, rayUpdate, rayRender, rayKey, rayCompassTarget,
-  SV_UPS, svStart, svUpdate, svRender, svKey, svPick, svApplyUp, svKill, svHurt,
+  SV_UPS, svStart, svSelect, svEnd, svUpdate, svRender, svKey, svPick, svApplyUp, svKill, svHurt,
   EGG_STAGES, eggStart, eggFeed, eggPat, eggKey, eggUpdate, eggRender, eggStageIdx,
   PZ_LEVELS, pzStart, pzBegin, pzBeginLevel, pzMove, pzUndo, pzKey, pzRender, pzBestLoad,
   pzSolveGame, pzEditStart, pzEditCycle, pzEditCheck, pzEditSave, pzCustomLoad, pzCustomSave, pzRenderEdit, pzRenderCustom,
@@ -509,16 +509,44 @@ run("생존자: 피격·무적·사망", ()=>{
   SV.p.ifr=0; api.svHurt(999);
   check("체력 0 → over", SV.phase==="over");
 });
-run("생존자: 보스 등장(240s)·승리(300s)", ()=>{
+run("생존자: v1.93 무한 생존 — 주기 보스·10분 승리·처치 랭킹", ()=>{
   api.svStart();
   const SV=api.SV;
-  SV.t=139.5; SV.p.hp=9999; SV.p.maxhp=9999;
+  SV.t=149.5; SV.p.hp=9999; SV.p.maxhp=9999; SV.kills=137;
   for(let i=0;i<60;i++) api.svUpdate(DT);
-  check("140초 보스 스폰(3분판)", SV.foes.some(f=>f.spec.boss));
-  SV.foes.length=0; SV.gems.length=0;
-  SV.t=179.5;
-  for(let i=0;i<60 && SV.phase==="play";i++) api.svUpdate(DT);
-  check("180초 생존 → 승리+기록", SV.phase==="win" && JSON.parse(LS["starArena.lab.svBest"]).wins>=1);
+  check("150초 첫 보스 스폰", SV.foes.some(f=>f.spec.boss));
+  SV.foes.length=0; SV.gems.length=0; SV.t=181;
+  for(let i=0;i<12;i++) api.svUpdate(DT);
+  check("180초엔 승리 안 함(무한 생존)", SV.phase==="play");
+  SV.t=599.4; SV.foes.length=0;
+  for(let i=0;i<80 && SV.phase==="play";i++) api.svUpdate(DT);
+  const b=JSON.parse(LS["starArena.lab.svBest"]);
+  check("600초(10분) → 승리+기록", SV.phase==="win" && b.wins>=1);
+  check("처치 최고 기록(bestK) 저장 + 랭킹 svk 제출", b.bestK>=137 && (api.labRank.svk||[]).length>=1);
+});
+run("생존자: ☠ 어려움 — 막지 못한 한 방 즉사 + 보호막 예외", ()=>{
+  api.svStart(true);
+  const SV=api.SV;
+  check("hard 플래그", SV.hard===true);
+  SV.p.hp=100; SV.p.ifr=0; SV.p.shield=false;
+  api.svHurt(3);
+  check("작은 피해라도 한 방에 즉사(over)", SV.p.hp===0 && SV.phase==="over");
+  api.svStart(true); const S2=api.SV;
+  S2.p.ifr=0; S2.p.shield=true;
+  api.svHurt(3);
+  check("보호막 있으면 한 번은 막음(안 죽음)", S2.p.hp>0 && S2.phase==="play" && S2.p.shield===false);
+  // 보통 모드는 즉사 아님
+  api.svStart(false); const S3=api.SV; S3.p.hp=100; S3.p.ifr=0; S3.p.shield=false;
+  api.svHurt(6);
+  check("보통 모드는 한 방에 안 죽음", S3.p.hp===94 && S3.phase==="play");
+});
+run("생존자: 난이도 선택 화면", ()=>{
+  api.svSelect();
+  check("select 진입", api.gameState==="survivor" && api.SV.phase==="select");
+  api.svRender(); check("select 렌더 예외 없음", true);
+  api.svKey("Digit2");
+  check("2 → 어려움 시작", api.SV.phase==="play" && api.SV.hard===true);
+  api.svKey("Escape");
 });
 run("생존자: 수호별 — 겹친 적 전원 동시 타격+넉백(v1.72)", ()=>{
   api.svStart();

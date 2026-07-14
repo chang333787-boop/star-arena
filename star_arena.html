@@ -3642,7 +3642,7 @@ const LabOpenStore={
 };
 /* ── v1.74 학급 랭킹: 게임별 TOP8을 클라우드로 공유(starArenaOnline/labRank/<class>) ──
    로컬 캐시 폴백 — 오프라인이어도 이 기기 랭킹은 동작, 접속되면 학급 전체와 합쳐짐. */
-const GAME_VER="v1.92";   // 화면 표시용 — 배포마다 PATCHNOTES와 함께 갱신(캐시 구버전 진단)
+const GAME_VER="v1.93";   // 화면 표시용 — 배포마다 PATCHNOTES와 함께 갱신(캐시 구버전 진단)
 const LAB_RANK_KEY="starArena.labRank.v1";
 let labRank=(function(){ try{ const s=JSON.parse(localStorage.getItem(LAB_RANK_KEY)); if(s&&typeof s==="object") return s; }catch(e){} return {}; })();
 const LabRankStore={
@@ -3691,11 +3691,11 @@ const LabRankStore={
 };
 const LAB_RANK_LOWER={ ray:true };   // 낮을수록 좋은 기록(시간)
 function labRankTop(key){ LabRankStore.watch(); return labRank[key]||[]; }
-function labRankDraw(key, cx, y, unit){   // 결과 화면용 학급 TOP3
+function labRankDraw(key, cx, y, unit, title){   // 결과 화면용 학급 TOP3
   const top=labRankTop(key);
   ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
   ctx.fillStyle="#ffe14d"; ctx.font="bold 15px 'Malgun Gothic',sans-serif";
-  ctx.fillText("🏫 우리 반 랭킹", cx, y);
+  ctx.fillText(title||"🏫 우리 반 랭킹", cx, y);
   ctx.font="13px 'Malgun Gothic',sans-serif";
   const M=["🥇","🥈","🥉"];
   for(let i=0;i<3;i++){ const r=top[i];
@@ -5381,7 +5381,7 @@ function rayRender(){
 }
 
 /* ── ④ ⚔ 별빛 생존자 — 뱀서라이크(자동공격·몰려오는 먹구름·레벨업 3택) ── */
-const SV_W=2400, SV_H=1600, SV_WIN_T=180, SV_BOSS_T=140;   // v1.73: 5분→3분(곡선 0.6배 압축)
+const SV_W=2400, SV_H=1600, SV_MAX_T=600;   // v1.93: 무한 생존(최대 10분)·주기 보스·5분+ 극악
 const SV_FOES={
   jelly:{ asset:"soft_jelly",    hp:14, spd:78,  dmg:6,  xp:1, r:17 },
   hop:  { asset:"bounce_bubble", hp:10, spd:126, dmg:5,  xp:1, r:15 },
@@ -5406,17 +5406,18 @@ const SV_UPS=[   // 레벨업 3택 강화 카드(v1.73: 14종)
   { k:"orbitx", e:"🌀", n:"궤도 확장", d:"수호 별이 더 크게·빠르게 돌아요", max:3 } ];
 const SV_BEST_KEY="starArena.lab.svBest";
 let SV=null;
-function svBestLoad(){ try{ const s=JSON.parse(localStorage.getItem(SV_BEST_KEY)); if(s&&typeof s==="object") return s; }catch(e){} return { bestT:0, wins:0 }; }
-function svStart(){
+function svBestLoad(){ try{ const s=JSON.parse(localStorage.getItem(SV_BEST_KEY)); if(s&&typeof s==="object") return s; }catch(e){} return { bestT:0, wins:0, bestK:0 }; }
+function svSelect(){ SV={ phase:"select" }; gameState=STATE.SURVIVOR; }   // v1.93: 난이도 선택
+function svStart(hard){
   SV={ p:{ x:SV_W/2, y:SV_H/2, hp:100, maxhp:100, spd:250, ifr:0, face:1 },
        atk:{ dmg:14, cd:0.78, t:0.5, multi:1, orbit:0, orbitA:0, orbitTick:0, magnet:1, regen:0 },   // v1.77: 시작 젤리 1방(루프 시동)
        foes:[], bolts:[], gems:[], fx:[], dnums:[], meteorWarn:null, ebolts:[],
        chests:[], freeCards:0, vacuumT:0, chestSeeded:false, freeOpen:false, chestCd:0,   // v1.78 보급 상자(+v1.81 드랍 쿨)
        t:0, kills:0, level:1, xp:0, xpNext:6,
-       phase:"play", choices:null, paused:false, bossSpawned:false,
+       phase:"play", choices:null, paused:false, nextBoss:150, hard:!!hard,   // v1.93: 주기 보스·어려움 플래그
        spawnT:1.2, camX:SV_W/2-LOGW/2, camY:SV_H/2-LOGH/2, hurtT:0, best:svBestLoad() };
   gameState=STATE.SURVIVOR;
-  showToast("⚔ 별빛 생존자 — 3분 동안 살아남아라! 공격은 자동!");
+  showToast(hard?"☠ 어려움 — 한 방이면 끝! 오래 버텨라 (무한 생존·최대 10분)":"⚔ 별빛 생존자 — 최대한 오래 살아남아라! (무한 생존·최대 10분)");
 }
 function svRollChoices(){
   const a=SV.atk;
@@ -5471,7 +5472,8 @@ function svPick(i){
 function svKey(code){
   if(code==="Escape"){ SV=null; labBack(); return; }
   if(!SV) return;
-  if(code==="KeyR"){ svStart(); return; }
+  if(SV.phase==="select"){ if(code==="Digit1") svStart(false); else if(code==="Digit2") svStart(true); return; }
+  if(code==="KeyR"){ svStart(!!SV.hard); return; }   // 같은 난이도로 다시
   if(code==="KeyP" && SV.phase==="play"){ SV.paused=!SV.paused; return; }
   if(SV.phase==="levelup" && code.indexOf("Digit")===0){ const i=+code.slice(5)-1; if(i>=0&&i<3) svPick(i); return; }
 }
@@ -5484,11 +5486,11 @@ function svSpawn(){
   else if(t>75 && roll<0.5) type="archer";   // v1.85: 10%
   else if(t>45 && roll<0.55) type="hop";
   const spec=SV_FOES[type];
-  const hpMul=1+t/55;   // v1.77: 카드 수급 속도에 맞춘 완만화(42→55) — 중반 "안 죽는 벽" 방지
+  const hpMul=1+t/65;   // v1.93: 긴 게임용 완만화(55→65)
   // 화면 밖 가장자리 스폰(플레이어 기준 원)
   const a=Math.random()*Math.PI*2, R=560+Math.random()*120;
   const x=clamp(SV.p.x+Math.cos(a)*R, 20, SV_W-20), y=clamp(SV.p.y+Math.sin(a)*R, 20, SV_H-20);
-  const elite=(SV.t>72 && Math.random()<0.08);   // v1.73 정예: 보라 오라·체력 2.2배·별가루 3개
+  const elite=(SV.t>90 && Math.random()<Math.min(0.30, 0.05+SV.t/1500));   // v1.93: 후반 정예 폭증(5분+ 절반 가까이 정예)
   const em=elite?2.2:1;
   SV.foes.push({ type:type, spec:spec, x:x, y:y, hp:spec.hp*hpMul*em, maxHp:spec.hp*hpMul*em, alive:true, hitT:0, elite:elite, shootT:2+Math.random()*1.5 });
   /* v1.83 주의: 적 이속 스케일은 금지 — 카이팅 플레이어에게 적이 "배달"되며 킬 컨베이어→수입 재폭발(봇 83→742킬 실측). 압박은 ifr로만. */
@@ -5497,11 +5499,22 @@ function svHurt(dmg){
   const p=SV.p;
   if(p.ifr>0) return;
   if(p.shield){ p.shield=false; p.shieldT=Math.max(4, 12-2*(SV.atk.shieldLv||1)); p.ifr=0.8; playSfx("break"); showToast("🛡 별빛 보호막이 막아줬다!"); return; }
-  p.hp-=dmg; p.ifr=0.65; SV.hurtT=0.4; playSfx("hit");   // v1.83: 무적 단축(0.8→0.65) — 포위 압박은 실감, 능동 플레이는 숨 쉬게
-  if(p.hp<=0){ p.hp=0; SV.phase="over"; playSfx("lose");
-    try{ const b=svBestLoad(); if(SV.t>b.bestT){ b.bestT=Math.round(SV.t); localStorage.setItem(SV_BEST_KEY, JSON.stringify(b)); } SV.best=b; }catch(e){}
-    LabRankStore.submit("sv", Math.floor(SV.t));   // v1.74 랭킹: 생존 초
-  }
+  if(SV.hard) p.hp=0;   // ☠ v1.93 어려움: 막지 못한 한 방 = 즉사
+  else p.hp-=dmg;
+  p.ifr=0.65; SV.hurtT=0.4; playSfx("hit");
+  if(p.hp<=0){ p.hp=0; svEnd(false); }
+}
+function svEnd(win){   // v1.93: 생존 종료 — 생존 초 + 처치 수 랭킹 둘 다
+  SV.phase=win?"win":"over"; playSfx(win?"win":"lose");
+  try{ const b=svBestLoad();
+    if(SV.t>(b.bestT||0)) b.bestT=Math.round(SV.t);
+    if((SV.kills||0)>(b.bestK||0)) b.bestK=SV.kills;
+    if(win) b.wins=(b.wins||0)+1;
+    localStorage.setItem(SV_BEST_KEY, JSON.stringify(b)); SV.best=b;
+  }catch(e){}
+  LabRankStore.submit("sv", Math.floor(SV.t));       // 최장 생존(초)
+  LabRankStore.submit("svk", SV.kills||0);           // 최다 처치
+  if(win || SV.t>=120) labReward("sv", 30);
 }
 function svKill(f, noBoom){
   if(!f.alive) return;
@@ -5525,7 +5538,7 @@ function svKill(f, noBoom){
 function svUpdate(dt){
   if(!SV) return;
   if(SV.paused) return;
-  if(SV.phase==="levelup"||SV.phase==="over"||SV.phase==="win") return;
+  if(SV.phase==="levelup"||SV.phase==="over"||SV.phase==="win"||SV.phase==="select") return;
   SV.t+=dt;
   const p=SV.p, a=SV.atk;
   if(SV.hurtT>0) SV.hurtT-=dt;
@@ -5548,15 +5561,17 @@ function svUpdate(dt){
   // 스폰(시간 갈수록 빡세게) + 보스
   SV.spawnT-=dt;
   if(SV.spawnT<=0){
-    SV.spawnT=Math.max(0.25, 0.9-SV.t/240);
-    const batch=1+Math.floor(SV.t/30);
+    SV.spawnT=Math.max(0.16, 0.92-SV.t/220);   // v1.93: 초반 기존대로·후반 조금 빠르게
+    let batch=1+Math.floor(SV.t/30);   // 초반 램프는 유지(빌드업 보호)
+    if(SV.t>240) batch+=Math.floor((SV.t-240)/40);   // 4분부터 서서히
+    if(SV.t>300) batch+=Math.floor((SV.t-300)/26);   // v1.93: 5분+ 물량 폭증(버티기 극악)
     for(let k=0;k<batch;k++) svSpawn();
   }
-  if(!SV.bossSpawned && SV.t>=SV_BOSS_T){
-    SV.bossSpawned=true;
-    const spec=SV_FOES.boss;
-    SV.foes.push({ type:"boss", spec:spec, x:clamp(p.x+400,40,SV_W-40), y:clamp(p.y,40,SV_H-40), hp:spec.hp, maxHp:spec.hp, alive:true, hitT:0 });
-    showToast("⚠ 뭉게대왕이 나타났다!"); playSfx("ult");
+  if(SV.t>=SV.nextBoss){   // v1.93: 150·300·450·600초 주기 보스(뒤로 갈수록 강함)
+    const bn=Math.round(SV.nextBoss/150); SV.nextBoss+=150;
+    const spec=SV_FOES.boss, bhp=Math.round(spec.hp*(1+(bn-1)*0.7));
+    SV.foes.push({ type:"boss", spec:spec, x:clamp(p.x+400,40,SV_W-40), y:clamp(p.y,40,SV_H-40), hp:bhp, maxHp:bhp, alive:true, hitT:0 });
+    showToast("⚠ 뭉게대왕"+(bn>1?(" (더 강해짐 ×"+bn+")"):"")+" 나타났다!"); playSfx("ult");
   }
   // 적 이동+접촉
   const frR=a.frost?(115+20*a.frost):0;   // v1.73 ❄서리 오라
@@ -5710,12 +5725,7 @@ function svUpdate(dt){
   for(const f of SV.fx) f.t+=dt;
   SV.fx=SV.fx.filter(f=>f.t<f.dur);
   // 승리
-  if(SV.t>=SV_WIN_T){
-    SV.phase="win"; playSfx("win");
-    labReward("sv", 30);   // v1.70 일일 보상
-    LabRankStore.submit("sv", Math.floor(SV.t));
-    try{ const b=svBestLoad(); b.wins=(b.wins||0)+1; if(SV.t>b.bestT) b.bestT=Math.round(SV.t); localStorage.setItem(SV_BEST_KEY, JSON.stringify(b)); SV.best=b; }catch(e){}
-  }
+  if(SV.t>=SV_MAX_T){ svEnd(true); }   // v1.93: 10분 완전 생존
   // 카메라(v1.85 멀미 수술): 하드락 금지 — 데드존 26px + 부드러운 추적. 관성 이동의 잔흔들림이 화면 전체로 증폭되지 않게
   {
     const tcx=clamp(p.x-LOGW/2, 0, SV_W-LOGW), tcy=clamp(p.y-LOGH/2, 0, SV_H-LOGH);
@@ -5726,6 +5736,27 @@ function svUpdate(dt){
 }
 function svRender(){
   if(!SV) return;
+  if(SV.phase==="select"){   // v1.93: 난이도 선택
+    ctx.fillStyle="#0c1226"; ctx.fillRect(0,0,LOGW,LOGH);
+    ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillStyle="#9fe6c8"; ctx.font="bold 34px 'Malgun Gothic',sans-serif"; ctx.fillText("⚔ 별빛 생존자", LOGW/2, LOGH/2-160);
+    ctx.fillStyle="#cbd4f5"; ctx.font="17px 'Malgun Gothic',sans-serif"; ctx.fillText("무한 생존! 최대한 오래 버티세요 (최대 10분). 난이도를 골라요:", LOGW/2, LOGH/2-116);
+    // 보통
+    ctx.fillStyle="rgba(60,110,80,0.9)"; roundRect(LOGW/2-260, LOGH/2-70, 240, 130, 16); ctx.fill();
+    ctx.strokeStyle="#7dffb0"; ctx.lineWidth=2; roundRect(LOGW/2-260, LOGH/2-70, 240, 130, 16); ctx.stroke();
+    ctx.fillStyle="#fff"; ctx.font="bold 26px 'Malgun Gothic',sans-serif"; ctx.fillText("🙂 보통", LOGW/2-140, LOGH/2-30);
+    ctx.fillStyle="#cfe8d8"; ctx.font="14px 'Malgun Gothic',sans-serif"; ctx.fillText("체력이 있어요.", LOGW/2-140, LOGH/2+6); ctx.fillText("차근차근 강해지며 버티기", LOGW/2-140, LOGH/2+28);
+    uiHit(LOGW/2-260, LOGH/2-70, 240, 130, function(){ svStart(false); });
+    // 어려움
+    ctx.fillStyle="rgba(120,50,60,0.9)"; roundRect(LOGW/2+20, LOGH/2-70, 240, 130, 16); ctx.fill();
+    ctx.strokeStyle="#ff8a8a"; ctx.lineWidth=2; roundRect(LOGW/2+20, LOGH/2-70, 240, 130, 16); ctx.stroke();
+    ctx.fillStyle="#fff"; ctx.font="bold 26px 'Malgun Gothic',sans-serif"; ctx.fillText("☠ 어려움", LOGW/2+140, LOGH/2-30);
+    ctx.fillStyle="#ffd6d6"; ctx.font="14px 'Malgun Gothic',sans-serif"; ctx.fillText("한 방이면 끝!", LOGW/2+140, LOGH/2+6); ctx.fillText("보호막·회피로 살아남기", LOGW/2+140, LOGH/2+28);
+    uiHit(LOGW/2+20, LOGH/2-70, 240, 130, function(){ svStart(true); });
+    ctx.fillStyle="#8893bb"; ctx.font="14px 'Malgun Gothic',sans-serif"; ctx.fillText("1 보통 · 2 어려움 · Esc 나가기 · 5분 넘게 버티면 진짜 고수!", LOGW/2, LOGH/2+110);
+    ctx.restore();
+    drawToast(); return;
+  }
   const p=SV.p, a=SV.atk;
   ctx.fillStyle="#0c1226"; ctx.fillRect(0,0,LOGW,LOGH);
   ctx.save(); ctx.translate(-Math.round(SV.camX), -Math.round(SV.camY));
@@ -5800,10 +5831,10 @@ function svRender(){
   ctx.textAlign="left"; ctx.fillStyle="#9fe6c8"; ctx.font="bold 17px 'Malgun Gothic',sans-serif";
   ctx.fillText("⚔ 별빛 생존자", 16, 22);
   ctx.textAlign="center"; ctx.fillStyle="#ffffff"; ctx.font="bold 20px 'Malgun Gothic',sans-serif";
-  const remain=Math.max(0, SV_WIN_T-SV.t);
-  ctx.fillText("⏱ "+Math.floor(remain/60)+":"+String(Math.floor(remain%60)).padStart(2,"0")+"   ·   Lv."+SV.level+"   ·   💀 "+SV.kills, LOGW/2, 22);
+  const _el=SV.t, _mm=Math.floor(_el/60), _ss=Math.floor(_el%60);
+  ctx.fillText((SV.hard?"☠ ":"")+_mm+":"+String(_ss).padStart(2,"0")+" / 10:00   ·   Lv."+SV.level+"   ·   💀 "+SV.kills, LOGW/2, 22);
   ctx.textAlign="right"; ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
-  ctx.fillText("최고 "+SV.best.bestT+"초 · 승리 "+(SV.best.wins||0)+"회", LOGW-16, 22);
+  ctx.fillText("최고 "+Math.floor((SV.best.bestT||0)/60)+"분"+((SV.best.bestT||0)%60)+"초 · 최다 💀"+(SV.best.bestK||0), LOGW-16, 22);
   // HP·XP 바
   {
     const bw=420, bx=LOGW/2-bw/2;
@@ -5858,13 +5889,15 @@ function svRender(){
     ctx.fillStyle="rgba(8,10,22,0.82)"; ctx.fillRect(0,0,LOGW,LOGH);
     ctx.font="bold 44px 'Malgun Gothic',sans-serif";
     ctx.fillStyle=(SV.phase==="win")?"#7dffb0":"#ff8a8a";
-    ctx.fillText((SV.phase==="win")?"🎉 3분 생존 성공!":"💧 별빛이 스러졌다...", LOGW/2, LOGH/2-64);
+    ctx.fillText((SV.phase==="win")?"🎉 10분 완전 생존! 최강!":"💧 별빛이 스러졌다...", LOGW/2, LOGH/2-96);
     ctx.fillStyle="#dfe6ff"; ctx.font="18px 'Malgun Gothic',sans-serif";
-    ctx.fillText("⏱ "+SV.t.toFixed(0)+"초 생존 · Lv."+SV.level+" · 💀 "+SV.kills+"마리", LOGW/2, LOGH/2-16);
+    const _m2=Math.floor(SV.t/60), _s2=Math.floor(SV.t%60);
+    ctx.fillText((SV.hard?"☠ 어려움 · ":"")+"⏱ "+_m2+"분 "+_s2+"초 생존 · Lv."+SV.level+" · 💀 "+SV.kills+"마리 처치", LOGW/2, LOGH/2-58);
     const b=SV.best;
-    ctx.fillText("🏆 최고 "+b.bestT+"초 · 승리 "+(b.wins||0)+"회", LOGW/2, LOGH/2+16);
-    labRankDraw("sv", LOGW/2+340, LOGH/2-52, "초");
-    ctx.fillText("R 다시 도전 · Esc 나가기", LOGW/2, LOGH/2+52);
+    ctx.fillStyle="#ffd97d"; ctx.fillText("🏆 최고 "+Math.floor((b.bestT||0)/60)+"분"+((b.bestT||0)%60)+"초 · 최다 처치 💀"+(b.bestK||0), LOGW/2, LOGH/2-30);
+    labRankDraw("sv", LOGW/2-240, LOGH/2+34, "초", "🏫 최장 생존");
+    labRankDraw("svk", LOGW/2+240, LOGH/2+34, "마리", "☠ 최다 처치");
+    ctx.fillStyle="#8893bb"; ctx.font="15px 'Malgun Gothic',sans-serif"; ctx.fillText("R 다시 도전 · Esc 나가기", LOGW/2, LOGH-28);
   }
   ctx.restore();
 }
@@ -8120,7 +8153,7 @@ const LAB_GAMES=[
   { key:"td", emoji:"🏰", name:"별빛 수비대",   desc:"길목에 탑을 지어 방어",   run:function(){ tdStart(); } },
   { key:"fleet", emoji:"🚀", name:"별빛 함대",     desc:"편대를 격추하는 슈팅",     run:function(){ shOpen(); } },
   { key:"ray", emoji:"🕶", name:"별빛 던전 3D",  desc:"1인칭 미로 탐험",         run:function(){ rayStart(); } },
-  { key:"sv", emoji:"⚔", name:"별빛 생존자",   desc:"3분 버티기(자동 공격)",    run:function(){ svStart(); } },
+  { key:"sv", emoji:"⚔", name:"별빛 생존자",   desc:"무한 생존(자동 공격·최대 10분)", run:function(){ svSelect(); } },
   { key:"egg", emoji:"🥚", name:"별빛 알",       desc:"챕터1의 알을 부화시키자",  run:function(){ eggStart(); } },
   { key:"pz", emoji:"🧩", name:"별조각 밀기",   desc:"소코반 두뇌 퍼즐",         run:function(){ pzStart(); } },
   { key:"rn", emoji:"🏃", name:"별빛 러너",     desc:"자동 달리기·장애물 점프",  run:function(){ rnStart(); } },
@@ -8163,7 +8196,7 @@ function lhRecordCalc(i){   // 카드에 보여줄 한 줄 기록
     if(i===0){ const b=tdBestLoad(); const n=Object.keys(b).length; return n?("★ 기록 "+n+"개 맵"):""; }
     if(i===1){ const s=shBest(); return s?("🏆 "+s+"점"):""; }
     if(i===2){ const b=JSON.parse(localStorage.getItem(RAY_BEST_KEY)||"null"); return b?("🏆 "+b.total+"초"):""; }
-    if(i===3){ const b=svBestLoad(); return b.bestT?("🏆 "+b.bestT+"초·승리 "+(b.wins||0)):""; }
+    if(i===3){ const b=svBestLoad(); return b.bestT?("🏆 "+b.bestT+"초 · 💀"+(b.bestK||0)):""; }
     if(i===4){ const e=eggLoad(); return "별빛 "+(e.xp||0); }
     if(i===5){ const b=pzBestLoad(); const n=Object.keys(b).length; return n?("해결 "+n+"판"):""; }
     if(i===6){ const b=rnBest(); return b?("🏆 "+b+"m"):""; }
@@ -12222,7 +12255,7 @@ function handleAdminKey(code){
   if(code==="Digit1"){ tdStart(); return; }    // LAB-1 실험: 🏰 별빛 수비대(타워 디펜스)
   if(code==="Digit2"){ shStart(); return; }    // LAB-1 실험: 🚀 별빛 함대(세로 슈팅)
   if(code==="Digit3"){ rayStart(); return; }   // LAB-1 실험: 🕶 별빛 던전 3D(레이캐스터)
-  if(code==="Digit4"){ svStart(); return; }    // LAB-3 실험: ⚔ 별빛 생존자(뱀서라이크)
+  if(code==="Digit4"){ svSelect(); return; }    // LAB-3 실험: ⚔ 별빛 생존자(뱀서라이크)
   if(code==="Digit5"){ eggStart(); return; }   // LAB-3 실험: 🥚 별빛 알(펫)
   if(code==="Digit6"){ pzStart(); return; }    // LAB-3 실험: 🧩 별조각 밀기(소코반)
   if(code==="Digit7"){ rnStart(); return; }    // LAB-4: 🏃 별빛 러너

@@ -54,7 +54,7 @@ details[open] summary{margin-bottom:8px;}
 <body>
 <div class="app">
 <nav class="side" id="side">
-  <div class="logo">⭐ 별빛 아레나 위키<small>현재 버전 <b style="color:#ffe14d">v1.92</b> · 2026-07-12</small></div>
+  <div class="logo">⭐ 별빛 아레나 위키<small>현재 버전 <b style="color:#ffe14d">v1.93</b> · 2026-07-12</small></div>
   <input id="wsearch" type="search" placeholder="🔎 검색 (예: 뭉게대왕, 조작)" style="width:100%;margin:10px 0 2px;padding:7px 10px;border-radius:9px;border:1px solid #2a3560;background:#0a0f28;color:#dfe6ff;font-family:inherit;font-size:13px;">
   <div id="sres" style="font-size:11.5px;color:#8893bb;padding:0 4px;"></div>
   <div class="grp">시작</div>
@@ -104,7 +104,7 @@ details[open] summary{margin-bottom:8px;}
 <div class="gcard" data-p="td"><div class="em">🏰</div><div class="nm">별빛 수비대</div><div class="ds">타워 디펜스</div></div>
 <div class="gcard" data-p="fleet"><div class="em">🚀</div><div class="nm">별빛 함대</div><div class="ds">세로 슈팅</div></div>
 <div class="gcard" data-p="dungeon"><div class="em">🕶</div><div class="nm">던전 3D</div><div class="ds">1인칭 미로</div></div>
-<div class="gcard" data-p="survivor"><div class="em">⚔</div><div class="nm">별빛 생존자</div><div class="ds">3분 버티기</div></div>
+<div class="gcard" data-p="survivor"><div class="em">⚔</div><div class="nm">별빛 생존자</div><div class="ds">무한 생존(최대 10분)</div></div>
 <div class="gcard" data-p="egg"><div class="em">🥚</div><div class="nm">별빛 알</div><div class="ds">펫 부화</div></div>
 <div class="gcard" data-p="puzzle"><div class="em">🧩</div><div class="nm">별조각 밀기</div><div class="ds">두뇌 퍼즐+출제</div></div>
 <div class="gcard" data-p="runner"><div class="em">🏃</div><div class="nm">별빛 러너</div><div class="ds">자동 달리기</div></div>
@@ -277,11 +277,13 @@ details[open] summary{margin-bottom:8px;}
 <!-- ═════════ 생존자 ═════════ -->
 <section class="page" id="p-survivor">
 <h1>⚔ 별빛 생존자 <span class="badge">실험 4 · 뱀서라이크</span></h1>
-<p class="tagline">공격은 자동! 움직이기만 하면서 몰려오는 먹구름 사이에서 5분을 버텨라.</p>
+<p class="tagline">공격은 자동! 움직이기만 하면서 몰려오는 먹구름 사이에서 <b>최대한 오래</b> 버텨라 (최대 10분).</p>
 <h2>🎮 하는 법</h2>
 <ul><li><kbd>WASD</kbd>/<kbd>화살표</kbd>로 <b>이동만</b> — 별줄기가 가까운 적을 자동 공격!</li>
 <li>적이 떨군 <b>별가루</b>를 주우면 경험치 → <b>레벨업 때 3장 중 1장</b>(<kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> 또는 클릭)</li>
-<li>2분 20초에 <b>뭉게대왕</b> 등장 · <b>3분 생존 = 승리!</b></li></ul>
+<li><b>난이도 선택</b>: 🙂보통(체력 있음) / ☠어려움(<b>막지 못한 한 방이면 즉사!</b> — 보호막·회피 빌드로 살아남기)</li>
+<li>정해진 승리 시간 없이 <b>무한 생존</b> — 오래 버틸수록 물량 폭증. <b>2분 30초마다 뭉게대왕</b>(갈수록 강함). <b>5분 넘기면 진짜 고수, 10분이면 전설!</b></li>
+<li>랭킹 2종: 🏫 <b>최장 생존</b> + ☠ <b>최다 처치</b> — 둘 다 우리 반 순위에 올라가요.</li></ul>
 <h2>⬆ 강화 8종</h2>
 <table><tr><th>카드</th><th>효과</th></tr>
 <tr><td>🌟 별의 힘 / ⚡ 빠른 손</td><td>공격력 +40%(카드에 "젤리 몇 방→몇 방" 표시) / 공속 +20%</td></tr>
@@ -593,11 +595,12 @@ node -e 'const fs=require("fs");const h=fs.readFileSync("index.html","utf8");con
 
 <!-- ═════════ 일지 ═════════ -->
 <section class="page" id="p-log">
-<h1>📜 업데이트 일지 <span class="badge">현재 v1.92</span></h1>
+<h1>📜 업데이트 일지 <span class="badge">현재 v1.93</span></h1>
 <p class="tagline">v1.00(6-29 첫 버전)부터 이어온 버전 기록 — 전체 상세는 저장소 <code>PATCHNOTES.md</code>(67개 버전), 작업 맥락은 <code>작업현황_HANDOFF.md</code>.</p>
 <h2>최근 (v1.55 ~ v1.65)</h2>
 <table><tr><th>버전</th><th>날짜</th><th>내용</th></tr>
-<tr><td><b>v1.92</b></td><td>07-14</td><td><b>대형 맵 추적 카메라</b> — 큰 맵을 축소하지 않고 정상 크기 유지+플레이어 추적 스크롤(RPG식)·미니맵·멀미 방지 데드존</td></tr>
+<tr><td><b>v1.93</b></td><td>07-14</td><td><b>생존자 무한 생존 + ☠어려움</b> — 180초 승리 폐지→최대 10분 무한 생존(5분+ 극악), 어려움=한 방 즉사, 최장 생존·최다 처치 2랭킹</td></tr>
+<tr><td>v1.92</td><td>07-14</td><td><b>대형 맵 추적 카메라</b> — 큰 맵을 축소하지 않고 정상 크기 유지+플레이어 추적 스크롤(RPG식)·미니맵·멀미 방지 데드존</td></tr>
 <tr><td>v1.91</td><td>07-13</td><td><b>오델로·오목 온라인 대전</b> — 방 코드로 다른 컴퓨터끼리 실시간 대국(BoardNet 턴제 동기화)</td></tr>
 <tr><td>v1.90</td><td>07-13</td><td><b>신작 ⚫ 별빛 오목(실험 12호)</b> — 15×15 자유 오목, AI(위협 기반)·둘이서, 먼저 5개 나란히</td></tr>
 <tr><td>v1.89</td><td>07-13</td><td><b>전 게임 멀미 제거</b> — 던전3D 회전 완만화+머리흔들림 제거·무쌍 카메라 데드존·플랫포머 떨림 완화</td></tr>
@@ -688,7 +691,7 @@ node -e 'const fs=require("fs");const h=fs.readFileSync("index.html","utf8");con
     var td=j("starArena.lab.tdBest"); rows.push(["🏰 별빛 수비대", td&&Object.keys(td).length?Object.keys(td).map(function(k){ var m={m0:"굽잇길",m1:"두 갈래",m2:"나선"}[k]||k; return m+" "+"★".repeat(td[k].stars); }).join(" · "):"—"]);
     rows.push(["🚀 별빛 함대", g("starArena.lab.shooterBest")?("최고 "+g("starArena.lab.shooterBest")+"점"):"—"]);
     var ry=j("starArena.lab.rayBest"); rows.push(["🕶 던전 3D", ry?("합계 "+ry.total+"초 · ⭐"+ry.stars+"/15"):"—"]);
-    var sv=j("starArena.lab.svBest"); rows.push(["⚔ 별빛 생존자", sv&&sv.bestT?("최장 "+sv.bestT+"초 · 승리 "+(sv.wins||0)+"회"):"—"]);
+    var sv=j("starArena.lab.svBest"); rows.push(["⚔ 별빛 생존자", sv&&sv.bestT?("최장 "+sv.bestT+"초 · 최다 💀"+(sv.bestK||0)+" · 승리 "+(sv.wins||0)):"—"]);
     var eg=j("starArena.lab.egg"); rows.push(["🥚 별빛 알", eg?("별빛 "+(eg.xp||0)+" · 먹이 "+(eg.feeds||0)+"번"):"—"]);
     var pz=j("starArena.lab.pzBest"); var pzc=j("starArena.lab.pzCustom");
     rows.push(["🧩 별조각 밀기", (pz&&Object.keys(pz).length?("해결 "+Object.keys(pz).length+"/12판"):"—")+(pzc&&pzc.length?(" · 내 퍼즐 "+pzc.length+"개"):"")]);
