@@ -499,15 +499,20 @@ run("생존자 v1.73: 보호막·서리·별똥별", ()=>{
   for(let i=0;i<90;i++){ api.svUpdate(1/60); SV.spawnT=9999; }
   check("별똥별 경고 후 낙하 피해", tgt.hp<200);
 });
-run("생존자: 피격·무적·사망", ()=>{
+run("생존자: 피격·무적·사망 (v1.97 체력 30·약 4방)", ()=>{
   api.svStart();
   const SV=api.SV;
-  api.svHurt(30);
-  check("피격 30 + 무적 부여", SV.p.hp===70 && SV.p.ifr>0);
-  api.svHurt(30);
-  check("무적 중 추가 피해 없음", SV.p.hp===70);
+  check("시작 체력 30(100→30)", SV.p.hp===30 && SV.p.maxhp===30);
+  api.svHurt(8);
+  check("피격 8 → 22 + 무적 부여", SV.p.hp===22 && SV.p.ifr>0);
+  api.svHurt(8);
+  check("무적 중 추가 피해 없음", SV.p.hp===22);
   SV.p.ifr=0; api.svHurt(999);
   check("체력 0 → over", SV.phase==="over");
+  // 보통 모드: 약 4~5방(6~9 피해)이면 사망
+  api.svStart(); const S2=api.SV; let hits=0;
+  while(S2.phase==="play" && hits<12){ S2.p.ifr=0; api.svHurt(7); hits++; }
+  check("보통 7피해 ~4~5방에 사망(목숨 확 줄임)", hits>=4 && hits<=5 && S2.phase==="over");
 });
 run("생존자: v1.95 7분판 — 140초 보스·죽음의 뭉게대왕 피날레·처치 랭킹", ()=>{
   api.svStart();
