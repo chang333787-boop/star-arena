@@ -3642,7 +3642,7 @@ const LabOpenStore={
 };
 /* ── v1.74 학급 랭킹: 게임별 TOP8을 클라우드로 공유(starArenaOnline/labRank/<class>) ──
    로컬 캐시 폴백 — 오프라인이어도 이 기기 랭킹은 동작, 접속되면 학급 전체와 합쳐짐. */
-const GAME_VER="v1.97";   // 화면 표시용 — 배포마다 PATCHNOTES와 함께 갱신(캐시 구버전 진단)
+const GAME_VER="v1.98";   // 화면 표시용 — 배포마다 PATCHNOTES와 함께 갱신(캐시 구버전 진단)
 const LAB_RANK_KEY="starArena.labRank.v1";
 let labRank=(function(){ try{ const s=JSON.parse(localStorage.getItem(LAB_RANK_KEY)); if(s&&typeof s==="object") return s; }catch(e){} return {}; })();
 const LabRankStore={
@@ -5113,9 +5113,7 @@ function rayCompassTarget(){   // LAB-3 나침반 Tab: 큰별 ↔ 가장 가까�
 function rayKey(code){
   if(code==="Escape"){ RAY=null; labBack(); return; }
   if(!RAY) return;
-  if(code==="KeyM"){ RAY.mini=(RAY.mini+1)%3; return; }   // LAB-3 미니맵 3단(끔/작게/크게)
-  if(code==="KeyP"){ RAY.paused=!RAY.paused; return; }    // LAB-3 일시정지
-  if(code==="Tab"){ RAY.compassMode=(RAY.compassMode+1)%2; showToast("🧭 나침반: "+(RAY.compassMode?"가까운 별조각":"큰 별")); return; }
+  if(code==="KeyP"){ RAY.paused=!RAY.paused; return; }    // 일시정지
   if(code==="KeyR"){ rayStart(); return; }
   if(RAY.cleared && (code==="Enter"||code==="NumpadEnter")){ rayStart(); return; }
 }
@@ -5126,23 +5124,22 @@ function rayUpdate(dt){
   if(RAY.introT>0) RAY.introT-=dt;
   if(RAY.caughtInv>0) RAY.caughtInv-=dt;
   if(RAY.clearMsgT>0){ RAY.clearMsgT-=dt; if(RAY.clearMsgT<=0 && RAY.nextFloor!==undefined){ const nf=RAY.nextFloor; RAY.nextFloor=undefined; rayLoadFloor(nf); } return; }
-  const rot=2.3;   // v1.89 멀미: 최고 회전속 살짝 낮춤
+  // v1.98: 3인칭 오버헤드 — 방향키 8방향 직접 이동(1인칭 회전 폐지 → 멀미 0)
   const run=(keysDown.has("ShiftLeft")||keysDown.has("ShiftRight"));
-  const spd=(run?4.7:3.1), strafe=(run?3.6:2.5);
-  let rin=0;   // v1.89 멀미: 회전 가속/감속 완만 — 1인칭 '홱' 돌기 제거(관전 멀미 최대 완화)
-  if(keysDown.has("ArrowLeft"))  rin-=1;
-  if(keysDown.has("ArrowRight")) rin+=1;
-  RAY.rotV=(RAY.rotV||0)+((rin*rot)-(RAY.rotV||0))*Math.min(1,dt*8);
-  RAY.ang+=RAY.rotV*dt;
-  const dx=Math.cos(RAY.ang), dy=Math.sin(RAY.ang);
-  let mx=0,my=0, moving=false;
-  if(keysDown.has("ArrowUp")||keysDown.has("KeyW")){ mx+=dx*spd*dt; my+=dy*spd*dt; moving=true; }
-  if(keysDown.has("ArrowDown")||keysDown.has("KeyS")){ mx-=dx*spd*dt; my-=dy*spd*dt; moving=true; }
-  if(keysDown.has("KeyA")){ mx+=dy*strafe*dt; my+=-dx*strafe*dt; moving=true; }
-  if(keysDown.has("KeyD")){ mx+=-dy*strafe*dt; my+=dx*strafe*dt; moving=true; }
-  if(mx!==0 && rayOpenPos(RAY.px+mx, RAY.py)) RAY.px+=mx;
-  if(my!==0 && rayOpenPos(RAY.px, RAY.py+my)) RAY.py+=my;
-  RAY.bob=moving?(RAY.bob+dt*(run?11:7)):0;
+  const spd=(run?4.6:3.2);
+  let mx=0,my=0;
+  if(keysDown.has("ArrowLeft")||keysDown.has("KeyA")) mx-=1;
+  if(keysDown.has("ArrowRight")||keysDown.has("KeyD")) mx+=1;
+  if(keysDown.has("ArrowUp")||keysDown.has("KeyW")) my-=1;
+  if(keysDown.has("ArrowDown")||keysDown.has("KeyS")) my+=1;
+  const moving=!!(mx||my);
+  if(moving){
+    const L=Math.hypot(mx,my)||1, vx=mx/L*spd*dt, vy=my/L*spd*dt;
+    if(rayOpenPos(RAY.px+vx, RAY.py)) RAY.px+=vx;
+    if(rayOpenPos(RAY.px, RAY.py+vy)) RAY.py+=vy;
+    if(mx<0) RAY.faceLeft=true; else if(mx>0) RAY.faceLeft=false;
+  }
+  RAY.moving=moving;
   const pc=Math.floor(RAY.px), pr=Math.floor(RAY.py);
   for(let r=pr-2;r<=pr+2;r++) for(let c=pc-2;c<=pc+2;c++) RAY.seen[c+","+r]=1;
   for(const s of RAY.stars){
@@ -5233,149 +5230,74 @@ function rayEdgeGlow(color, a){   // LAB-3 눈편안: 전체화면 플래시 대
 }
 function rayRender(){
   if(!RAY || !RAY.map) return;
-  const colW=LOGW/RAY_N;
-  const F=RAY_FLOORS[RAY.floor]||RAY_FLOORS[0];
-  const bobOff=0;   // v1.89 멀미: 머리 흔들림 완전 제거(수평선 상하 진동 = 관전 멀미 주범)
-  ctx.fillStyle="#0a0d24"; ctx.fillRect(0,0,LOGW,LOGH/2+bobOff);
-  ctx.fillStyle="#161a34"; ctx.fillRect(0,LOGH/2+bobOff,LOGW,LOGH/2-bobOff+4);
-  ctx.fillStyle="#dfe6ff";
-  for(let i=0;i<26;i++){ const sx=(i*151)%LOGW, sy=(i*83)%Math.floor(LOGH*0.42); ctx.globalAlpha=0.5; ctx.fillRect(sx,sy,2,2); }
-  ctx.globalAlpha=1;
-  const dirX=Math.cos(RAY.ang), dirY=Math.sin(RAY.ang);
-  const plX=-dirY*RAY_PLANE, plY=dirX*RAY_PLANE;
-  for(let i=0;i<RAY_N;i++){
-    const cam=2*i/RAY_N-1;
-    const rdx=dirX+plX*cam, rdy=dirY+plY*cam;
-    let mapX=Math.floor(RAY.px), mapY=Math.floor(RAY.py);
-    const ddx=(rdx===0)?1e30:Math.abs(1/rdx), ddy=(rdy===0)?1e30:Math.abs(1/rdy);
-    let stepX, stepY, sideX, sideY;
-    if(rdx<0){ stepX=-1; sideX=(RAY.px-mapX)*ddx; } else { stepX=1; sideX=(mapX+1-RAY.px)*ddx; }
-    if(rdy<0){ stepY=-1; sideY=(RAY.py-mapY)*ddy; } else { stepY=1; sideY=(mapY+1-RAY.py)*ddy; }
-    let side=0, hit=false, guard=0;
-    while(!hit && guard++<80){
-      if(sideX<sideY){ sideX+=ddx; mapX+=stepX; side=0; } else { sideY+=ddy; mapY+=stepY; side=1; }
-      if(mapY<0||mapY>=RAY.map.length||mapX<0||mapX>=RAY.map[0].length){ hit=true; break; }
-      if(RAY.map[mapY][mapX]==="#") hit=true;
-    }
-    const perp=Math.max(0.06, side===0 ? (sideX-ddx) : (sideY-ddy));
-    _rayZ[i]=perp;
-    const h=Math.min(LOGH*1.4, LOGH/perp);
-    const checker=((mapX+mapY)%2)?0.92:1;
-    const b=Math.max(0.12, 1-perp*0.10)*(side?0.72:1)*checker;
-    ctx.fillStyle="rgb("+Math.round(F.wall[0]*b)+","+Math.round(F.wall[1]*b)+","+Math.round(F.wall[2]*b)+")";
-    ctx.fillRect(i*colW, (LOGH-h)/2+bobOff, colW+1, h);
-  }
-  // LAB-3 모서리 라인(깊이 점프에 어두운 세로줄 — 입체감)
-  ctx.fillStyle="rgba(0,0,0,0.35)";
-  for(let i=1;i<RAY_N;i++){
-    if(Math.abs(_rayZ[i]-_rayZ[i-1])>0.5){
-      const h=Math.min(LOGH*1.4, LOGH/Math.max(_rayZ[i],_rayZ[i-1]));
-      ctx.fillRect(i*colW-1, (LOGH-h)/2+bobOff, 2, h);
-    }
-  }
-  for(const s of RAY.stars){
-    if(s.got) continue;
-    raySprite(s.x, s.y, function(px2, dist2){
-      const size=Math.min(240, LOGH/dist2*0.22);
-      drawStar(px2, LOGH/2+bobOff+size*0.4, 5, size*0.5, size*0.22, "#ffe14d");
-    });
-  }
-  for(const m of RAY.mons){
-    raySprite(m.x, m.y, function(px2, dist2){
-      const size=Math.min(500, LOGH/dist2*0.5);
-      const img=getMonsterImage("soft_jelly");
-      if(img) ctx.drawImage(img, px2-size/2, LOGH/2+bobOff-size*0.1, size, size);
-      else { ctx.fillStyle="#7ad0e0"; ctx.beginPath(); ctx.arc(px2, LOGH/2+bobOff+size*0.2, size*0.4, 0, Math.PI*2); ctx.fill(); }
-    });
-  }
-  {
-    const locked=RAY.got<RAY.need;
-    raySprite(RAY.gx, RAY.gy, function(px2, dist2){
-      const size=Math.min(600, LOGH/dist2*0.55);
-      const glow=0.5+0.5*Math.sin(uiTime*5);
-      ctx.globalAlpha=(locked?0.15:0.25+0.25*glow);
-      ctx.fillStyle=locked?"#8893bb":"#ffe875";
-      ctx.beginPath(); ctx.arc(px2, LOGH/2+bobOff+size*0.08, size*0.5, 0, Math.PI*2); ctx.fill();
-      ctx.globalAlpha=1;
-      drawStar(px2, LOGH/2+bobOff+size*0.08, 5, size*0.34, size*0.15, locked?"#6a7290":"#ffe14d");
-      if(locked){ ctx.font=Math.round(size*0.2)+"px 'Malgun Gothic',sans-serif"; ctx.textAlign="center"; ctx.fillText("🔒", px2, LOGH/2+bobOff-size*0.28); }
-    });
-  }
-  // LAB-3 눈편안: 수집=가장자리 금빛 글로우 · 잡힘=부드러운 암전(0.55) · 몬스터 접근=파란 경고
-  rayEdgeGlow("#ffe875", RAY.sparkT>0?RAY.sparkT*0.8:0);
-  if(RAY.caughtInv>1.4){ ctx.globalAlpha=(RAY.caughtInv-1.4)*0.55; ctx.fillStyle="#20304a"; ctx.fillRect(0,0,LOGW,LOGH); ctx.globalAlpha=1; }
-  if(RAY.monNear<3){ rayEdgeGlow("#4a90d0", (3-RAY.monNear)/3*0.5); }
-  if(RAY.mini>0){
-    const N=RAY.size, ms=(RAY.mini===2)?Math.max(8,Math.floor(240/N)):Math.max(5, Math.floor(150/N));
-    const mx0=LOGW-16-N*ms, my0=54;
-    ctx.fillStyle="rgba(8,10,22,0.8)"; ctx.fillRect(mx0-6,my0-6,N*ms+12,N*ms+12);
+  ctx.fillStyle="#0a0d1e"; ctx.fillRect(0,0,LOGW,LOGH);
+  ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
+  if(!RAY.cleared){
+    const N=RAY.size, F=RAY_FLOORS[RAY.floor]||RAY_FLOORS[0], wc=F.wall;
+    const top=52, availW=LOGW-48, availH=LOGH-top-58;
+    const cell=Math.max(10, Math.min(Math.floor(availW/N), Math.floor(availH/N)));
+    const ox=Math.round(LOGW/2 - N*cell/2), oy=top + Math.round((availH - N*cell)/2);
     for(let r=0;r<N;r++) for(let c=0;c<N;c++){
-      if(!RAY.seen[c+","+r]) continue;
-      ctx.fillStyle=(RAY.map[r][c]==="#")?"#3a4470":"#10142c";
-      ctx.fillRect(mx0+c*ms, my0+r*ms, ms-1, ms-1);
+      const x=ox+c*cell, y=oy+r*cell;
+      if(RAY.map[r][c]==="#"){
+        ctx.fillStyle="rgb("+Math.round(wc[0]*0.55)+","+Math.round(wc[1]*0.55)+","+Math.round(wc[2]*0.55)+")"; ctx.fillRect(x,y,cell,cell);
+        ctx.fillStyle="rgba(255,255,255,0.10)"; ctx.fillRect(x,y,cell,Math.max(2,cell*0.24));
+      } else { ctx.fillStyle=((c+r)%2)?"#141a34":"#10152e"; ctx.fillRect(x,y,cell,cell); }
     }
-    for(const s of RAY.stars){ if(!s.got && RAY.seen[Math.floor(s.x)+","+Math.floor(s.y)]) drawStar(mx0+s.x*ms, my0+s.y*ms, 5, 3.5, 1.6, "#ffe14d"); }
-    if(RAY.seen[Math.floor(RAY.gx)+","+Math.floor(RAY.gy)]) drawStar(mx0+RAY.gx*ms, my0+RAY.gy*ms, 5, 5, 2.2, RAY.got>=RAY.need?"#7dffb0":"#8893bb");
-    ctx.fillStyle="#7dffb0"; ctx.beginPath(); ctx.arc(mx0+RAY.px*ms, my0+RAY.py*ms, 3, 0, Math.PI*2); ctx.fill();
-    ctx.strokeStyle="#7dffb0"; ctx.lineWidth=1.5;
-    ctx.beginPath(); ctx.moveTo(mx0+RAY.px*ms, my0+RAY.py*ms);
-    ctx.lineTo(mx0+(RAY.px+Math.cos(RAY.ang)*1.2)*ms, my0+(RAY.py+Math.sin(RAY.ang)*1.2)*ms); ctx.stroke();
+    ctx.strokeStyle="rgba(90,110,150,0.10)"; ctx.lineWidth=1; ctx.strokeRect(ox,oy,N*cell,N*cell);
+    { const ex=ox+RAY.gx*cell, ey=oy+RAY.gy*cell, open=(RAY.got>=RAY.need);
+      if(open){ const pu=0.5+0.5*Math.sin(uiTime*4); glowRect(ex-cell*0.5, ey-cell*0.5, cell, cell, 8, "#ffe14d", 0.45+0.3*pu);
+        drawStar(ex, ey, 5, cell*0.44, cell*0.2, "#ffe14d"); }
+      else { ctx.fillStyle="#5a4a24"; ctx.beginPath(); ctx.arc(ex,ey,cell*0.42,0,Math.PI*2); ctx.fill();
+        ctx.font=Math.round(cell*0.5)+"px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#ffcf6a"; ctx.fillText("\ud83d\udd12", ex, ey+1); } }
+    for(const s of RAY.stars){ if(s.got) continue; const sx=ox+s.x*cell, sy=oy+s.y*cell, pu=0.85+0.15*Math.sin(uiTime*5+s.x);
+      drawStar(sx, sy, 5, cell*0.3*pu, cell*0.13*pu, "#ffe14d"); }
+    for(const m of RAY.mons){ const mx=ox+m.x*cell, my=oy+m.y*cell, near=(dist(RAY.px,RAY.py,m.x,m.y)<3.2);
+      const img=getMonsterImage("soft_jelly"), sz=cell*0.92;
+      if(img){ ctx.save(); ctx.globalAlpha=0.92; ctx.drawImage(img, mx-sz/2, my-sz/2, sz, sz); ctx.restore();
+        ctx.fillStyle="rgba(40,8,64,0.5)"; ctx.beginPath(); ctx.arc(mx,my,sz*0.42,0,Math.PI*2); ctx.fill(); }
+      else { ctx.fillStyle="#3a1a5a"; ctx.beginPath(); ctx.arc(mx,my,cell*0.42,0,Math.PI*2); ctx.fill(); }
+      if(near){ ctx.strokeStyle="rgba(255,90,110,"+(0.4+0.35*Math.sin(uiTime*8))+")"; ctx.lineWidth=2.5; ctx.beginPath(); ctx.arc(mx,my,cell*0.58,0,Math.PI*2); ctx.stroke(); } }
+    if(!(RAY.caughtInv>0 && Math.floor(uiTime*8)%2===0)){
+      ctx.save(); ctx.translate(ox+RAY.px*cell, oy+RAY.py*cell);
+      const drew=drawCharacterSprite(selectedCharacterId, Math.max(11,cell*0.44), RAY.faceLeft?Math.PI:0, { moving:RAY.moving, attacking:false });
+      if(!drew){ ctx.fillStyle="#7dffb0"; ctx.beginPath(); ctx.arc(0,0,cell*0.38,0,Math.PI*2); ctx.fill(); }
+      ctx.restore();
+    }
+    if(RAY.monNear<1.6){ ctx.globalAlpha=Math.min(0.28,(1.6-RAY.monNear)*0.28); ctx.fillStyle="#7a0a1a";
+      ctx.fillRect(0,top,LOGW,18); ctx.fillRect(0,LOGH-58,LOGW,18); ctx.fillRect(0,top,18,LOGH-top-58); ctx.fillRect(LOGW-18,top,18,LOGH-top-58); ctx.globalAlpha=1; }
+    ctx.fillStyle="rgba(10,14,24,0.85)"; ctx.fillRect(0,0,LOGW,40);
+    ctx.textAlign="left"; ctx.fillStyle="#9fe6c8"; ctx.font="bold 16px 'Malgun Gothic',sans-serif"; ctx.fillText("\ud83d\uddfa "+F.name, 16, 20);
+    ctx.textAlign="center"; ctx.fillStyle="#fff"; ctx.font="bold 17px 'Malgun Gothic',sans-serif";
+    ctx.fillText("\u2b50 \ubcc4\uc870\uac01 "+RAY.got+" / "+RAY.need+"   \u00b7   "+(RAY.got>=RAY.need?"\ud83c\udf1f \ud070 \ubcc4\uc758 \ubb38\uc73c\ub85c!":"\ubb38\uae4c\uc9c0 "+(RAY.need-RAY.got)+"\uac1c \ub354"), LOGW/2, 20);
+    ctx.textAlign="right"; ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif"; ctx.fillText("\u23f1 "+RAY.floorT.toFixed(0)+"\ucd08 \u00b7 \uce35 "+(RAY.floor+1)+"/3", LOGW-16, 20);
+    ctx.textAlign="center"; ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
+    ctx.fillText("\ubc29\ud5a5\ud0a4/WASD \uc774\ub3d9 \u00b7 \u2b50 3\uac1c \ubaa8\uc544 \ud83c\udf1f\ubb38\uc73c\ub85c! \u00b7 \uadf8\ub9bc\uc790 \uc820\ub9ac(\ubcf4\ub77c) \uc870\uc2ec \u00b7 Shift \ub2ec\ub9ac\uae30 \u00b7 P \uc815\uc9c0 \u00b7 Esc", LOGW/2, LOGH-14);
+    if(RAY.introT>0){ ctx.globalAlpha=Math.min(1, RAY.introT/0.6);
+      ctx.fillStyle="rgba(8,10,22,0.74)"; ctx.fillRect(0,LOGH/2-58,LOGW,116);
+      ctx.fillStyle="#ffe14d"; ctx.font="bold 30px 'Malgun Gothic',sans-serif"; ctx.fillText(F.name, LOGW/2, LOGH/2-16);
+      ctx.fillStyle="#dfe6ff"; ctx.font="16px 'Malgun Gothic',sans-serif"; ctx.fillText("\u2b50 \ubcc4\uc870\uac01 "+RAY.need+"\uac1c\ub97c \ubaa8\uc544 \ud070 \ubcc4\uc758 \ubb38\uc744 \uc5f4\uc790! (\uadf8\ub9bc\uc790 \uc820\ub9ac "+RAY.mons.length+"\ub9c8\ub9ac)", LOGW/2, LOGH/2+18);
+      ctx.globalAlpha=1; }
+    if(RAY.clearMsgT>0){ ctx.fillStyle="rgba(8,10,22,0.72)"; ctx.fillRect(0,LOGH/2-46,LOGW,92);
+      ctx.fillStyle="#7dffb0"; ctx.font="bold 26px 'Malgun Gothic',sans-serif"; ctx.fillText("\ud83c\udf1f \uce35 \ud1b5\uacfc! \ub2e4\uc74c \uce35\uc73c\ub85c...", LOGW/2, LOGH/2);
+      const nf=RAY_FLOORS[RAY.floor+1]; if(nf){ ctx.fillStyle="#cbd4f5"; ctx.font="15px 'Malgun Gothic',sans-serif"; ctx.fillText("\ub2e4\uc74c: "+nf.name, LOGW/2, LOGH/2+28); } }
   }
-  ctx.save(); ctx.textBaseline="middle";
-  ctx.fillStyle="rgba(10,14,24,0.85)"; ctx.fillRect(0,0,LOGW,44);
-  ctx.textAlign="left"; ctx.fillStyle="#9fe6c8"; ctx.font="bold 16px 'Malgun Gothic',sans-serif";
-  ctx.fillText("🕶 "+F.name+"  ("+(RAY.floor+1)+"/3층)", 16, 22);
-  ctx.textAlign="right"; ctx.fillStyle="#ffffff"; ctx.font="bold 15px 'Malgun Gothic',sans-serif";
-  ctx.fillText("⭐ "+RAY.got+"/5 (문 "+RAY.need+")   ⏱ "+RAY.floorT.toFixed(1)+"초", LOGW-16, 22);
-  {
-    const tgt=rayCompassTarget();
-    const ga=Math.atan2(tgt.y-RAY.py, tgt.x-RAY.px)-RAY.ang;
-    ctx.save(); ctx.translate(LOGW/2, 22); ctx.rotate(ga);
-    ctx.fillStyle=(tgt.label==="큰 별")?(RAY.got>=RAY.need?"#7dffb0":"#8893bb"):"#ffe14d";
-    ctx.beginPath(); ctx.moveTo(12,0); ctx.lineTo(-7,-7); ctx.lineTo(-3,0); ctx.lineTo(-7,7); ctx.closePath(); ctx.fill();
-    ctx.restore();
-    ctx.textAlign="center"; ctx.fillStyle="#8893bb"; ctx.font="11px 'Malgun Gothic',sans-serif";
-    ctx.fillText(tgt.label+" (Tab)", LOGW/2, 38);
-  }
-  ctx.textAlign="center"; ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
-  ctx.fillText("↑↓(W/S) 이동 · ←→ 회전 · A/D 옆걸음 · Shift 달리기 · Tab 나침반 · M 지도 · P 정지 · Esc", LOGW/2, LOGH-18);
-  // LAB-3 층 인트로
-  if(RAY.introT>0 && !RAY.cleared){
-    ctx.globalAlpha=Math.min(1, RAY.introT/0.6);
-    ctx.fillStyle="rgba(8,10,22,0.55)"; ctx.fillRect(0,LOGH/2-64,LOGW,128);
-    ctx.fillStyle="#9fe6c8"; ctx.font="bold 30px 'Malgun Gothic',sans-serif";
-    ctx.fillText(F.name, LOGW/2, LOGH/2-22);
-    ctx.fillStyle="#dfe6ff"; ctx.font="16px 'Malgun Gothic',sans-serif";
-    ctx.fillText("⭐ 별조각 3개를 모아 큰 별의 문을 열자! (그림자 젤리 "+RAY.mons.length+"마리 배회 중)", LOGW/2, LOGH/2+18);
-    ctx.globalAlpha=1;
-  }
-  if(RAY.clearMsgT>0){ ctx.fillStyle="rgba(8,10,22,0.6)"; ctx.fillRect(0,LOGH/2-58,LOGW,116);
-    ctx.fillStyle="#7dffb0"; ctx.font="bold 32px 'Malgun Gothic',sans-serif";
-    ctx.fillText("🌟 "+RAY_FLOORS[RAY.floor].name+" 클리어!", LOGW/2, LOGH/2-14);
-    const nf=RAY_FLOORS[RAY.floor+1];
-    if(nf){ ctx.fillStyle="#cbd4f5"; ctx.font="16px 'Malgun Gothic',sans-serif";
-      ctx.fillText("다음: "+nf.name+" — 더 크고, 젤리 "+((RAY.floor+1)===2?2:1)+"마리!", LOGW/2, LOGH/2+24); } }
   if(RAY.paused){
     ctx.fillStyle="rgba(8,10,22,0.6)"; ctx.fillRect(0,0,LOGW,LOGH);
-    ctx.fillStyle="#ffffff"; ctx.font="bold 40px 'Malgun Gothic',sans-serif"; ctx.fillText("⏸ 일시정지", LOGW/2, LOGH/2-10);
-    ctx.font="16px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#aab4e0"; ctx.fillText("P 키로 계속", LOGW/2, LOGH/2+30);
+    ctx.fillStyle="#ffffff"; ctx.font="bold 40px 'Malgun Gothic',sans-serif"; ctx.fillText("\u23f8 \uc77c\uc2dc\uc815\uc9c0", LOGW/2, LOGH/2-10);
+    ctx.font="16px 'Malgun Gothic',sans-serif"; ctx.fillStyle="#aab4e0"; ctx.fillText("P \ud0a4\ub85c \uacc4\uc18d", LOGW/2, LOGH/2+30);
   }
   if(RAY.cleared){
     ctx.fillStyle="rgba(8,10,22,0.82)"; ctx.fillRect(0,0,LOGW,LOGH);
-    ctx.fillStyle="#ffe14d"; ctx.font="bold 44px 'Malgun Gothic',sans-serif";
-    ctx.fillText("🌟 던전 완전 정복!", LOGW/2, LOGH/2-84);
-    ctx.font="bold 34px 'Malgun Gothic',sans-serif";
-    ctx.fillText("★".repeat(RAY.starsRate)+"☆".repeat(3-RAY.starsRate), LOGW/2, LOGH/2-36);
+    ctx.fillStyle="#ffe14d"; ctx.font="bold 44px 'Malgun Gothic',sans-serif"; ctx.fillText("\ud83c\udf1f \ubbf8\ub85c \uc644\uc804 \uc815\ubcf5!", LOGW/2, LOGH/2-84);
+    ctx.font="bold 34px 'Malgun Gothic',sans-serif"; ctx.fillText("\u2605".repeat(RAY.starsRate)+"\u2606".repeat(3-RAY.starsRate), LOGW/2, LOGH/2-36);
     ctx.fillStyle="#dfe6ff"; ctx.font="17px 'Malgun Gothic',sans-serif";
-    ctx.fillText("⏱ 합계 "+RAY.total.toFixed(1)+"초 ("+RAY.times.map(t=>t.toFixed(0)+"s").join(" · ")+") · ⭐ "+RAY.totalGot+"/15", LOGW/2, LOGH/2+4);
-    labRankDraw("ray", LOGW/2+360, LOGH/2-60, "초");
-    ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif";
-    ctx.fillText("★★★=별 13개 이상 · ★★=8개 이상 · 시간은 기록용", LOGW/2, LOGH/2+32);
-    let bestTxt="—";
-    try{ const b=JSON.parse(localStorage.getItem(RAY_BEST_KEY)||"null"); if(b) bestTxt=b.total+"초 · ⭐"+b.stars; }catch(e){}
-    ctx.fillStyle="#dfe6ff"; ctx.font="17px 'Malgun Gothic',sans-serif";
-    ctx.fillText("🏆 최고 기록: "+bestTxt, LOGW/2, LOGH/2+62);
-    ctx.fillText("R(Enter) 다시 · Esc 나가기", LOGW/2, LOGH/2+94);
+    ctx.fillText("\u23f1 \ud569\uacc4 "+RAY.total.toFixed(1)+"\ucd08 ("+RAY.times.map(t=>t.toFixed(0)+"s").join(" \u00b7 ")+") \u00b7 \u2b50 "+RAY.totalGot+"/15", LOGW/2, LOGH/2+4);
+    labRankDraw("ray", LOGW/2+360, LOGH/2-60, "\ucd08");
+    ctx.fillStyle="#8893bb"; ctx.font="13px 'Malgun Gothic',sans-serif"; ctx.fillText("\u2605\u2605\u2605=\ubcc4 13\uac1c \uc774\uc0c1 \u00b7 \u2605\u2605=8\uac1c \uc774\uc0c1 \u00b7 \uc2dc\uac04\uc740 \uae30\ub85d\uc6a9", LOGW/2, LOGH/2+32);
+    let bestTxt="\u2014"; try{ const b=JSON.parse(localStorage.getItem(RAY_BEST_KEY)||"null"); if(b) bestTxt=b.total+"\ucd08 \u00b7 \u2b50"+b.stars; }catch(e){}
+    ctx.fillStyle="#dfe6ff"; ctx.font="17px 'Malgun Gothic',sans-serif"; ctx.fillText("\ud83c\udfc6 \ucd5c\uace0 \uae30\ub85d: "+bestTxt, LOGW/2, LOGH/2+62);
+    ctx.fillText("R(Enter) \ub2e4\uc2dc \u00b7 Esc \ub098\uac00\uae30", LOGW/2, LOGH/2+94);
   }
   ctx.restore();
 }
@@ -8189,7 +8111,7 @@ function gmScoreCount(){ let a=0,b=0; for(let r=0;r<GM_N;r++)for(let c=0;c<GM_N;
 const LAB_GAMES=[
   { key:"td", emoji:"🏰", name:"별빛 수비대",   desc:"길목에 탑을 지어 방어",   run:function(){ tdStart(); } },
   { key:"fleet", emoji:"🚀", name:"별빛 함대",     desc:"편대를 격추하는 슈팅",     run:function(){ shOpen(); } },
-  { key:"ray", emoji:"🕶", name:"별빛 던전 3D",  desc:"1인칭 미로 탐험",         run:function(){ rayStart(); } },
+  { key:"ray", emoji:"🗺", name:"별빛 미로",     desc:"미로 탐험 (내 캐릭터로)",  run:function(){ rayStart(); } },
   { key:"sv", emoji:"⚔", name:"별빛 생존자",   desc:"무한 생존(자동 공격·최대 7분)", run:function(){ svSelect(); } },
   { key:"egg", emoji:"🥚", name:"별빛 알",       desc:"챕터1의 알을 부화시키자",  run:function(){ eggStart(); } },
   { key:"pz", emoji:"🧩", name:"별조각 밀기",   desc:"소코반 두뇌 퍼즐",         run:function(){ pzStart(); } },

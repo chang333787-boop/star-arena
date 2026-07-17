@@ -301,10 +301,9 @@ run("던전3D: 달리기(Shift) 가속", ()=>{
   api.rayStart();
   const RAY=api.RAY, K=api.keysDown;
   RAY.mons.length=0; RAY.px=1.5; RAY.py=1.5;
-  const east=(RAY.map[1][2]==="." && RAY.map[1][3]===".");   // 시드에 따라 열린 복도 방향 선택
-  RAY.ang=east?0:Math.PI/2;
-  const axis=()=> east?RAY.px:RAY.py;
-  K.clear(); K.add("ArrowUp");
+  const east=(RAY.map[1][2]===".");   // v1.98: 8방향 — 열린 방향 선택(오른쪽/아래)
+  const key=east?"ArrowRight":"ArrowDown", axis=()=> east?RAY.px:RAY.py;
+  K.clear(); K.add(key);
   for(let i=0;i<24;i++) api.rayUpdate(DT);
   const walk=axis()-1.5;
   RAY.px=1.5; RAY.py=1.5; K.add("ShiftLeft");
@@ -410,21 +409,17 @@ run("LAB-3 함대: 일시정지", ()=>{
   for(let i=0;i<60;i++) api.shUpdate(DT);
   check("P 일시정지: 시간 정지", SH.time===t0);
 });
-run("LAB-3 던전3D: 나침반 Tab·미니맵 3단·접근 경고", ()=>{
+run("던전(오버헤드 v1.98): 접근 경고 + 8방향 이동", ()=>{
   api.rayStart();
-  const RAY=api.RAY;
-  const t0=api.rayCompassTarget();
-  check("기본 나침반=큰 별", t0.label==="큰 별");
-  api.rayKey("Tab");
-  const t1=api.rayCompassTarget();
-  check("Tab → 가까운 별조각", t1.label==="별조각");
-  check("미니맵 기본 1(작게)", RAY.mini===1);
-  api.rayKey("KeyM"); api.rayKey("KeyM");
-  check("M 순환: 2(크게)→0(끔)", RAY.mini===0);
-  // 접근 경고 거리 계산
+  const RAY=api.RAY, K=api.keysDown;
   RAY.mons[0].x=RAY.px+1.2; RAY.mons[0].y=RAY.py;
   api.rayUpdate(DT);
   check("몬스터 접근 거리 추적(monNear<3)", RAY.monNear<3);
+  RAY.mons.length=0; RAY.px=1.5; RAY.py=1.5;
+  if(RAY.map[1][2]==="."){ K.clear(); K.add("ArrowRight"); for(let i=0;i<20;i++) api.rayUpdate(DT); K.clear();
+    check("→ 8방향 이동(오른쪽·회전 없음)", RAY.px>1.62 && Math.abs(RAY.py-1.5)<0.01 && RAY.faceLeft===false); }
+  else { K.clear(); K.add("ArrowDown"); for(let i=0;i<20;i++) api.rayUpdate(DT); K.clear();
+    check("↓ 8방향 이동(아래·회전 없음)", RAY.py>1.62 && Math.abs(RAY.px-1.5)<0.01); }
 });
 run("LAB-3 던전3D: 일시정지·층 인트로", ()=>{
   api.rayStart();

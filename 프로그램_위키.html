@@ -54,7 +54,7 @@ details[open] summary{margin-bottom:8px;}
 <body>
 <div class="app">
 <nav class="side" id="side">
-  <div class="logo">⭐ 별빛 아레나 위키<small>현재 버전 <b style="color:#ffe14d">v1.97</b> · 2026-07-12</small></div>
+  <div class="logo">⭐ 별빛 아레나 위키<small>현재 버전 <b style="color:#ffe14d">v1.98</b> · 2026-07-12</small></div>
   <input id="wsearch" type="search" placeholder="🔎 검색 (예: 뭉게대왕, 조작)" style="width:100%;margin:10px 0 2px;padding:7px 10px;border-radius:9px;border:1px solid #2a3560;background:#0a0f28;color:#dfe6ff;font-family:inherit;font-size:13px;">
   <div id="sres" style="font-size:11.5px;color:#8893bb;padding:0 4px;"></div>
   <div class="grp">시작</div>
@@ -68,7 +68,7 @@ details[open] summary{margin-bottom:8px;}
   <div class="grp">🧪 별빛 실험실 (교사 전용)</div>
   <button class="nav-btn" data-p="td">🏰 별빛 수비대</button>
   <button class="nav-btn" data-p="fleet">🚀 별빛 함대</button>
-  <button class="nav-btn" data-p="dungeon">🕶 별빛 던전 3D</button>
+  <button class="nav-btn" data-p="dungeon">🗺 별빛 미로</button>
   <button class="nav-btn" data-p="survivor">⚔ 별빛 생존자</button>
   <button class="nav-btn" data-p="egg">🥚 별빛 알</button>
   <button class="nav-btn" data-p="puzzle">🧩 별조각 밀기</button>
@@ -103,7 +103,7 @@ details[open] summary{margin-bottom:8px;}
 <div class="card-grid">
 <div class="gcard" data-p="td"><div class="em">🏰</div><div class="nm">별빛 수비대</div><div class="ds">타워 디펜스</div></div>
 <div class="gcard" data-p="fleet"><div class="em">🚀</div><div class="nm">별빛 함대</div><div class="ds">세로 슈팅</div></div>
-<div class="gcard" data-p="dungeon"><div class="em">🕶</div><div class="nm">던전 3D</div><div class="ds">1인칭 미로</div></div>
+<div class="gcard" data-p="dungeon"><div class="em">🗺</div><div class="nm">별빛 미로</div><div class="ds">위에서 보는 미로</div></div>
 <div class="gcard" data-p="survivor"><div class="em">⚔</div><div class="nm">별빛 생존자</div><div class="ds">7분 생존+죽음의 피날레</div></div>
 <div class="gcard" data-p="egg"><div class="em">🥚</div><div class="nm">별빛 알</div><div class="ds">펫 부화</div></div>
 <div class="gcard" data-p="puzzle"><div class="em">🧩</div><div class="nm">별조각 밀기</div><div class="ds">두뇌 퍼즐+출제</div></div>
@@ -256,18 +256,18 @@ details[open] summary{margin-bottom:8px;}
 
 <!-- ═════════ 던전3D ═════════ -->
 <section class="page" id="p-dungeon">
-<h1>🕶 별빛 던전 3D <span class="badge">실험 3 · 1인칭 미로</span></h1>
-<p class="tagline">진짜 3D처럼 보이는 미로 속! 별조각을 모아 큰 별의 문을 열고 3층 아래로.</p>
+<h1>🗺 별빛 미로 <span class="badge">실험 3 · 위에서 보는 미로</span></h1>
+<p class="tagline">위에서 내려다보는 미로를 <b>내 캐릭터</b>로 탐험! 별조각을 모아 큰 별의 문을 열고 3층까지. (2026-07-18 1인칭→3인칭 전환: 어지럼 없이 한눈에!)</p>
 <h2>🎮 조작</h2>
 <table><tr><th>키</th><th>동작</th></tr>
-<tr><td><kbd>↑↓</kbd>/<kbd>W S</kbd></td><td>앞뒤 이동 · <kbd>←→</kbd> 몸 돌리기 · <kbd>A D</kbd> 옆걸음</td></tr>
+<tr><td><kbd>↑↓←→</kbd>/<kbd>WASD</kbd></td><td>8방향 이동(내가 고른 캐릭터가 걸어다녀요 — 회전 없음)</td></tr>
 <tr><td><kbd>Shift</kbd></td><td>달리기!</td></tr>
-<tr><td><kbd>Tab</kbd></td><td>나침반 목표 전환(큰 별 ↔ 가까운 별조각)</td></tr>
-<tr><td><kbd>M</kbd></td><td>미니맵 끄기/작게/크게 (가 본 곳만 보여요)</td></tr></table>
+<tr><td><kbd>P</kbd> / <kbd>Esc</kbd></td><td>일시정지 / 나가기</td></tr></table>
+<p>미로 전체가 한 화면에 보여서 <b>어디에 별이 있고 어디로 가야 할지 한눈에</b> 알 수 있어요. 1인칭이 아니라 <b>멀미가 없어요.</b></p>
 <h2>🎯 규칙</h2>
 <ul><li>층마다 <b>별조각 5개</b> 중 <b>3개</b>를 모아야 큰 별의 문이 열려요(🔒).</li>
 <li><b>그림자 젤리</b>가 어슬렁 — 가까이 오면 화면 가장자리가 파랗게 경고! 잡히면 시작점으로(죽지 않아요).</li>
-<li>1층 푸른 회랑(17×17) → 2층 이끼 굴(21×21) → 3층 보라 심연(25×25 · 젤리 2마리).</li></ul>
+<li>1층 푸른 회랑(17×17) → 2층 이끼 굴(21×21) → 3층 보라 심연(25×25 · 젤리 2마리). 뒤로 갈수록 미로가 커져요.</li></ul>
 <h2>⭐ 별점</h2><p>별조각 총 13/15개 이상 ★★★ · 8개 이상 ★★ · 합계 시간 최고 기록 저장.</p>
 <details><summary>🔧 관리자 노트</summary>
 <ul><li>층 설정 <code>RAY_FLOORS</code>(크기·시드·벽색·젤리 속도) — 미로는 시드 고정 DFS 생성이라 항상 같은 모양(공략 가능)</li>
@@ -596,11 +596,12 @@ node -e 'const fs=require("fs");const h=fs.readFileSync("index.html","utf8");con
 
 <!-- ═════════ 일지 ═════════ -->
 <section class="page" id="p-log">
-<h1>📜 업데이트 일지 <span class="badge">현재 v1.97</span></h1>
+<h1>📜 업데이트 일지 <span class="badge">현재 v1.98</span></h1>
 <p class="tagline">v1.00(6-29 첫 버전)부터 이어온 버전 기록 — 전체 상세는 저장소 <code>PATCHNOTES.md</code>(67개 버전), 작업 맥락은 <code>작업현황_HANDOFF.md</code>.</p>
 <h2>최근 (v1.55 ~ v1.65)</h2>
 <table><tr><th>버전</th><th>날짜</th><th>내용</th></tr>
-<tr><td><b>v1.97</b></td><td>07-14</td><td><b>생존자 보통 체력 100→30</b> — 약 4방이면 사망, 신이 돼도 계속 피해다니게(목숨 확 줄임)</td></tr>
+<tr><td><b>v1.98</b></td><td>07-18</td><td><b>던전 3D→별빛 미로(오버헤드)</b> — 1인칭 폐지(멀미 0), 위에서 보는 3인칭·내 캐릭터로 미로 탐험</td></tr>
+<tr><td>v1.97</td><td>07-14</td><td><b>생존자 보통 체력 100→30</b> — 약 4방이면 사망, 신이 돼도 계속 피해다니게(목숨 확 줄임)</td></tr>
 <tr><td>v1.96</td><td>07-14</td><td><b>생존자 기록 리셋</b> — 7분판 개편으로 옛 좀비 기록(10분판·53,691킬) 폐기, 학급 랭킹·개인 최고 새로 시작</td></tr>
 <tr><td>v1.95</td><td>07-14</td><td><b>생존자 7분판+죽음 피날레</b> — 7분에 절대 못 죽이는 🌑죽음의 뭉게대왕 강림(도망쳐 완주!), 탄막(포수·보스 링) 강화</td></tr>
 <tr><td>v1.94</td><td>07-14</td><td><b>어려움 모드 다듬기</b> — 방어막 1회용(30초 만료·재충전 없음)·체력 회복 카드 제외</td></tr>
