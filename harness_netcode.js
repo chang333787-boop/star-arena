@@ -43,7 +43,9 @@ globalThis.firebase={ initializeApp:()=>({}), auth:()=>({signInAnonymously:()=>P
 const path=require("path");
 let s=fs.readFileSync(path.join(__dirname,"index.html"),"utf8").match(/<script>([\s\S]*?)<\/script>/)[1];
 s+=`;globalThis.__n={ predictMoveAim, onlineReconcile, netNewRecon, netOnSnapshot, netApplyCorr, netLogFrame, netStampInput, netHostTrackInput, netAckPack,
-  emptyInput, OM:OnlineManager, netStats, setObs:v=>{OBSTACLES=v;}, get netInputSeq(){return netInputSeq;} };`;
+  emptyInput, OM:OnlineManager, netStats, netCompactInput, netPackBullets, netUnpackBullets, tUpdate, tStartMatch, tHostWriteState,
+  setRule:(r)=>{onlineSelectedRule=r;}, setSel:(c,w)=>{selectedCharacterId=c;selectedWeaponId=w;profile.selectedCharacterId=c;profile.selectedWeaponId=w;},
+  get tFighters(){return tFighters;}, setState:v=>{gameState=v;}, STATE, setObs:v=>{OBSTACLES=v;}, get netInputSeq(){return netInputSeq;} };`;
 let api; try{ (0,eval)(s); api=globalThis.__n; }catch(e){ console.log("LOAD_FAIL:",e.stack); process.exit(1); }
 let fails=0; const check=(n,c)=>{console.log((c?"  ok  ":"FAIL  ")+n); if(!c)fails++;};
 api.setObs([]);
@@ -135,9 +137,50 @@ for(const c of [ { name:"Firebase 보통(편도 120ms ±40ms)", up:0.12, down:0.
   check("입력 번호 없으면 aq 필드 없음(패킷 증가 0)", o1.aq===undefined && o1.ad===undefined);
   check("입력 번호 있으면 aq/ad/ms 숫자 ("+JSON.stringify(o2)+")", o2.aq===5 && o2.ad===50 && typeof o2.ms==="number" && o2.ms>0);
 }
+{ // 전송량(원인 J): 3대3 60초(봇 5 + 방장) — 전체 set(옛 방식) 대비 변경분 update + 탄 압축
+  const OM=api.OM;
+  OM.leaveRoom(true); OM.available=true; OM.uid="hostUID"; OM.db=makeMockDB();
+  api.setSel("student_01","tool_01"); api.setRule(null);
+  let code=null; OM.createTeamRoom("online3v3",(ok,info)=>{ if(ok) code=info; });
+  api.tStartMatch();
+  const room=()=>OM.db._data.starArenaOnline.rooms[code];
+  let oldB=0, newB0=api.netStats.upBytes, writes=0, mismatch=0; const orig=OM._stWrite;
+  // Firebase 저장 규칙 흉내: 빈 배열/객체·null은 저장 안 됨 → 비교 전 정규화
+  const norm=v=>{ if(Array.isArray(v)){ const o=v.map(norm).filter(x=>x!==undefined); return o.length?o:undefined; }
+    if(v&&typeof v==="object"){ const o={}; for(const k of Object.keys(v).sort()){ if(k==="updatedAt") continue; const x=norm(v[k]); if(x!==undefined) o[k]=x; } return Object.keys(o).length?o:undefined; }
+    return v===null?undefined:v; };
+  OM._stWrite=function(ref,obj){ // 옛 방식 크기: 전체 상태 + 탄을 옛 객체 형식으로
+    const old=Object.assign({},obj); old.bullets=api.netUnpackBullets(obj).map(b=>({x:b.x,y:b.y,r:b.r,c:b.c,vx:b.vx,vy:b.vy,w:b.w})); delete old.bp;
+    oldB+=JSON.stringify(old).length; writes++;
+    const r=orig.call(OM,ref,obj);
+    if(JSON.stringify(norm(room().state))!==JSON.stringify(norm(JSON.parse(JSON.stringify(obj))))){ if(!mismatch) console.log("  불일치 예:", writes); mismatch++; }
+    return r; };
+  const SEC=60; for(let i=0;i<SEC*60;i++) api.tUpdate(1/60);
+  OM._stWrite=orig;
+  const newB=api.netStats.upBytes-newB0;
+  const oldK=oldB/1024/SEC, newK=newB/1024/SEC;
+  console.log("[3대3 60초, 상태 "+writes+"회]  옛 방식 "+oldK.toFixed(1)+"KB/s → 새 방식 "+newK.toFixed(1)+"KB/s (게스트 1명이 받는 양, "+Math.round(100-newK/oldK*100)+"% 감소)");
+  // 게스트가 받은 합쳐진 상태가 호스트의 마지막 전체 상태와 같은지(변경분 누락 없음)
+  const last={}; OM._stLastStr=null; const cap={ child:()=>({ set:(v)=>{ Object.assign(last,v); return null; }, update:()=>null }) };
+  api.tHostWriteState(); const full=JSON.parse(JSON.stringify(room().state)); 
+  check("3대3 전송량 40% 이상 감소", newK<=oldK*0.6);
+  check("변경분만 보내도 게스트가 받는 합쳐진 상태 = 방장 전체 상태(900회 매번)", mismatch===0);
+  OM.leaveRoom(true);
+}
+{ // 탄 압축 왕복(주인 포함) · 입력 압축
+  const src=[{x:10.4,y:20.6,r:9,vx:300,vy:-2,color:"#ff0",wid:"w1",owner:"host"},{x:1,y:2,r:5,vx:0,vy:0,color:"#0ff",wid:null,owner:"guest"},{x:3,y:4,r:9,vx:1,vy:1,color:"#ff0",wid:"w1",owner:"host"}];
+  const pb=api.netPackBullets(src,true); const back=api.netUnpackBullets({bullets:pb.bl,bp:pb.bp});
+  check("탄 압축 왕복: 위치·색·무기·주인 보존, 표 2칸", pb.bp.length===2 && back[0].x===10 && back[0].c==="#ff0" && back[0].w==="w1" && back[0].o==="host" && back[1].o==="guest" && back[1].w===null);
+  check("옛 객체 형식 탄도 그대로 읽음", api.netUnpackBullets({bullets:[{x:1,y:2,r:3,c:"#fff",vx:4,vy:5,o:"host"}]})[0].o==="host");
+  const full=Object.assign(api.emptyInput(),{mvx:0.7,mvy:0,aim:1.25,attack:true,right:true,iq:12});
+  const c=api.netCompactInput(full);
+  console.log("[입력 패킷]  "+JSON.stringify(full).length+"B → "+JSON.stringify(c).length+"B  "+JSON.stringify(c));
+  check("입력 압축: 필요한 값만(mvx·aim·attack·iq), 기본값·구형 불리언 제외", c.mvx===0.7 && c.aim===1.25 && c.attack===true && c.iq===12 && !("mvy" in c) && !("right" in c) && !("special" in c) && !("pick" in c));
+}
 { // 흐름 제어(원인 B): 서버 확인 전 쓰기가 8개면 더 쌓지 않고 최신 1개만 보관 → 확인 오면 그 최신 것을 보냄
   const OM=api.OM; const sent=[]; const pend=[];
-  const ref={ child:()=>({ set:(v)=>{ sent.push(v.n); let res; const p=new Promise(r=>{res=r;}); pend.push(res); return p; } }) };
+  const w=(v)=>{ sent.push(v.n!==undefined?v.n:v["n"]); let res; const p=new Promise(r=>{res=r;}); pend.push(res); return p; };
+  const ref={ child:()=>({ set:w, update:w }) };
   OM.leaveRoom(true); OM.roomRef=ref;
   for(let i=1;i<=20;i++) OM._rtdbSetState({n:i});
   check("확인 전 쓰기 8개에서 멈춤(20개 중)", sent.length===8 && OM._stInflight===8);

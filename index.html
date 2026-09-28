@@ -1703,6 +1703,7 @@ const OnlineManager = {
     return v;
   },
   writeInput:function(inputObj){ try{ const key=this.mySlot||this.role; if(!key) return;
+      inputObj=netCompactInput(inputObj);   // 넷코드 다듬기(원인 J): 기본값 빼고 전송
       RTCNet.sendInput(inputObj, key);   // WebRTC DC로(켜졌고 열렸으면, inputObj._sq 부여). RTDB는 아래에서 floor로 항상 전송, seq로 dedup.
       if(this.roomRef) this.roomRef.child("inputs/"+key).set(this._sanitizePacket(inputObj,"input")); }catch(e){ try{ console.warn("[online] input 전송 실패", e); }catch(e2){} } },   // 온라인긴급 P1: inputs/$slot 분리
   writeMetaStatus:function(status, extra){
@@ -1724,6 +1725,51 @@ const OnlineManager = {
      지연이 계속 커지고 몰아서 도착(순간이동)하던 현상 방지. 평소(왕복 300ms 이하, 15Hz)에는 한도에 닿지 않아 동작 동일. */
   STATE_MAX_INFLIGHT:8,
   _stInflight:0, _stPend:null, _stPendRef:null, _stOldestAt:0,
+  /* 넷코드 다듬기(원인 J): 바뀐 부분만 보내기. 직전에 보낸 state와 비교해 달라진 최상위 키(인물·적은 개별 id 단위)만 update()로 쓴다.
+     게스트의 state value 구독은 Firebase가 합친 전체 상태를 그대로 받으므로 게스트 코드는 변경 없음.
+     방/매치가 바뀌었거나 10초마다는 전체 set()(안전 새로고침). 체력·탄창·아이템·구역·규칙처럼 대부분의 틱에 안 변하는 값이 빠져 전송량이 크게 준다. */
+  STATE_FULL_EVERY_MS:10000,
+  _stLastStr:null, _stLastRef:null, _stFullAt:0,
+  _stStrs:function(obj){   // 비교용 문자열: 최상위 키별, fighters/enemies는 id별·칸별
+    const m={};
+    for(const k in obj){ const v=obj[k];
+      if((k==="fighters"||k==="enemies") && v && typeof v==="object" && !Array.isArray(v)){
+        const sub={};
+        for(const id in v){ const e=v[id]; const f={};
+          if(e && typeof e==="object" && !Array.isArray(e)){ for(const fk in e) f[fk]=JSON.stringify(e[fk]); sub[id]={ f:f }; }
+          else sub[id]={ s:JSON.stringify(e) }; }
+        m[k]={ sub:sub };
+      } else m[k]={ s:JSON.stringify(v) };
+    }
+    return m; },
+  _stWrite:function(ref, obj){
+    const now=Date.now(), cur=this._stStrs(obj), prev=this._stLastStr;
+    const full=(!prev || this._stLastRef!==ref || now-this._stFullAt>=this.STATE_FULL_EVERY_MS);
+    this._stLastStr=cur; this._stLastRef=ref;
+    if(full){ this._stFullAt=now; netStats.upBytes+=JSON.stringify(obj).length; return ref.child("state").set(obj); }
+    const u={}; let bytes=0, any=false;
+    const put=function(path, val, len){ u[path]=val; bytes+=len+path.length+4; any=true; };
+    for(const k in cur){ const c=cur[k], a=prev[k];
+      if(c.sub){
+        if(!(a && a.sub)){ put(k, obj[k], JSON.stringify(obj[k]).length); continue; }
+        for(const id in c.sub){ const ce=c.sub[id], ae=a.sub[id], base=k+"/"+id;
+          if(!ae || !ce.f || !ae.f){ const js=ce.f?JSON.stringify(obj[k][id]):ce.s; if(!ae || js!==(ae.s||null) || !ce.f!==!ae.f) put(base, obj[k][id], js.length); continue; }
+          // 칸 단위 비교: 바뀐 칸만 경로로(칸이 많이 바뀌면 통째로가 더 짧음)
+          const ch=[]; let chLen=0, allLen=2;
+          for(const fk in ce.f){ allLen+=ce.f[fk].length+fk.length+4; if(ae.f[fk]!==ce.f[fk]){ ch.push(fk); chLen+=ce.f[fk].length+base.length+fk.length+6; } }
+          const gone=[]; for(const fk in ae.f){ if(!(fk in ce.f)){ gone.push(fk); chLen+=base.length+fk.length+10; } }
+          if(!ch.length && !gone.length) continue;
+          if(chLen>=allLen+base.length){ put(base, obj[k][id], allLen); continue; }
+          for(const fk of ch) put(base+"/"+fk, obj[k][id][fk], ce.f[fk].length);
+          for(const fk of gone) put(base+"/"+fk, null, 4);
+        }
+        for(const id in a.sub){ if(!(id in c.sub)) put(k+"/"+id, null, 4); }
+      } else if(!a || a.s!==c.s) put(k, obj[k], c.s.length);
+    }
+    for(const k in prev){ if(!(k in cur)) put(k, null, 4); }
+    netStats.upBytes+=bytes;
+    return any ? ref.child("state").update(u) : null;   // 바뀐 게 있을 때만
+  },
   _rtdbSetState:function(obj){
     const self=this, ref=this.roomRef; if(!ref) return;
     const now=Date.now();
@@ -1735,14 +1781,14 @@ const OnlineManager = {
     const fin=function(){ if(done) return; done=true;
       self._stInflight=Math.max(0,self._stInflight-1); self._stOldestAt=Date.now();
       const n=self._stPend; if(n && self._stPendRef===self.roomRef && self._stInflight<self.STATE_MAX_INFLIGHT){ self._stPend=null; self._rtdbSetState(n); } };
-    const p=ref.child("state").set(obj);
-    if(p && p.then) p.then(fin, function(e){ try{ console.warn("[online] state 전송 실패", e); }catch(e2){} fin(); });
+    const p=this._stWrite(ref, obj);
+    if(p && p.then) p.then(fin, function(e){ try{ console.warn("[online] state 전송 실패", e); }catch(e2){} self._stLastStr=null; fin(); });   // 실패하면 다음은 전체 set()
     else fin();
   },
 
   leaveRoom:function(localOnly){
     try{ RTCNet.reset(); }catch(e){}   // WebRTC 피어/구독 정리
-    this._stInflight=0; this._stPend=null; this._stPendRef=null;   // 넷코드 다듬기: 흐름 제어 상태 초기화
+    this._stInflight=0; this._stPend=null; this._stPendRef=null; this._stLastStr=null; this._stLastRef=null;   // 넷코드 다듬기: 흐름 제어·변경분 기준 초기화
     try{
       for(const u of this.unsubs){ try{ u(); }catch(e){} }
       this.unsubs=[];
@@ -16212,7 +16258,7 @@ function drawShopScreen(){
    guest는 자기 입력만 쓰고 host가 보낸 state를 그린다.
    ======================================================================= */
 function onlineMapId(){ const m=OnlineManager.meta; return (m && m.mapId) || "training"; }   // 온라인 활성 맵(meta.mapId 기준, 없으면 훈련장)
-const ONLINE_STATE_FPS = 30;        // host 상태 동기화 빈도(초당 횟수). 높일수록 부드럽고 Firebase 사용량 증가
+const ONLINE_STATE_FPS = 20;        // host 상태 동기화 빈도(초당 횟수). 높일수록 부드럽고 Firebase 사용량 증가 — 넷코드 다듬기(원인 K): 30→20(화해·보간 0.15s=3패킷으로 충분)
 // 입력은 '변할 때 즉시' 전송(반응성 그대로). 변화가 없으면 이 주기(초)로만 재전송한다 — keepalive.
 // (코드감사: 기존엔 입력이 안 변해도 초당 30회(1v1)/20회(팀) 동일 값을 계속 써서 학급 동시 플레이 시 Firebase 쓰기 한도를 낭비)
 const ONLINE_INPUT_KEEPALIVE = 0.75;
@@ -16321,18 +16367,51 @@ function netGuestSelfStep(R, pred, auth, fresh, dt){
   if(R.hasAck) netApplyCorr(R, pred, dt); else onlineReconcile(pred, auth, dt);
 }
 /* 측정(원인 확인용): 게스트 = 왕복·도착 간격 흔들림·받는 양, 호스트 = 밀려서 건너뛴 전송 수. 배지와 window.__netStats로 확인. */
-const netStats={ rtt:null, lastAt:0, iv:null, jit:0, bytes:0, bytesAt:0, kbps:0, skipped:0 };
+const netStats={ rtt:null, lastAt:0, iv:null, jit:0, bytes:0, bytesAt:0, kbps:0, skipped:0, upBytes:0, upAt:0, upKbps:0 };
 function netNoteArrival(s){
   const now=Date.now();
   if(netStats.lastAt){ const iv=now-netStats.lastAt;
     if(netStats.iv===null) netStats.iv=iv; else { netStats.jit=netStats.jit*0.9+Math.abs(iv-netStats.iv)*0.1; netStats.iv=netStats.iv*0.9+iv*0.1; } }
   netStats.lastAt=now;
-  try{ netStats.bytes+=JSON.stringify(s).length; }catch(e){}
-  if(!netStats.bytesAt) netStats.bytesAt=now;
-  if(now-netStats.bytesAt>=2000){ netStats.kbps=netStats.bytes/1024/((now-netStats.bytesAt)/1000); netStats.bytes=0; netStats.bytesAt=now; }
 }
-function netResetStats(){ netStats.rtt=null; netStats.lastAt=0; netStats.iv=null; netStats.jit=0; netStats.bytes=0; netStats.bytesAt=0; netStats.kbps=0; netStats.skipped=0; }
+function netUpRate(){   // 호스트: Firebase로 보낸 양(게스트 1명이 받는 양과 거의 같음)
+  const now=Date.now(); if(!netStats.upAt){ netStats.upAt=now; return; }
+  if(now-netStats.upAt>=2000){ netStats.upKbps=netStats.upBytes/1024/((now-netStats.upAt)/1000); netStats.upBytes=0; netStats.upAt=now; }
+}
+function netResetStats(){ netStats.rtt=null; netStats.lastAt=0; netStats.iv=null; netStats.jit=0; netStats.bytes=0; netStats.bytesAt=0; netStats.kbps=0; netStats.skipped=0; netStats.upBytes=0; netStats.upAt=0; netStats.upKbps=0; }
 try{ window.__netStats=netStats; }catch(e){}
+/* 넷코드 다듬기(원인 J): 탄 패킷 압축 — 탄마다 반복되던 색 문자열·무기 id·주인을 패킷당 1번(bp 표)만 보내고,
+   탄은 숫자 배열 [x,y,r,vx,vy,k](k=bp 번호)로. 받는 쪽은 옛 객체 형식도 그대로 읽는다(하위호환). */
+function netPackBullets(src, withOwner){
+  const bp=[], idx={}, bl=[];
+  for(const b of src){
+    const key=(b.color||"")+"|"+(b.wid||"")+(withOwner?"|"+(b.owner||""):"");
+    let k=idx[key];
+    if(k===undefined){ k=idx[key]=bp.length; bp.push(withOwner?[b.color||"", b.wid||"", b.owner||""]:[b.color||"", b.wid||""]); }
+    bl.push([Math.round(b.x), Math.round(b.y), Math.round(b.r), Math.round(b.vx), Math.round(b.vy), k]);
+  }
+  return { bl:bl, bp:bp };
+}
+function netUnpackBullets(s){
+  const bp=s.bp||[];
+  return (s.bullets||[]).map(function(b){
+    if(!Array.isArray(b)) return { x:b.x, y:b.y, vx:b.vx||0, vy:b.vy||0, r:b.r, c:b.c, o:b.o, w:b.w||null };
+    const p=bp[b[5]]||[];
+    return { x:b[0], y:b[1], r:b[2], vx:b[3]||0, vy:b[4]||0, c:p[0]||"#ffffff", w:p[1]||null, o:p[2]||undefined };
+  });
+}
+/* 넷코드 다듬기(원인 J): 입력 패킷 압축 — 기본값(false·null·0·pick -1)과 아날로그에서 유도되는 구형 불리언(up/down/left/right/super)은 빼고 보낸다.
+   호스트는 빠진 키를 모두 '안 누름'으로 읽는다(!!undefined=false, mvx||0, typeof aim). 약 190B → 평소 30~60B. */
+function netCompactInput(inp){
+  const o={};
+  for(const k in inp){ const v=inp[k];
+    if(k==="up"||k==="down"||k==="left"||k==="right"||k==="super") continue;
+    if(v===false||v===null||v===undefined) continue;
+    if((k==="mvx"||k==="mvy") && v===0) continue;
+    if(k==="pick" && v===-1) continue;
+    o[k]=v; }
+  return o;
+}
 
 function openOnlineMenu(){
   onlineMenuIndex=0;
@@ -16572,7 +16651,7 @@ function updateOnlineGuest(dt){
     onlineLastStateRef=s;
     netNoteArrival(s);
     onlineSnapPush(onlineSnapBuf, onlineInterpClock, s);
-    onlineBulletsView=(s.bullets||[]).map(b=>({ x:b.x, y:b.y, vx:b.vx||0, vy:b.vy||0, r:b.r, c:b.c, o:b.o, w:b.w||null }));
+    onlineBulletsView=netUnpackBullets(s);   // 넷코드 다듬기: 압축 탄(옛 객체 형식도 읽음)
   }
   // 스냅샷 사이에는 탄환을 속도로 외삽해 부드럽게 진행
   for(const b of onlineBulletsView){ b.x+=b.vx*dt; b.y+=b.vy*dt; }
@@ -16779,10 +16858,9 @@ function packFighter(f){
 function hostWriteOnlineState(){
   const H=onlineFighters.host, G=onlineFighters.guest;
   if(!H||!G) return;
-  const bl=[];
-  for(const b of onlineBullets) bl.push({ x:Math.round(b.x), y:Math.round(b.y), r:Math.round(b.r), o:b.owner, c:b.color, vx:Math.round(b.vx), vy:Math.round(b.vy), w:b.wid||null });
-  const pw=POWERUPS.map(p=>({x:p.x,y:p.y,t:powerupPacketT(p),id:p.id}));
-  OnlineManager.writeHostState({ timeLeft:Math.max(0,Math.round(onlineTimeLeft)), host:packFighter(H), guest:packFighter(G), bullets:bl, powerups:pw, zones:packZones() });
+  const pb=netPackBullets(onlineBullets, true);   // 넷코드 다듬기(원인 J): 탄 압축(주인 포함)
+  const pw=POWERUPS.map(p=>({x:Math.round(p.x),y:Math.round(p.y),t:powerupPacketT(p),id:p.id}));
+  OnlineManager.writeHostState({ timeLeft:Math.max(0,Math.round(onlineTimeLeft)), host:packFighter(H), guest:packFighter(G), bullets:pb.bl, bp:pb.bp, powerups:pw, zones:packZones() });
 }
 function hostEndOnlineMatch(){
   const H=onlineFighters.host, G=onlineFighters.guest;
@@ -16885,6 +16963,12 @@ function drawOnlineFighter(d, isMe){
    🟢<150ms(정상) 🟡<400ms(혼잡) 🔴≥400ms(막힘 — 방화벽 long-poll 폴백/회선 문제 의심, 콘솔 경고 1회) */
 let _netWarned=false;
 function drawOnlineNetBadge(){
+  if(OnlineManager.role==="host"){   // 넷코드 다듬기: 방장 화면 — Firebase 전송량·밀림(원인 A·B 확인용)
+    netUpRate();
+    if(netStats.upKbps>0||netStats.skipped>0){ ctx.save(); ctx.textAlign="right"; ctx.fillStyle="rgba(220,230,255,0.7)"; ctx.font="11px 'Malgun Gothic',sans-serif";
+      ctx.fillText("Firebase "+netStats.upKbps.toFixed(1)+"KB/s"+(netStats.skipped>0?" · 밀려서 건너뜀 "+netStats.skipped:""), LOGW-12, 96); ctx.restore(); }
+    return;
+  }
   if(OnlineManager.role!=="guest"||!OnlineManager.onlineStateAt) return;
   const age=Date.now()-OnlineManager.onlineStateAt;
   const col=(age<150)?"#63e06b":(age<400)?"#ffd93d":"#ff6b6b";
@@ -16893,11 +16977,10 @@ function drawOnlineNetBadge(){
     ctx.fillText("네트워크 지연 "+(age>=1000?(age/1000).toFixed(1)+"s":Math.round(age)+"ms"), LOGW-28, 82); }
   else if(RTCNet.on && RTCNet.self && RTCNet.self.open){ ctx.textAlign="right"; ctx.fillStyle="#63e06b"; ctx.font="bold 11px 'Malgun Gothic',sans-serif";
     ctx.fillText("P2P", LOGW-24, 82); }   // WebRTC 직접연결 활성 — 교사 육안 확인용
-  // 넷코드 다듬기: 측정값 한 줄(원인 가리기용) — 왕복 · 도착 흔들림 · 받는 양
+  // 넷코드 다듬기: 측정값 한 줄(원인 가리기용) — 왕복 · 도착 흔들림
   const parts=[];
   if(netStats.rtt!==null) parts.push("왕복 "+Math.round(netStats.rtt)+"ms");
   if(netStats.iv!==null) parts.push("흔들림 "+Math.round(netStats.jit)+"ms");
-  if(netStats.kbps>0) parts.push(Math.round(netStats.kbps)+"KB/s");
   if(parts.length){ ctx.textAlign="right"; ctx.fillStyle="rgba(220,230,255,0.7)"; ctx.font="11px 'Malgun Gothic',sans-serif";
     ctx.fillText(parts.join(" · "), LOGW-12, 96); }
   ctx.restore();
@@ -17952,9 +18035,10 @@ function tPackFighter(f){
   const o={ x:Math.round(f.x), y:Math.round(f.y), hp:Math.round(f.hp),
     facing:Math.round(f.facing*100)/100, dead:!!f.dead, inv:f.invincibleTimer>0,
     am:(f.ammo===undefined?-1:f.ammo),   // 온라인긴급 P0: -1=무한탄(봇·럭키) — undefined는 RTDB set() 전체 거부("동기화 대기" 원인)
-    rl:f.reloading?1:0, sg:Math.round(f.superGauge||0), fr:f.fireRevealTimer>0?1:0,
-    xc:Math.round(Math.max(0,f.specialCd||0)*10)/10,     // X 쿨타임(HUD용)
+    rl:f.reloading?1:0, sg:0, fr:f.fireRevealTimer>0?1:0, xc:0,
     lv:(f.lives===undefined?-1:f.lives) };               // PVE 개인 목숨(-1=해당 없음/3v3)
+  // 넷코드 다듬기(원인 J): 궁극기 게이지·X 쿨타임은 그 학생 본인 HUD에서만 쓴다 → 사람 게스트만 실값(봇·방장 본인은 0 고정 = 변경분 전송 0)
+  if(!f.isBot && f.slot!==OnlineManager.mySlot){ o.sg=Math.round(f.superGauge||0); o.xc=Math.round(Math.max(0,f.specialCd||0)*10)/10; }
   if(f.isBot){ o.c=f.char.id; o.tm=f.team; }             // 봇은 players 로스터에 없어 게스트가 charId/team 역산 불가 → 패킷에 실어 화면 일치(안 하면 게스트에서 봇이 전부 기본 캐릭/blue로 보임)
   netAckPack(o, f);                                      // 넷코드 다듬기: aq/ad/ms(게스트 화해용, 사람 게스트만)
   if(RULE){                                              // P2: 규칙별 개인 상태(술래 여부·별 보유)
@@ -17972,12 +18056,11 @@ function tHostWriteState(){
   if(!OnlineManager.roomRef) return;   // v1.21 성능: 혼자 도전(오프라인)에서는 패킷 직렬화 자체를 생략
   const fighters={};
   for(const slot in tFighters) fighters[slot]=tPackFighter(tFighters[slot]);
-  const bl=[];
   // 게스트 렌더에 필요한 것만(x,y,r,c,vx,vy,w=무기 스프라이트 id). owner/team은 게스트가 안 써서 제외(렉 최적화).
   // P1: 패킷에는 최신 48발까지만(시뮬 상한 80 유지) — 난전 시 스냅샷 6.8KB→4.4KB. 잘리는 건 소멸 직전의 오래된 탄.
   const _blSrc=(tBullets.length>48)?tBullets.slice(tBullets.length-48):tBullets;
-  for(const b of _blSrc) bl.push({ x:Math.round(b.x), y:Math.round(b.y), r:Math.round(b.r), c:b.color, vx:Math.round(b.vx), vy:Math.round(b.vy), w:b.wid||null });
-  const st={ timeLeft:Math.max(0,Math.round(tTimeLeft)), teamScores:tTeamScores, fighters:fighters, bullets:bl,
+  const pb=netPackBullets(_blSrc, false);   // 넷코드 다듬기(원인 J): 탄 압축 [x,y,r,vx,vy,k] + bp 표
+  const st={ timeLeft:Math.max(0,Math.round(tTimeLeft)), teamScores:tTeamScores, fighters:fighters, bullets:pb.bl, bp:pb.bp,
     powerups:POWERUPS.map(p=>({x:Math.round(p.x),y:Math.round(p.y),t:powerupPacketT(p),id:p.id})), zones:packZones() };
   // BIG-BATCH-2 P2: 규칙 상태 동기화(점령전=게이지 · 수정=구조물HP · 별=좌표/카운트다운 · 술래=단계 · 칠=RLE 그리드)
   if(RULE && getOnlineMode(OnlineManager.mode).modeType==="pvp"){
@@ -18045,7 +18128,7 @@ function tUpdateGuest(dt){
     tLastStateRef=s;
     netNoteArrival(s);
     onlineSnapPush(tSnapBuf, tInterpClock, s);   // P1: 페어 보간 버퍼
-    tBulletsView=(s.bullets||[]).map(b=>({ x:b.x,y:b.y,vx:b.vx||0,vy:b.vy||0,r:b.r,c:b.c,w:b.w||null }));
+    tBulletsView=netUnpackBullets(s);   // 넷코드 다듬기: 압축 탄(옛 객체 형식도 읽음)
     if(getOnlineMode(OnlineManager.mode).modeType==="pvp") tGuestApplyRule(s);   // P2+PERF-2: 새 패킷일 때만(페인트 RLE 디코드 60→15Hz)
   }
   for(const b of tBulletsView){ b.x+=b.vx*dt; b.y+=b.vy*dt; }
