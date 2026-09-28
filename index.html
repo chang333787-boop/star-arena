@@ -1662,7 +1662,7 @@ const OnlineManager = {
           const all=snap.val()||{};   // WebRTC/RTDB 공존: 슬롯별 병합+seq(_sq) dedup. DC가 먼저 적용하면 RTDB 사본은 드롭.
           for(const k in all){ const inp=all[k];
             if(inp && inp._sq!==undefined){ const last=(RTCNet.lastInputSeq[k]===undefined)?-1:RTCNet.lastInputSeq[k]; if(inp._sq<=last) continue; RTCNet.lastInputSeq[k]=inp._sq; }
-            self.inputs[k]=inp; }   // _sq 없으면(플래그OFF/emptyInput 클리어) 그냥 적용
+            self.inputs[k]=inp; self._pushInQ(k, inp); }   // _sq 없으면(플래그OFF/emptyInput 클리어) 그냥 적용
           self.onlineInput.host = self.inputs.host||null;   // 1v1 하위호환 뷰
           self.onlineInput.guest = self.inputs.guest||null;
         };
@@ -1702,6 +1702,10 @@ const OnlineManager = {
     }
     return v;
   },
+  // 넷코드 다듬기(3차): 호스트 입력 대기열 — 한 프레임 사이에 입력이 여러 개 오면 중간 것도 지속시간 보정에 쓴다(netHostDrain).
+  inQ:{},
+  _pushInQ:function(k, inp){ if(!inp || typeof inp.iq!=="number") return; const Q=this.inQ[k]||(this.inQ[k]=[]);
+    const L=Q.length?Q[Q.length-1]:null; if(!L || L.iq!==inp.iq){ Q.push(inp); if(Q.length>20) Q.shift(); } },
   writeInput:function(inputObj){ try{ const key=this.mySlot||this.role; if(!key) return;
       inputObj=netCompactInput(inputObj);   // 넷코드 다듬기(원인 J): 기본값 빼고 전송
       RTCNet.sendInput(inputObj, key);   // WebRTC DC로(켜졌고 열렸으면, inputObj._sq 부여). RTDB는 아래에서 floor로 항상 전송, seq로 dedup.
@@ -1788,7 +1792,7 @@ const OnlineManager = {
 
   leaveRoom:function(localOnly){
     try{ RTCNet.reset(); }catch(e){}   // WebRTC 피어/구독 정리
-    this._stInflight=0; this._stPend=null; this._stPendRef=null; this._stLastStr=null; this._stLastRef=null;   // 넷코드 다듬기: 흐름 제어·변경분 기준 초기화
+    this._stInflight=0; this._stPend=null; this._stPendRef=null; this._stLastStr=null; this._stLastRef=null; this.inQ={};   // 넷코드 다듬기: 흐름 제어·변경분 기준 초기화
     try{
       for(const u of this.unsubs){ try{ u(); }catch(e){} }
       this.unsubs=[];
@@ -2041,7 +2045,7 @@ const RTCNet = {
   _onInputMsg:function(slot, data){
     try{ const m=JSON.parse(data); const last=(this.lastInputSeq[slot]===undefined)?-1:this.lastInputSeq[slot];
       if(m.s!==undefined){ if(m.s<=last) return; this.lastInputSeq[slot]=m.s; }
-      OnlineManager.inputs[slot]=m.d;
+      OnlineManager.inputs[slot]=m.d; OnlineManager._pushInQ(slot, m.d);
       if(slot==="host"||slot==="guest") OnlineManager.onlineInput[slot]=m.d; }catch(e){}
   },
 
@@ -16325,16 +16329,52 @@ function onlineReconcile(pred, auth, dt){
      지연과 무관한 진짜 오차만 남고, 그것만 부드럽게 흡수한다. aq 없는 패킷(구버전 호스트)은 기존 onlineReconcile. */
 let netInputSeq=0;
 const netSentAt={};   // iq → 보낸 시각(왕복 측정용, 최근 64개)
-function netStampInput(inp){ inp.iq=++netInputSeq; netSentAt[inp.iq]=Date.now(); delete netSentAt[inp.iq-64]; }
-function netHostTrackInput(f, inp, dt){   // 호스트: 이 인물에게 이번 프레임 적용한 입력 기록
+let netGuestClock=0;   // 게스트 시뮬 시계(프레임 dt 누적) — 입력마다 gt(ms)로 실어 '그 입력을 몇 초 눌렀는지' 호스트가 알게 함
+function netStampInput(inp){ inp.iq=++netInputSeq; inp.gt=Math.round(netGuestClock*1000); netSentAt[inp.iq]=Date.now(); delete netSentAt[inp.iq-64]; }
+/* 넷코드 다듬기(3차): 입력 지속시간 보정. 호스트는 입력 k를 '도착~다음 입력 도착' 동안 적용하는데, 게스트는 '보냄~다음 보냄' 동안 적용했다.
+   도착 간격이 흔들리면 둘이 달라져 호스트 위치가 실제로 어긋났다(흔들림 큰 망에서 25px). 다음 입력(k+1)이 오면
+   게스트가 k를 적용한 시간 D=gt(k+1)-gt(k)와 호스트 적용 시간 ad의 차이만큼 k의 이동을 더하거나(모자람) 되돌린다(넘침).
+   번호가 건너뛰었거나(중간 입력 유실) 차이가 0.25초를 넘으면 보정하지 않는다. 되돌리기는 실제로 그 방향으로 간 거리까지만(벽에 막힌 경우 보호). */
+function netMoveDir(inp){
+  let mx=0,my=0;
+  const hasAnalog=(typeof inp.mvx==="number"||typeof inp.mvy==="number") && (Math.abs(inp.mvx||0)>0.01 || Math.abs(inp.mvy||0)>0.01);
+  if(hasAnalog){ mx=clamp(inp.mvx||0,-1,1); my=clamp(inp.mvy||0,-1,1); }
+  else { if(inp.up)my-=1; if(inp.down)my+=1; if(inp.left)mx-=1; if(inp.right)mx+=1; }
+  const ml=Math.hypot(mx,my); if(ml>1){ mx/=ml; my/=ml; }
+  return { x:mx, y:my, len:Math.min(1,ml) };
+}
+function netHostTrackInput(f, inp, dt){   // 호스트: 이 인물에게 이번 프레임 적용한 입력 기록(+지속시간 보정)
   const q=inp?inp.iq:undefined;
-  if(q===undefined){ f._aq=undefined; f._ad=0; return; }
-  if(q!==f._aq){ f._aq=q; f._ad=0; }
+  if(q===undefined){ f._aq=undefined; f._ad=0; f._aqInp=null; return; }
+  if(q!==f._aq){
+    const pv=f._aqInp;
+    if(pv && q===pv.iq+1 && typeof inp.gt==="number" && typeof pv.gt==="number" && !f.dead){
+      const diff=(inp.gt-pv.gt)/1000-(f._ad||0);
+      const d=netMoveDir(pv), sp=effSpeed(f);
+      if(Math.abs(diff)>0.004 && Math.abs(diff)<=0.25 && d.len>0.01 && sp>0){
+        if(diff>0) moveEntity(f, d.x*sp*diff, d.y*sp*diff);   // 모자람: 더 간다
+        else {   // 넘침: 넘친 시간 동안 '실제로' 그 방향으로 간 거리만 되돌린다(벽에 막혀 제자리였으면 0)
+          const ux=d.x/d.len, uy=d.y/d.len, T=(f._ad||0)+diff, H=f._aqHist||[];
+          let e=null; for(let i=H.length-1;i>=0;i--){ if(H[i].t<=T+1e-6){ e=H[i]; break; } }
+          if(!e) e=f._aqStart||null;
+          if(e){ const moved=(f.x-e.x)*ux+(f.y-e.y)*uy, back=Math.min(Math.max(0,moved), -diff*sp*d.len);
+            if(back>0) moveEntity(f, -ux*back, -uy*back); }
+        }
+      }
+    }
+    f._aq=q; f._ad=0; f._aqInp=inp; f._aqStart={ t:0, x:f.x, y:f.y }; f._aqHist=[];
+  }
   f._ad+=dt;
+  const H=f._aqHist||(f._aqHist=[]); H.push({ t:f._ad, x:f.x, y:f.y }); if(H.length>40) H.shift();   // 넘침 되돌리기용 위치 기록(약 0.6초)
+}
+function netHostDrain(slot, f){   // 호스트: 지난 프레임 이후 도착한 중간 입력들(마지막 제외)을 순서대로 지속시간 보정에 반영
+  const Q=OnlineManager.inQ && OnlineManager.inQ[slot]; if(!Q || !Q.length) return;
+  if(f && !f.dead) for(let i=0;i<Q.length-1;i++) netHostTrackInput(f, Q[i], 0);
+  Q.length=0;
 }
 function netAckPack(o, f){ if(f && f._aq!==undefined){ o.aq=f._aq; o.ad=Math.round((f._ad||0)*1000); o.ms=Math.round(effSpeed(f)); } return o; }
 function netNewRecon(){ return { log:[], corr:null, hasAck:false, lastAck:-1 }; }
-function netLogFrame(R, inp, dt){ R.log.push({ q:netInputSeq, dt:dt, inp:inp }); if(R.log.length>300) R.log.shift(); }
+function netLogFrame(R, inp, dt, pos){ R.log.push({ q:netInputSeq, dt:dt, inp:inp, x:pos?pos.x:0, y:pos?pos.y:0, hp:!!pos }); if(R.log.length>300) R.log.shift(); netGuestClock+=dt; }
 function netOnSnapshot(R, pred, auth){   // 새 권한 상태 도착 시 1회. aq가 없으면 false(구방식 폴백).
   if(!auth || typeof auth.aq!=="number") return false;
   R.hasAck=true;
@@ -16345,6 +16385,15 @@ function netOnSnapshot(R, pred, auth){   // 새 권한 상태 도착 시 1회. a
   if(i) R.log.splice(0,i);
   const c={ x:auth.x, y:auth.y, r:pred.r, moveSpeed:pred.moveSpeed, facing:pred.facing };
   let skip=(auth.ad||0)/1000;
+  // 호스트가 입력 aq를 게스트보다 오래 적용한 경우(다음 입력이 늦게 도착): 호스트는 다음 입력이 오면 넘친 만큼 되돌린다(netHostTrackInput).
+  // 게스트도 그 넘친 몫을 미리 빼서, 잠깐 앞으로 끌렸다 돌아오는 튐을 없앤다. (게스트가 이미 다음 입력으로 넘어간 경우만)
+  // 되돌릴 양은 호스트와 같은 원칙: 게스트가 기록한 'aq 구간 끝 위치'보다 권한 위치가 그 방향으로 앞선 만큼만(벽에 막혔으면 0).
+  let sumK=0, inpK=null, lastK=null, closed=false;
+  for(const e of R.log){ if(e.q===auth.aq){ sumK+=e.dt; if(!inpK) inpK=e.inp; lastK=e; } else if(e.q>auth.aq) closed=true; }
+  if(closed && inpK && lastK && lastK.hp && skip>sumK+0.004){
+    const ex=Math.min(0.25, skip-sumK), d=netMoveDir(inpK);
+    if(d.len>0.01){ const ux=d.x/d.len, uy=d.y/d.len, ahead=(c.x-lastK.x)*ux+(c.y-lastK.y)*uy, back=Math.min(Math.max(0,ahead), ex*c.moveSpeed*d.len);
+      if(back>0) moveEntity(c, -ux*back, -uy*back); } }
   for(const e of R.log){ let d=e.dt;
     if(e.q===auth.aq && skip>0){ const s=Math.min(skip,d); skip-=s; d-=s; }
     if(d>0) predictMoveAim(c, e.inp, d); }
@@ -16363,7 +16412,7 @@ function netGuestSelfStep(R, pred, auth, fresh, dt){
   if(fresh) netOnSnapshot(R, pred, auth);
   const inp=readLocalInput();
   predictMoveAim(pred, inp, dt);
-  netLogFrame(R, inp, dt);
+  netLogFrame(R, inp, dt, pred);
   if(R.hasAck) netApplyCorr(R, pred, dt); else onlineReconcile(pred, auth, dt);
 }
 /* 측정(원인 확인용): 게스트 = 왕복·도착 간격 흔들림·받는 양, 호스트 = 밀려서 건너뛴 전송 수. 배지와 window.__netStats로 확인. */
@@ -16665,6 +16714,7 @@ function updateOnlineHost(dt){
   const hi=readLocalInput();
   // 상대가 끊겼으면 마지막 입력이 남아 유령처럼 계속 움직이지 않도록 입력을 비운다
   const gi = OnlineManager.opponentConnected ? (OnlineManager.onlineInput.guest || emptyInput()) : emptyInput();
+  if(OnlineManager.opponentConnected) netHostDrain("guest", G);   // 넷코드 다듬기(3차): 중간 입력 지속시간 반영
   updateOnlineFighter(H, hi, dt);
   updateOnlineFighter(G, gi, dt); netHostTrackInput(G, gi, dt);   // 넷코드 다듬기: 게스트 화해용 입력 번호·적용 시간
   updateOnlineBullets(dt);
@@ -17437,7 +17487,7 @@ function tUpdateHost(dt){
     if(f.isBot){ tBotUpdate(f, dt); continue; }
     let input;
     if(slot===OnlineManager.mySlot) input=readLocalInput();
-    else { const p=players[slot]; const conn=p && p.connected!==false; const inp=(OnlineManager.inputs||{})[slot]; input = (conn && inp) ? inp : emptyInput(); }   // P1: inputs 노드에서
+    else { const p=players[slot]; const conn=p && p.connected!==false; const inp=(OnlineManager.inputs||{})[slot]; input = (conn && inp) ? inp : emptyInput(); if(conn && inp) netHostDrain(slot, f); }   // P1: inputs 노드에서 · 넷코드 다듬기(3차): 중간 입력 반영
     tUpdateFighter(f, input, dt);
     if(slot!==OnlineManager.mySlot) netHostTrackInput(f, input, dt);   // 넷코드 다듬기: 게스트 화해용
   }
@@ -18713,6 +18763,7 @@ function tPveUpdateHost(dt){
     f.inactive = !isMe && !(p && p.connected!==false);
     if(f.inactive) continue;
     let input = isMe ? readLocalInput() : (((OnlineManager.inputs||{})[slot])||emptyInput());   // P1: inputs 노드에서
+    if(!isMe) netHostDrain(slot, f);   // 넷코드 다듬기(3차): 중간 입력 지속시간 반영
     tPveUpdatePlayer(f, input, dt);
     if(!isMe) netHostTrackInput(f, input, dt);   // 넷코드 다듬기: 게스트 화해용
     f.displayHp=lerp(f.displayHp,f.hp,Math.min(1,dt*8));
@@ -19458,10 +19509,22 @@ function drawResultScreen(){
    메인 루프 (단 하나만 실행)
    ======================================================================= */
 let lastTime=0, loopStarted=false;
+/* 넷코드 다듬기(3차): 온라인 방장 기기가 20fps 아래로 떨어지면 dt 0.05 상한 때문에 방 전체가 슬로모션이 됐다.
+   방장일 때만 0.2초까지는 0.05초 조각으로 나눠 실시간 유지. 그보다 큰 간격은 탭 복귀급으로 보고 기존처럼 0.05로 자른다. */
+function loopSteps(dt, isOnlineHost){
+  if(dt>0.05 && dt<=0.2 && isOnlineHost){ const out=[]; let rest=dt; while(rest>1e-6){ const st=Math.min(rest,0.05); out.push(st); rest-=st; } return out; }
+  return [Math.min(dt,0.05)];
+}
 function gameLoop(ts){
   requestAnimationFrame(gameLoop);
   if(lastTime===0) lastTime=ts;
   let dt=(ts-lastTime)/1000; lastTime=ts;
+  const steps=loopSteps(dt, gameState===STATE.ONLINE_PLAYING && OnlineManager.role==="host");
+  if(steps.length>1){   // 넷코드 다듬기(3차): 느린 방장 기기 — 조각 업데이트 후 화면 1번
+    for(const st of steps){ try{ update(st); }catch(e){ if(!window._updErr){ window._updErr=1; if(window.console&&console.error) console.error("update() 예외:",e); } } }
+    try{ render(); }catch(e){ if(!window._rndErr){ window._rndErr=1; if(window.console&&console.error) console.error("render() 예외:",e); } }
+    return;
+  }
   if(dt>0.05) dt=0.05;          // 탭 복귀 시 큰 점프 방지
   try{ update(dt); }catch(e){ if(!window._updErr){ window._updErr=1; if(window.console&&console.error) console.error("update() 예외:",e); } }
   try{ render(); }catch(e){ if(!window._rndErr){ window._rndErr=1; if(window.console&&console.error) console.error("render() 예외:",e); } }

@@ -45,7 +45,7 @@ let s=fs.readFileSync(path.join(__dirname,"index.html"),"utf8").match(/<script>(
 s+=`;globalThis.__n={ predictMoveAim, onlineReconcile, netNewRecon, netOnSnapshot, netApplyCorr, netLogFrame, netStampInput, netHostTrackInput, netAckPack,
   emptyInput, OM:OnlineManager, netStats, netCompactInput, netPackBullets, netUnpackBullets, tUpdate, tStartMatch, tHostWriteState,
   setRule:(r)=>{onlineSelectedRule=r;}, setSel:(c,w)=>{selectedCharacterId=c;selectedWeaponId=w;profile.selectedCharacterId=c;profile.selectedWeaponId=w;},
-  get tFighters(){return tFighters;}, get tBullets(){return tBullets;}, netGuestBulletViews, netGClock, setState:v=>{gameState=v;}, STATE, setObs:v=>{OBSTACLES=v;}, get netInputSeq(){return netInputSeq;} };`;
+  get tFighters(){return tFighters;}, get tBullets(){return tBullets;}, effSpeed, loopSteps, netGuestBulletViews, netGClock, setState:v=>{gameState=v;}, STATE, setObs:v=>{OBSTACLES=v;}, get netInputSeq(){return netInputSeq;} };`;
 let api; try{ (0,eval)(s); api=globalThis.__n; }catch(e){ console.log("LOAD_FAIL:",e.stack); process.exit(1); }
 let fails=0; const check=(n,c)=>{console.log((c?"  ok  ":"FAIL  ")+n); if(!c)fails++;};
 api.setObs([]);
@@ -57,6 +57,7 @@ let seed=7; const rnd=()=>{ seed=(seed*1103515245+12345)&0x7fffffff; return seed
    호스트는 최신 입력을 매 프레임 적용, 15Hz로 상태 전송 → 다운링크 지연 후 게스트 도착(순서 유지).
    정답(ideal) = 게스트 입력만으로 순수 로컬 이동(물리 동일하므로 지연 없는 진짜 내 위치). */
 function simulate(opts){
+  if(opts.seed!==undefined) seed=opts.seed;
   const DT=1/60, T=opts.T||8, up=opts.up, down=opts.down, jit=opts.jit||0, loss=opts.loss||0, mode=opts.mode;
   const hostSlow=opts.hostSlow||null;   // [t0,t1] 구간 호스트만 속도 절반(둔화 — 예측 불일치 상황)
   const SPEED=300;
@@ -81,15 +82,18 @@ function simulate(opts){
       { let at=t+up+(rnd()*2-1)*jit; if(at<lastUpAt) at=lastUpAt; lastUpAt=at; toHost.push({at, inp:pk}); } }
     if(mode==="new"){
       if(fresh) api.netOnSnapshot(R, pred, fresh);
-      api.predictMoveAim(pred, inp, DT); api.netLogFrame(R, inp, DT);
+      api.predictMoveAim(pred, inp, DT); api.netLogFrame(R, inp, DT, pred);
       if(R.hasAck) api.netApplyCorr(R, pred, DT); else if(fresh) api.onlineReconcile(pred, fresh, DT);
     } else {
+      api.netLogFrame(api.netNewRecon(), inp, DT);   // 게스트 시계만 진행(gt 공정 비교)
       api.predictMoveAim(pred, inp, DT);
       if(R._last||fresh){ R._last=fresh||R._last; api.onlineReconcile(pred, R._last, DT); }
     }
     api.predictMoveAim(ideal, inp, DT);
     // 2) 호스트: 도착 입력 반영 → 한 프레임 시뮬 → 15Hz 전송
-    while(toHost.length && toHost[0].at<=t){ hostInp=toHost.shift().inp; }
+    { const arr=[]; while(toHost.length && toHost[0].at<=t){ arr.push(toHost.shift().inp); }   // 한 프레임에 여러 입력이 도착하면 중간 것도 순서대로 처리(게임의 입력 큐와 동일)
+      for(let i=0;i<arr.length-1;i++) api.netHostTrackInput(host, arr[i], 0);
+      if(arr.length) hostInp=arr[arr.length-1]; }
     const slow = hostSlow && t>=hostSlow[0] && t<hostSlow[1];
     host.moveSpeed = slow ? SPEED/2 : SPEED;
     api.predictMoveAim(host, hostInp, DT);
@@ -106,21 +110,20 @@ function simulate(opts){
   // 끝: 입력 멈춘 뒤 정착 — 권한 위치와의 차이
   return { maxErr, avgErr:n?sumErr/n:0, moveErr:moveN?moveErrSum/moveN:0, finalVsHost:Math.hypot(pred.x-host.x,pred.y-host.y) };
 }
+function simAvg(opts){ const rs=[1,2,3,4,5].map(sd=>simulate(Object.assign({},opts,{seed:sd*7919})));
+  const av=k=>rs.reduce((a,r)=>a+r[k],0)/rs.length; return { avgErr:av('avgErr'), moveErr:av('moveErr'), maxErr:Math.max(...rs.map(r=>r.maxErr)), finalVsHost:Math.max(...rs.map(r=>r.finalVsHost)) }; }
 function settle(opts){ const o=Object.assign({},opts,{T:(opts.T||8)+1.5}); return simulate(o); }
 
 const fmt=r=>"평균 "+r.avgErr.toFixed(1)+"px · 이동 중 "+r.moveErr.toFixed(1)+"px · 최대 "+r.maxErr.toFixed(1)+"px";
-// (가) 흔들림 없는 순수 지연: '뒤로 끌림'은 전부 지연 탓 → 새 방식은 거의 0이어야
-for(const c of [ { name:"편도 150ms(왕복 300ms), 흔들림 없음", up:0.15, down:0.15 }, { name:"직통 LAN 편도 10ms", up:0.01, down:0.01 } ]){
-  const o=simulate(Object.assign({mode:"old"},c)), nw=simulate(Object.assign({mode:"new"},c));
-  console.log("["+c.name+"]  기존: "+fmt(o)+"  →  새: "+fmt(nw));
-  check(c.name+": 새 방식 이동 중 오차 ≤ 6px(1프레임 이동량)", nw.moveErr<=6);
-}
-// (나) 흔들림: 입력 도착 간격이 달라 호스트가 '실제로' 다르게 움직임 → 남는 차이는 진짜 차이(끌림 아님). 기존 대비 크게 줄고, 멈추면 정확히 맞아야
-for(const c of [ { name:"Firebase 보통(편도 120ms ±40ms)", up:0.12, down:0.12, jit:0.04 }, { name:"Firebase 나쁨(편도 180ms ±80ms)", up:0.18, down:0.18, jit:0.08 },
+// 각 상황을 난수 5가지로 돌려 평균(최대·정착은 5회 중 최악)
+for(const c of [ { name:"편도 150ms(왕복 300ms), 흔들림 없음", up:0.15, down:0.15 }, { name:"직통 LAN 편도 10ms", up:0.01, down:0.01 },
+                 { name:"Firebase 보통(편도 120ms ±40ms)", up:0.12, down:0.12, jit:0.04 }, { name:"Firebase 나쁨(편도 180ms ±80ms)", up:0.18, down:0.18, jit:0.08 },
                  { name:"상태 패킷 10% 유실(편도 150ms ±60ms)", up:0.15, down:0.15, jit:0.06, loss:0.1 } ]){
-  const o=simulate(Object.assign({mode:"old"},c)), nw=simulate(Object.assign({mode:"new"},c));
-  console.log("["+c.name+"]  기존: "+fmt(o)+"  →  새: "+fmt(nw)+"  · 멈춘 뒤 권한과 차이 "+nw.finalVsHost.toFixed(1)+"px");
-  check(c.name+": 이동 중 오차가 기존의 1/2 이하", nw.moveErr<=o.moveErr/2);
+  const o=simAvg(Object.assign({mode:"old"},c)), nw=simAvg(Object.assign({mode:"new"},c));
+  console.log("["+c.name+"]  기존: "+fmt(o)+"  →  새: "+fmt(nw)+"  · 멈춘 뒤 권한과 차이(최악) "+nw.finalVsHost.toFixed(1)+"px");
+  check(c.name+": 새 방식 이동 중 오차 ≤ 6px", nw.moveErr<=6);
+  check(c.name+": 최대 오차 ≤ 25px", nw.maxErr<=25);
+  if(c.up>0.05) check(c.name+": 이동 중 오차가 기존의 1/5 이하", nw.moveErr<=o.moveErr/5);
   check(c.name+": 멈춘 뒤 권한 위치와 ≤ 3px", nw.finalVsHost<=3);
 }
 { const r=simulate({ mode:"new", up:0.15, down:0.15, jit:0.05, hostSlow:[0.5,3.5], T:9 });
@@ -183,6 +186,35 @@ for(const c of [ { name:"Firebase 보통(편도 120ms ±40ms)", up:0.12, down:0.
   const c=api.netCompactInput(full);
   console.log("[입력 패킷]  "+JSON.stringify(full).length+"B → "+JSON.stringify(c).length+"B  "+JSON.stringify(c));
   check("입력 압축: 필요한 값만(mvx·aim·attack·iq), 기본값·구형 불리언 제외", c.mvx===0.7 && c.aim===1.25 && c.attack===true && c.iq===12 && !("mvy" in c) && !("right" in c) && !("special" in c) && !("pick" in c));
+}
+{ // 실제 호스트 경로(3대3 tUpdate)에서 입력 지속시간 보정 + 중간 입력 대기열
+  const OM=api.OM;
+  OM.leaveRoom(true); OM.available=true; OM.uid="hostUID"; OM.db=makeMockDB();
+  api.setSel("student_01","tool_01"); api.setRule(null);
+  let code=null; OM.createTeamRoom("online3v3",(ok,info)=>{ if(ok) code=info; });
+  OM.db.ref("starArenaOnline/rooms/"+code+"/players/p2").set({uid:"p2",nickname:"p2",slot:"p2",team:"blue",characterId:"student_02",weaponId:null,connected:true,ready:false,isBot:false,input:api.emptyInput()});
+  api.tStartMatch(); api.setObs([]);
+  const f=api.tFighters.p2; f.x=640; f.y=360; f.invincibleTimer=0;
+  const give=(inp)=>{ OM.inputs.p2=inp; OM._pushInQ("p2", inp); };
+  const I=(o)=>Object.assign({}, o);
+  // (1) 넘침: 게스트는 오른쪽을 0.1초 눌렀는데, 멈춤이 늦게 와서 호스트는 10프레임(0.167초) 적용 → 멈춤 도착 시 0.067초분 되돌림
+  give(I({mvx:1, iq:1001, gt:0})); const x0=f.x, sp=api.effSpeed(f);
+  for(let i=0;i<10;i++) api.tUpdate(1/60);
+  give(I({iq:1002, gt:100})); api.tUpdate(1/60);
+  check("넘침 보정: 오른쪽 0.1초만큼만 이동(±1.5px) — 이동 "+(f.x-x0).toFixed(1)+"px, 기대 "+(sp*0.1).toFixed(1), Math.abs((f.x-x0)-sp*0.1)<=1.5);
+  // (2) 중간 입력: 한 프레임에 [오른쪽 50ms, 아래 50ms, 멈춤] 3개가 한꺼번에 도착 → 둘 다 반영
+  const x1=f.x, y1=f.y;
+  give(I({mvx:1, iq:1003, gt:1000})); give(I({mvy:1, iq:1004, gt:1050})); give(I({iq:1005, gt:1100})); api.tUpdate(1/60);
+  check("중간 입력 반영: 오른쪽 "+(f.x-x1).toFixed(1)+"px·아래 "+(f.y-y1).toFixed(1)+"px (기대 각 "+(sp*0.05).toFixed(1)+")", Math.abs((f.x-x1)-sp*0.05)<=1.5 && Math.abs((f.y-y1)-sp*0.05)<=1.5);
+  OM.leaveRoom(true);
+}
+{ // 느린 방장 기기 보정: 방장이면 0.15초 프레임을 0.05×3으로 나눠 실시간 유지, 아니면 기존처럼 0.05로 자름
+  const sum=a=>a.reduce((x,y)=>x+y,0);
+  const h1=api.loopSteps(0.15,true), h2=api.loopSteps(0.5,true), g1=api.loopSteps(0.15,false), n1=api.loopSteps(1/60,true);
+  check("방장 0.15초 프레임 → 0.05초 3번(실시간 유지)", h1.length===3 && Math.abs(sum(h1)-0.15)<1e-9);
+  check("0.5초 간격(탭 복귀급)은 기존처럼 0.05로 자름", h2.length===1 && h2[0]===0.05);
+  check("게스트·오프라인은 기존과 동일(0.05로 자름)", g1.length===1 && g1[0]===0.05);
+  check("보통 프레임(60fps)은 그대로 1번", n1.length===1 && n1[0]===1/60);
 }
 { // 흐름 제어(원인 B): 서버 확인 전 쓰기가 8개면 더 쌓지 않고 최신 1개만 보관 → 확인 오면 그 최신 것을 보냄
   const OM=api.OM; const sent=[]; const pend=[];
