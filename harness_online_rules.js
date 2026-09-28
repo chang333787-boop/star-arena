@@ -322,7 +322,7 @@ run("패킷 다이어트: 탄 48발 패킹 + 페인트 RLE 조건 전송", ()=>{
   for(let c=1;c<20&&!_p1;c++) _p1=api.tPaintCellBy(24+c*56+28, 70+2*56+28, "blue", "p1");
   api.tHostWriteState();
   const st1=hostState(code);
-  check("시뮬 탄 80발 → 패킷은 최신 48발", api.tBullets.length>=48 && st1.bullets.length===48);
+  check("시뮬 탄 80발 → 패킷은 최신 48발", api.tBullets.length>=48 && ((st1.bm? Object.keys(st1.bm).length : (st1.bullets||[]).length)===48));   // 넷코드 다듬기(3차): 탄은 bm(번호별 기록)으로 이동
   check("그리드 변화 직후 패킷엔 RLE 포함", typeof st1.rule.g==="string");
   api.tHostWriteState();
   const st2=hostState(code);

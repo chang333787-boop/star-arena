@@ -45,7 +45,7 @@ let s=fs.readFileSync(path.join(__dirname,"index.html"),"utf8").match(/<script>(
 s+=`;globalThis.__n={ predictMoveAim, onlineReconcile, netNewRecon, netOnSnapshot, netApplyCorr, netLogFrame, netStampInput, netHostTrackInput, netAckPack,
   emptyInput, OM:OnlineManager, netStats, netCompactInput, netPackBullets, netUnpackBullets, tUpdate, tStartMatch, tHostWriteState,
   setRule:(r)=>{onlineSelectedRule=r;}, setSel:(c,w)=>{selectedCharacterId=c;selectedWeaponId=w;profile.selectedCharacterId=c;profile.selectedWeaponId=w;},
-  get tFighters(){return tFighters;}, setState:v=>{gameState=v;}, STATE, setObs:v=>{OBSTACLES=v;}, get netInputSeq(){return netInputSeq;} };`;
+  get tFighters(){return tFighters;}, get tBullets(){return tBullets;}, netGuestBulletViews, netGClock, setState:v=>{gameState=v;}, STATE, setObs:v=>{OBSTACLES=v;}, get netInputSeq(){return netInputSeq;} };`;
 let api; try{ (0,eval)(s); api=globalThis.__n; }catch(e){ console.log("LOAD_FAIL:",e.stack); process.exit(1); }
 let fails=0; const check=(n,c)=>{console.log((c?"  ok  ":"FAIL  ")+n); if(!c)fails++;};
 api.setObs([]);
@@ -144,16 +144,21 @@ for(const c of [ { name:"Firebase 보통(편도 120ms ±40ms)", up:0.12, down:0.
   let code=null; OM.createTeamRoom("online3v3",(ok,info)=>{ if(ok) code=info; });
   api.tStartMatch();
   const room=()=>OM.db._data.starArenaOnline.rooms[code];
-  let oldB=0, newB0=api.netStats.upBytes, writes=0, mismatch=0; const orig=OM._stWrite;
+  let oldB=0, newB0=api.netStats.upBytes, writes=0, mismatch=0, bulCountBad=0, bulMaxErr=0, bulN=0; const orig=OM._stWrite;
   // Firebase 저장 규칙 흉내: 빈 배열/객체·null은 저장 안 됨 → 비교 전 정규화
   const norm=v=>{ if(Array.isArray(v)){ const o=v.map(norm).filter(x=>x!==undefined); return o.length?o:undefined; }
     if(v&&typeof v==="object"){ const o={}; for(const k of Object.keys(v).sort()){ if(k==="updatedAt") continue; const x=norm(v[k]); if(x!==undefined) o[k]=x; } return Object.keys(o).length?o:undefined; }
     return v===null?undefined:v; };
   OM._stWrite=function(ref,obj){ // 옛 방식 크기: 전체 상태 + 탄을 옛 객체 형식으로
-    const old=Object.assign({},obj); old.bullets=api.netUnpackBullets(obj).map(b=>({x:b.x,y:b.y,r:b.r,c:b.c,vx:b.vx,vy:b.vy,w:b.w})); delete old.bp;
+    const old=Object.assign({},obj); old.bullets=Object.values(obj.bm||{}).map(r=>{ const p=(obj.bp||[])[r[5]]||[]; return {x:r[0],y:r[1],r:r[2],c:p[0],vx:r[3],vy:r[4],w:p[1]||null}; }); delete old.bp; delete old.bm; delete old.ht;
     oldB+=JSON.stringify(old).length; writes++;
     const r=orig.call(OM,ref,obj);
     if(JSON.stringify(norm(room().state))!==JSON.stringify(norm(JSON.parse(JSON.stringify(obj))))){ if(!mismatch) console.log("  불일치 예:", writes); mismatch++; }
+    // 게스트가 기록으로 계산한 탄 위치 vs 방장 실제 탄(같은 시각 기준)
+    { const st=JSON.parse(JSON.stringify(room().state)); api.netGClock.est=null; const views=api.netGuestBulletViews(st, true, 0)||[];
+      const src=api.tBullets.length>48?api.tBullets.slice(api.tBullets.length-48):api.tBullets;
+      if(views.length!==src.length) bulCountBad++;
+      for(const b of src){ let best=1e9; for(const v of views){ const d=Math.hypot(v.x-b.x,v.y-b.y); if(d<best) best=d; } if(src.length) bulMaxErr=Math.max(bulMaxErr,best); bulN++; } }
     return r; };
   const SEC=60; for(let i=0;i<SEC*60;i++) api.tUpdate(1/60);
   OM._stWrite=orig;
@@ -163,7 +168,9 @@ for(const c of [ { name:"Firebase 보통(편도 120ms ±40ms)", up:0.12, down:0.
   // 게스트가 받은 합쳐진 상태가 호스트의 마지막 전체 상태와 같은지(변경분 누락 없음)
   const last={}; OM._stLastStr=null; const cap={ child:()=>({ set:(v)=>{ Object.assign(last,v); return null; }, update:()=>null }) };
   api.tHostWriteState(); const full=JSON.parse(JSON.stringify(room().state)); 
-  check("3대3 전송량 40% 이상 감소", newK<=oldK*0.6);
+  check("3대3 전송량 60% 이상 감소", newK<=oldK*0.4);
+  console.log("[탄 "+bulN+"개·회 비교]  게스트 계산 위치와 방장 실제 위치 최대 차이 "+bulMaxErr.toFixed(2)+"px, 개수 불일치 "+bulCountBad+"회");
+  check("게스트가 계산한 탄 위치 = 방장 실제 탄(≤ 4px), 개수 일치", bulN>100 && bulMaxErr<=4 && bulCountBad===0);
   check("변경분만 보내도 게스트가 받는 합쳐진 상태 = 방장 전체 상태(900회 매번)", mismatch===0);
   OM.leaveRoom(true);
 }

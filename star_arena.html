@@ -1733,7 +1733,7 @@ const OnlineManager = {
   _stStrs:function(obj){   // 비교용 문자열: 최상위 키별, fighters/enemies는 id별·칸별
     const m={};
     for(const k in obj){ const v=obj[k];
-      if((k==="fighters"||k==="enemies") && v && typeof v==="object" && !Array.isArray(v)){
+      if((k==="fighters"||k==="enemies"||k==="bm") && v && typeof v==="object" && !Array.isArray(v)){
         const sub={};
         for(const id in v){ const e=v[id]; const f={};
           if(e && typeof e==="object" && !Array.isArray(e)){ for(const fk in e) f[fk]=JSON.stringify(e[fk]); sub[id]={ f:f }; }
@@ -16400,6 +16400,41 @@ function netUnpackBullets(s){
     return { x:b[0], y:b[1], r:b[2], vx:b[3]||0, vy:b[4]||0, c:p[0]||"#ffffff", w:p[1]||null, o:p[2]||undefined };
   });
 }
+/* 넷코드 다듬기(3차): 탄은 '생길 때·궤도가 바뀔 때만' 보낸다. 탄마다 번호를 붙이고 기록 [x0,y0,r,vx,vy,k,t0(ms)]을 bm/<번호>에 둔다.
+   직선 탄은 기록이 안 변하므로 변경분 전송에서 빠진다(매 틱 전체 탄 → 새 탄·사라진 탄만). 호스트는 실제 위치가 기록으로 계산한 위치와
+   3px 넘게 어긋나거나 속도·크기가 바뀌면(부메랑·튕김·감속) 기록을 새로 쓴다. 게스트는 호스트 시뮬 시각(ht)을 추정해 x0+vx*(t-t0)로 그린다.
+   색·무기·주인 표(bp)는 매치 동안 덧붙이기만 해서 번호가 바뀌지 않는다. bm이 없는 패킷(구버전 호스트)은 기존 bullets 방식. */
+let netSimT=0, netBulletSeq=0;
+const netBulPal={ list:[], idx:{} };
+const netGClock={ est:null };
+function netResetBulletNet(){ netSimT=0; netBulPal.list=[]; netBulPal.idx={}; netGClock.est=null; }
+function netPackBulletRecs(src, withOwner){
+  const bm={};
+  for(const b of src){
+    const key=(b.color||"")+"|"+(b.wid||"")+(withOwner?"|"+(b.owner||""):"");
+    let k=netBulPal.idx[key];
+    if(k===undefined){ k=netBulPal.idx[key]=netBulPal.list.length; netBulPal.list.push(withOwner?[b.color||"", b.wid||"", b.owner||""]:[b.color||"", b.wid||""]); }
+    if(!b._nid) b._nid=++netBulletSeq;
+    const vx=Math.round(b.vx), vy=Math.round(b.vy), rr=Math.round(b.r);
+    let r=b._nrec;
+    if(r){ const el=netSimT-r[6]/1000;
+      if(r[2]!==rr || r[3]!==vx || r[4]!==vy || r[5]!==k || Math.abs(r[0]+r[3]*el-b.x)>3 || Math.abs(r[1]+r[4]*el-b.y)>3) r=null; }
+    if(!r) r=b._nrec=[Math.round(b.x), Math.round(b.y), rr, vx, vy, k, Math.round(netSimT*1000)];
+    bm["b"+b._nid]=r;
+  }
+  return bm;
+}
+function netGuestBulletViews(s, fresh, dt){   // bm 방식이면 탄 뷰 배열, 아니면 null(기존 방식)
+  if(!s || typeof s.ht!=="number") return null;
+  const tgt=s.ht/1000;
+  if(netGClock.est===null) netGClock.est=tgt;
+  else { netGClock.est+=dt; if(fresh){ const d=tgt-netGClock.est; if(Math.abs(d)>0.3) netGClock.est=tgt; else netGClock.est+=d*0.15; } }
+  const bm=s.bm||{}, bp=s.bp||[], out=[];
+  for(const id in bm){ const r=bm[id]; if(!r) continue;
+    const el=Math.max(0, netGClock.est-r[6]/1000), p=bp[r[5]]||[];
+    out.push({ x:r[0]+r[3]*el, y:r[1]+r[4]*el, r:r[2], vx:r[3], vy:r[4], c:p[0]||"#ffffff", w:p[1]||null, o:p[2]||undefined }); }
+  return out;
+}
 /* 넷코드 다듬기(원인 J): 입력 패킷 압축 — 기본값(false·null·0·pick -1)과 아날로그에서 유도되는 구형 불리언(up/down/left/right/super)은 빼고 보낸다.
    호스트는 빠진 키를 모두 '안 누름'으로 읽는다(!!undefined=false, mvx||0, typeof aim). 약 190B → 평소 30~60B. */
 function netCompactInput(inp){
@@ -16565,7 +16600,7 @@ function resetOnlineMatchFromRoom(){
   resetSkillZones(); resetAttackLog();
   POWERUPS=[]; powerupAcc=0; powerupId=0;
   onlineWriteAcc=0; onlineInputAcc=0; onlineLastInputStr="";
-  onlineRender={ host:null, guest:null }; onlinePrevOppDead=false; onlineBulletsView=[]; onlineLastStateRef=null; onlinePredict=null; onlineRecon=netNewRecon(); netResetStats();
+  onlineRender={ host:null, guest:null }; onlinePrevOppDead=false; onlineBulletsView=[]; onlineLastStateRef=null; onlinePredict=null; onlineRecon=netNewRecon(); netResetStats(); netResetBulletNet();
   onlineSnapBuf=[]; onlineInterpClock=0; onlineLastInputBtn="";
   onlinePredictBullets=[]; onlinePredictCd=0;
 }
@@ -16625,6 +16660,7 @@ function updateOnline(dt){
 function updateOnlineHost(dt){
   const H=onlineFighters.host, G=onlineFighters.guest;
   if(!H||!G) return;
+  netSimT+=dt;   // 넷코드 다듬기(3차): 탄 기록용 호스트 시뮬 시각
   OnlineManager.opponentConnected = !!(OnlineManager.players && OnlineManager.players.guest && OnlineManager.players.guest.connected);
   const hi=readLocalInput();
   // 상대가 끊겼으면 마지막 입력이 남아 유령처럼 계속 움직이지 않도록 입력을 비운다
@@ -16654,7 +16690,7 @@ function updateOnlineGuest(dt){
     onlineBulletsView=netUnpackBullets(s);   // 넷코드 다듬기: 압축 탄(옛 객체 형식도 읽음)
   }
   // 스냅샷 사이에는 탄환을 속도로 외삽해 부드럽게 진행
-  for(const b of onlineBulletsView){ b.x+=b.vx*dt; b.y+=b.vy*dt; }
+  { const bv=netGuestBulletViews(s, fresh, dt); if(bv) onlineBulletsView=bv; else for(const b of onlineBulletsView){ b.x+=b.vx*dt; b.y+=b.vy*dt; } }   // 넷코드 다듬기(3차)
   const ownSlot = (OnlineManager.role==="host") ? "host" : "guest";
   const oppSlot = (ownSlot==="host") ? "guest" : "host";
 
@@ -16858,9 +16894,9 @@ function packFighter(f){
 function hostWriteOnlineState(){
   const H=onlineFighters.host, G=onlineFighters.guest;
   if(!H||!G) return;
-  const pb=netPackBullets(onlineBullets, true);   // 넷코드 다듬기(원인 J): 탄 압축(주인 포함)
+  const bm=netPackBulletRecs(onlineBullets, true);   // 넷코드 다듬기(3차): 탄은 생길 때·궤도 바뀔 때만(주인 포함)
   const pw=POWERUPS.map(p=>({x:Math.round(p.x),y:Math.round(p.y),t:powerupPacketT(p),id:p.id}));
-  OnlineManager.writeHostState({ timeLeft:Math.max(0,Math.round(onlineTimeLeft)), host:packFighter(H), guest:packFighter(G), bullets:pb.bl, bp:pb.bp, powerups:pw, zones:packZones() });
+  OnlineManager.writeHostState({ timeLeft:Math.max(0,Math.round(onlineTimeLeft)), host:packFighter(H), guest:packFighter(G), bullets:[], bm:bm, bp:netBulPal.list, ht:Math.round(netSimT*1000), powerups:pw, zones:packZones() });
 }
 function hostEndOnlineMatch(){
   const H=onlineFighters.host, G=onlineFighters.guest;
@@ -17317,7 +17353,7 @@ function tBuildFighters(){
 function resetTeamMatchFromRoom(){
   const mode=getOnlineMode(OnlineManager.mode);
   tBullets=[]; tWriteAcc=0; tInputAcc=0; tLastInputStr=""; tLastInputBtn=""; tWinner=null; tResultText="";
-  tRenderFighters={}; tPrevDead={}; tPredict=null; tRecon=netNewRecon(); netResetStats(); tBulletsView=[]; tLastStateRef=null; tSnapBuf=[]; tInterpClock=0;
+  tRenderFighters={}; tPrevDead={}; tPredict=null; tRecon=netNewRecon(); netResetStats(); netResetBulletNet(); tBulletsView=[]; tLastStateRef=null; tSnapBuf=[]; tInterpClock=0;
   tPaintLastRLE=""; tPaintRLESkips=99;
   tEnemies={}; tEnemyId=0; tEnemiesView={};
   resetSkillZones(); resetAttackLog();
@@ -17390,6 +17426,7 @@ function tUpdate(dt){
 }
 
 function tUpdateHost(dt){
+  netSimT+=dt;   // 넷코드 다듬기(3차): 탄 기록용 호스트 시뮬 시각
   const players=OnlineManager.players||{};
   for(const slot in tFighters){
     const f=tFighters[slot];
@@ -18059,8 +18096,8 @@ function tHostWriteState(){
   // 게스트 렌더에 필요한 것만(x,y,r,c,vx,vy,w=무기 스프라이트 id). owner/team은 게스트가 안 써서 제외(렉 최적화).
   // P1: 패킷에는 최신 48발까지만(시뮬 상한 80 유지) — 난전 시 스냅샷 6.8KB→4.4KB. 잘리는 건 소멸 직전의 오래된 탄.
   const _blSrc=(tBullets.length>48)?tBullets.slice(tBullets.length-48):tBullets;
-  const pb=netPackBullets(_blSrc, false);   // 넷코드 다듬기(원인 J): 탄 압축 [x,y,r,vx,vy,k] + bp 표
-  const st={ timeLeft:Math.max(0,Math.round(tTimeLeft)), teamScores:tTeamScores, fighters:fighters, bullets:pb.bl, bp:pb.bp,
+  const bm=netPackBulletRecs(_blSrc, false);   // 넷코드 다듬기(3차): 탄은 생길 때·궤도 바뀔 때만 + 고정 bp 표
+  const st={ timeLeft:Math.max(0,Math.round(tTimeLeft)), teamScores:tTeamScores, fighters:fighters, bullets:[], bm:bm, bp:netBulPal.list, ht:Math.round(netSimT*1000),
     powerups:POWERUPS.map(p=>({x:Math.round(p.x),y:Math.round(p.y),t:powerupPacketT(p),id:p.id})), zones:packZones() };
   // BIG-BATCH-2 P2: 규칙 상태 동기화(점령전=게이지 · 수정=구조물HP · 별=좌표/카운트다운 · 술래=단계 · 칠=RLE 그리드)
   if(RULE && getOnlineMode(OnlineManager.mode).modeType==="pvp"){
@@ -18131,7 +18168,7 @@ function tUpdateGuest(dt){
     tBulletsView=netUnpackBullets(s);   // 넷코드 다듬기: 압축 탄(옛 객체 형식도 읽음)
     if(getOnlineMode(OnlineManager.mode).modeType==="pvp") tGuestApplyRule(s);   // P2+PERF-2: 새 패킷일 때만(페인트 RLE 디코드 60→15Hz)
   }
-  for(const b of tBulletsView){ b.x+=b.vx*dt; b.y+=b.vy*dt; }
+  { const bv=netGuestBulletViews(s, fresh, dt); if(bv) tBulletsView=bv; else for(const b of tBulletsView){ b.x+=b.vx*dt; b.y+=b.vy*dt; } }   // 넷코드 다듬기(3차)
   const myslot=OnlineManager.mySlot;
   for(const slot in s.fighters){
     const p=s.fighters[slot];
@@ -18668,6 +18705,7 @@ function tCampTick(dt){
   }
 }
 function tPveUpdateHost(dt){
+  netSimT+=dt;   // 넷코드 다듬기(3차): 탄 기록용 호스트 시뮬 시각
   const players=OnlineManager.players||{};
   for(const slot in tFighters){ const f=tFighters[slot];
     // 끊긴 플레이어는 inactive 처리(적 타겟/피해/접촉/팀라이프 대상에서 제외)
