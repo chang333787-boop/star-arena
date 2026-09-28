@@ -1716,13 +1716,33 @@ const OnlineManager = {
       // RTDB floor: DC 없으면 항상(유일 통로). DC 열려 있으면 억제 — 단 '모든' 사람 게스트가 DC면 저빈도(RTC_RTDB_FALLBACK_FPS)로, RTDB-only 게스트가 하나라도 있으면 15Hz로(그 학생 보호). DC 끊기면 allGuestsOpen=false라 자동 15Hz 복귀. 게스트는 seq로 dedup.
       if(RTCNet.anyOpen()){ const rate=RTCNet.allGuestsOpen()?RTC_RTDB_FALLBACK_FPS:T_STATE_FPS; const nowMs=Date.now(); if(this._lastRtdbAt && nowMs-this._lastRtdbAt < (1000/rate)-3) return; this._lastRtdbAt=nowMs; }
       stateObj.updatedAt=firebase.database.ServerValue.TIMESTAMP;
-      const p=this.roomRef.child("state").set(this._sanitizePacket(stateObj,"state"));
-      if(p && p.catch) p.catch(function(e){ try{ console.warn("[online] state 전송 실패", e); }catch(e2){} });
+      this._rtdbSetState(this._sanitizePacket(stateObj,"state"));
     }catch(e){ try{ console.warn("[online] state 전송 실패", e); }catch(e2){} }   // 무음 금지 — 이번 사고의 은폐 지점
+  },
+  /* 넷코드 다듬기(원인 B): 흐름 제어. 서버가 아직 확인하지 않은 state 쓰기가 STATE_MAX_INFLIGHT개 이상이면
+     새로 쌓지 않고 '가장 최신 것 1개'만 보관했다가 자리가 나면 보낸다. 학교망이 느려도 옛 상태가 줄줄이 밀려
+     지연이 계속 커지고 몰아서 도착(순간이동)하던 현상 방지. 평소(왕복 300ms 이하, 15Hz)에는 한도에 닿지 않아 동작 동일. */
+  STATE_MAX_INFLIGHT:8,
+  _stInflight:0, _stPend:null, _stPendRef:null, _stOldestAt:0,
+  _rtdbSetState:function(obj){
+    const self=this, ref=this.roomRef; if(!ref) return;
+    const now=Date.now();
+    if(this._stInflight>=this.STATE_MAX_INFLIGHT && now-this._stOldestAt<5000){   // 5초 넘게 응답이 없으면 안전장치로 계속 보냄
+      this._stPend=obj; this._stPendRef=ref; netStats.skipped++; return; }
+    if(this._stInflight===0 || this._stInflight>=this.STATE_MAX_INFLIGHT) this._stOldestAt=now;   // 강제 전송은 5초에 1번만
+    this._stInflight++;
+    let done=false;
+    const fin=function(){ if(done) return; done=true;
+      self._stInflight=Math.max(0,self._stInflight-1); self._stOldestAt=Date.now();
+      const n=self._stPend; if(n && self._stPendRef===self.roomRef && self._stInflight<self.STATE_MAX_INFLIGHT){ self._stPend=null; self._rtdbSetState(n); } };
+    const p=ref.child("state").set(obj);
+    if(p && p.then) p.then(fin, function(e){ try{ console.warn("[online] state 전송 실패", e); }catch(e2){} fin(); });
+    else fin();
   },
 
   leaveRoom:function(localOnly){
     try{ RTCNet.reset(); }catch(e){}   // WebRTC 피어/구독 정리
+    this._stInflight=0; this._stPend=null; this._stPendRef=null;   // 넷코드 다듬기: 흐름 제어 상태 초기화
     try{
       for(const u of this.unsubs){ try{ u(); }catch(e){} }
       this.unsubs=[];
@@ -1888,7 +1908,10 @@ const RTCNet = {
   _newPc:function(box){
     const pc=new RTCPeerConnection({ iceServers:this.ICE });
     const self=this;
-    pc.oniceconnectionstatechange=function(){ if(pc.iceConnectionState==="failed"||pc.iceConnectionState==="closed"){ if(box.open){ box.open=false; self._openCount=Math.max(0,self._openCount-1); } } };
+    // 넷코드 다듬기(원인 H): 'disconnected'도 닫힘으로 본다(전엔 무시 → 반쯤 죽은 직통을 최대 ~30초 믿고 RTDB를 5Hz로 억제). 회복되면 다시 연다.
+    pc.oniceconnectionstatechange=function(){ const st=pc.iceConnectionState;
+      if(st==="failed"||st==="closed"||st==="disconnected"){ if(box.open){ box.open=false; self._openCount=Math.max(0,self._openCount-1); } }
+      else if((st==="connected"||st==="completed") && !box.open && box.dc && box.dc.readyState==="open"){ box.open=true; box.openAt=Date.now(); self._openCount++; } };
     return pc;
   },
   _addIce:function(box, c){
@@ -1907,11 +1930,12 @@ const RTCNet = {
     const pc=this._newPc(box); box.pc=pc;
     const node=this.sigRef.child(slot);
     box.node=node;
+    try{ node.remove(); }catch(e){}   // 넷코드 다듬기(원인 I): 이 자리를 쓰던 이전 학생의 옛 answer/ICE 제거(안 하면 옛 answer를 받아 직통 실패)
     const dc=pc.createDataChannel("g", { ordered:false, maxRetransmits:0 });
     box.dc=dc;
-    dc.onopen=function(){ box.open=true; self._openCount++; };
+    dc.onopen=function(){ box.open=true; box.openAt=Date.now(); self._openCount++; };
     dc.onclose=function(){ if(box.open){ box.open=false; self._openCount=Math.max(0,self._openCount-1); } };
-    dc.onmessage=function(ev){ self._onStateMsg(ev.data); };
+    dc.onmessage=function(ev){ box.rxAt=Date.now(); self._onStateMsg(ev.data); };
     pc.onicecandidate=function(e){ if(e.candidate) node.child("guestIce").push(e.candidate.toJSON()).catch(function(){}); };
     pc.createOffer().then(function(o){ return pc.setLocalDescription(o).then(function(){ return node.child("offer").set({ type:o.type, sdp:o.sdp }); }); }).catch(function(){});
     const acb=function(s){ const a=s.val(); if(a && !box.remoteSet){ box.remoteSet=true; pc.setRemoteDescription(new RTCSessionDescription(a)).then(function(){ self._flush(box); }).catch(function(){}); } };
@@ -1924,21 +1948,30 @@ const RTCNet = {
   // ---- 호스트: 게스트 슬롯 offer 감지 → 슬롯별 answerer ----
   _hostListen:function(){
     const self=this;
-    const scb=function(snap){ const all=snap.val()||{}; for(const slot in all){ if(!self.peers[slot] && all[slot] && all[slot].offer){ self._hostAcceptGuest(slot); } } };
+    // 넷코드 다듬기(원인 I): 같은 자리에 새 offer(다른 sdp)가 오면 옛 연결을 닫고 새로 받는다(전엔 자리당 1회만 → 재입장 학생은 RTDB 전용).
+    const scb=function(snap){ const all=snap.val()||{}; for(const slot in all){ const o=all[slot]&&all[slot].offer; if(!o) continue;
+      const b=self.peers[slot];
+      if(!b) self._hostAcceptGuest(slot, o.sdp);
+      else if(b.offerSdp && o.sdp && b.offerSdp!==o.sdp){ self._closeBox(b); delete self.peers[slot]; self._hostAcceptGuest(slot, o.sdp); } } };
     this.sigRef.on("value", scb);
     this._unsubs.push(function(){ try{ self.sigRef.off("value",scb); }catch(e){} });
   },
-  _hostAcceptGuest:function(slot){
+  _closeBox:function(box){
+    if(box.open){ box.open=false; this._openCount=Math.max(0,this._openCount-1); }
+    try{ if(box.unsub) box.unsub(); }catch(e){}
+    try{ if(box.dc) box.dc.close(); }catch(e){} try{ if(box.pc) box.pc.close(); }catch(e){}
+  },
+  _hostAcceptGuest:function(slot, offerSdp){
     const self=this;
-    const box={ pc:null, dc:null, open:false, remoteSet:false, iceBuf:[], slot:slot };
+    const box={ pc:null, dc:null, open:false, remoteSet:false, iceBuf:[], slot:slot, offerSdp:offerSdp||null };
     this.peers[slot]=box;
     this.lastInputSeq[slot]=-1;   // 재접속 시 게스트 inputSeq가 0부터 재시작하므로 슬롯 seq 리셋(안 하면 새 입력이 드롭됨)
     const pc=this._newPc(box); box.pc=pc;
     const node=this.sigRef.child(slot); box.node=node;
     pc.ondatachannel=function(e){ box.dc=e.channel;
-      box.dc.onopen=function(){ box.open=true; self._openCount++; };
+      box.dc.onopen=function(){ box.open=true; box.openAt=Date.now(); self._openCount++; };
       box.dc.onclose=function(){ if(box.open){ box.open=false; self._openCount=Math.max(0,self._openCount-1); } };
-      box.dc.onmessage=function(ev){ self._onInputMsg(slot, ev.data); };
+      box.dc.onmessage=function(ev){ box.rxAt=Date.now(); self._onInputMsg(slot, ev.data); };
     };
     pc.onicecandidate=function(e){ if(e.candidate) node.child("hostIce").push(e.candidate.toJSON()).catch(function(){}); };
     node.child("offer").get().then(function(s){
@@ -1950,7 +1983,8 @@ const RTCNet = {
     }).catch(function(){});
     const icb=function(s){ const c=s.val(); if(c) self._addIce(box, c); };
     node.child("guestIce").on("child_added", icb);
-    this._unsubs.push(function(){ try{ node.child("guestIce").off("child_added",icb); }catch(e){} });
+    box.unsub=function(){ try{ node.child("guestIce").off("child_added",icb); }catch(e){} };
+    this._unsubs.push(box.unsub);
   },
 
   // ---- 수신 라우팅(seq 가드) — 기존 onlineState/inputs를 더 빠르게 채운다 ----
@@ -1981,14 +2015,18 @@ const RTCNet = {
     }catch(e){}
     return n;
   },
-  anyOpen:function(){ return this._openCount>0; },
+  anyOpen:function(){
+    if(this.role==="guest"){ const b=this.self;   // 넷코드 다듬기(원인 H): 게스트는 1초 넘게 직통 수신이 없으면 닫힌 것으로(보간 지연을 RTDB용으로 복귀)
+      return !!(b && b.open && Date.now()-(b.rxAt||b.openAt||0)<1000); }
+    return this._openCount>0; },
+  _alive:function(b){ return !!(b && b.open && Date.now()-(b.rxAt||b.openAt||0)<2500); },   // 호스트: 입력 keepalive(0.75초)가 2.5초 넘게 없으면 죽은 직통
   // 접속한 '사람' 게스트가 전부 DC로 붙었나? (봇·호스트 자신 제외). RTDB floor를 저빈도로 낮춰도 되는 조건.
   // 하나라도 RTDB-only이거나 DC가 죽으면 false → writeHostState가 15Hz로 자동 복귀(mixed room에서 그 학생 보호·self-healing).
   allGuestsOpen:function(){
     if(!this.on || this.role!=="host") return false;
     const players=OnlineManager.players||{}, mySlot=OnlineManager.mySlot||"host";
     let need=0, open=0;
-    for(const k in players){ const p=players[k]; if(!p || p.connected===false || p.isBot) continue; if(k===mySlot) continue; need++; const b=this.peers[k]; if(b && b.open) open++; }
+    for(const k in players){ const p=players[k]; if(!p || p.connected===false || p.isBot) continue; if(k===mySlot) continue; need++; if(this._alive(this.peers[k])) open++; }
     return need>0 && open===need;
   }
 };
@@ -16197,13 +16235,14 @@ let onlineBulletsView = [];
 let onlineLastStateRef = null;
 let onlineSnapBuf = [], onlineInterpClock = 0;   // P1: 스냅샷 페어 보간 버퍼(도착 시계=dt 누적)
 let onlinePredict = null;   // 참가자 본인 캐릭터의 로컬 예측 위치(즉시 반응)
+let onlineRecon = netNewRecon();   // 넷코드 다듬기: 내 캐릭터 화해 기록
 let onlinePredictBullets = []; // 참가자 본인 총알의 로컬 예측(즉시 표시, 시각용)
 let onlinePredictCd = 0;
 function lerpAngle(a,b,t){ let d=b-a; while(d>Math.PI)d-=Math.PI*2; while(d<-Math.PI)d+=Math.PI*2; return a+d*t; }
 /* 온라인긴급 P1: 스냅샷 페어 보간 — '최신 1개를 향한 지수 lerp'는 패킷 하나만 늦어도 점프한다.
    도착 시계(dt 누적 — 하니스 결정성 유지) 기준으로 렌더 시점을 INTERP_DELAY만큼 과거에 두고
    두 스냅샷 사이를 등속 보간, 최신 초과분은 1.4패킷까지만 소폭 외삽 후 홀드. 워밍업(버퍼<2)은 기존 지수 lerp 폴백. */
-const ONLINE_INTERP_DELAY = 0.12;
+const ONLINE_INTERP_DELAY = 0.15;   // 넷코드 다듬기(원인 G): 0.12 → 0.15(15Hz 약 2.3패킷) — Firebase 도착 흔들림 흡수
 const RTC_INTERP_DELAY = 0.07;   // WebRTC(P2P) 활성 시 더 짧은 보간 버퍼 — 지연이 낮고 상태율이 높아 안전
 function onlineSnapPush(buf, clock, s){ buf.push({ at:clock, s:s }); if(buf.length>4) buf.shift(); }
 function onlineInterpTarget(buf, clock, pick, prev, dt){
@@ -16232,6 +16271,68 @@ function onlineReconcile(pred, auth, dt){
   if(er>220){ pred.x=auth.x; pred.y=auth.y; return; }
   if(er>6){ const k=Math.min(1, dt*(er>90?9:4)); pred.x+=ex*k; pred.y+=ey*k; }
 }
+/* 넷코드 다듬기(docs/온라인_개선_조사_20260928.md 원인 C): 입력 번호 + 되감아 재적용(정석 '화해').
+   위 onlineReconcile은 권한 위치(=왕복 지연만큼 과거)로 계속 당겨서, 움직이는 내내 30~60px 뒤로 끌렸다.
+   - 게스트: 입력 패킷에 번호(iq)를 붙이고, 프레임마다 {번호,dt,입력}을 기록한다.
+   - 호스트: 인물별로 '적용 중인 입력 번호(aq)'·'그 입력을 적용한 시간(ad, ms)'·'실제 이동속도(ms)'를 상태에 싣는다.
+   - 게스트: 새 상태가 오면 권한 위치에서 출발해 호스트가 아직 적용하지 않은 몫(aq의 남은 시간+이후 입력)만 재생 →
+     지연과 무관한 진짜 오차만 남고, 그것만 부드럽게 흡수한다. aq 없는 패킷(구버전 호스트)은 기존 onlineReconcile. */
+let netInputSeq=0;
+const netSentAt={};   // iq → 보낸 시각(왕복 측정용, 최근 64개)
+function netStampInput(inp){ inp.iq=++netInputSeq; netSentAt[inp.iq]=Date.now(); delete netSentAt[inp.iq-64]; }
+function netHostTrackInput(f, inp, dt){   // 호스트: 이 인물에게 이번 프레임 적용한 입력 기록
+  const q=inp?inp.iq:undefined;
+  if(q===undefined){ f._aq=undefined; f._ad=0; return; }
+  if(q!==f._aq){ f._aq=q; f._ad=0; }
+  f._ad+=dt;
+}
+function netAckPack(o, f){ if(f && f._aq!==undefined){ o.aq=f._aq; o.ad=Math.round((f._ad||0)*1000); o.ms=Math.round(effSpeed(f)); } return o; }
+function netNewRecon(){ return { log:[], corr:null, hasAck:false, lastAck:-1 }; }
+function netLogFrame(R, inp, dt){ R.log.push({ q:netInputSeq, dt:dt, inp:inp }); if(R.log.length>300) R.log.shift(); }
+function netOnSnapshot(R, pred, auth){   // 새 권한 상태 도착 시 1회. aq가 없으면 false(구방식 폴백).
+  if(!auth || typeof auth.aq!=="number") return false;
+  R.hasAck=true;
+  if(typeof auth.ms==="number") pred.moveSpeed=auth.ms;   // 둔화·빙결·속도버프를 예측에도 반영
+  if(auth.aq>R.lastAck){ R.lastAck=auth.aq; const t=netSentAt[auth.aq];
+    if(t){ const r=Date.now()-t-(auth.ad||0); if(r>=0 && r<5000) netStats.rtt=(netStats.rtt===null)?r:netStats.rtt*0.8+r*0.2; } }
+  let i=0; while(i<R.log.length && R.log[i].q<auth.aq) i++;
+  if(i) R.log.splice(0,i);
+  const c={ x:auth.x, y:auth.y, r:pred.r, moveSpeed:pred.moveSpeed, facing:pred.facing };
+  let skip=(auth.ad||0)/1000;
+  for(const e of R.log){ let d=e.dt;
+    if(e.q===auth.aq && skip>0){ const s=Math.min(skip,d); skip-=s; d-=s; }
+    if(d>0) predictMoveAim(c, e.inp, d); }
+  R.corr={ x:c.x-pred.x, y:c.y-pred.y };
+  return true;
+}
+function netApplyCorr(R, pred, dt){   // 남은 진짜 오차만 부드럽게(워프급은 즉시)
+  const c=R.corr; if(!c) return;
+  const er=Math.hypot(c.x,c.y);
+  if(er>220){ pred.x+=c.x; pred.y+=c.y; R.corr=null; return; }
+  if(er<0.5){ R.corr=null; return; }
+  const k=Math.min(1, dt*10); pred.x+=c.x*k; pred.y+=c.y*k; c.x-=c.x*k; c.y-=c.y*k;
+}
+// 게스트 내 캐릭터 한 프레임: (새 상태면 화해) → 로컬 예측 → 기록 → 오차 흡수
+function netGuestSelfStep(R, pred, auth, fresh, dt){
+  if(fresh) netOnSnapshot(R, pred, auth);
+  const inp=readLocalInput();
+  predictMoveAim(pred, inp, dt);
+  netLogFrame(R, inp, dt);
+  if(R.hasAck) netApplyCorr(R, pred, dt); else onlineReconcile(pred, auth, dt);
+}
+/* 측정(원인 확인용): 게스트 = 왕복·도착 간격 흔들림·받는 양, 호스트 = 밀려서 건너뛴 전송 수. 배지와 window.__netStats로 확인. */
+const netStats={ rtt:null, lastAt:0, iv:null, jit:0, bytes:0, bytesAt:0, kbps:0, skipped:0 };
+function netNoteArrival(s){
+  const now=Date.now();
+  if(netStats.lastAt){ const iv=now-netStats.lastAt;
+    if(netStats.iv===null) netStats.iv=iv; else { netStats.jit=netStats.jit*0.9+Math.abs(iv-netStats.iv)*0.1; netStats.iv=netStats.iv*0.9+iv*0.1; } }
+  netStats.lastAt=now;
+  try{ netStats.bytes+=JSON.stringify(s).length; }catch(e){}
+  if(!netStats.bytesAt) netStats.bytesAt=now;
+  if(now-netStats.bytesAt>=2000){ netStats.kbps=netStats.bytes/1024/((now-netStats.bytesAt)/1000); netStats.bytes=0; netStats.bytesAt=now; }
+}
+function netResetStats(){ netStats.rtt=null; netStats.lastAt=0; netStats.iv=null; netStats.jit=0; netStats.bytes=0; netStats.bytesAt=0; netStats.kbps=0; netStats.skipped=0; }
+try{ window.__netStats=netStats; }catch(e){}
 
 function openOnlineMenu(){
   onlineMenuIndex=0;
@@ -16385,7 +16486,7 @@ function resetOnlineMatchFromRoom(){
   resetSkillZones(); resetAttackLog();
   POWERUPS=[]; powerupAcc=0; powerupId=0;
   onlineWriteAcc=0; onlineInputAcc=0; onlineLastInputStr="";
-  onlineRender={ host:null, guest:null }; onlinePrevOppDead=false; onlineBulletsView=[]; onlineLastStateRef=null; onlinePredict=null;
+  onlineRender={ host:null, guest:null }; onlinePrevOppDead=false; onlineBulletsView=[]; onlineLastStateRef=null; onlinePredict=null; onlineRecon=netNewRecon(); netResetStats();
   onlineSnapBuf=[]; onlineInterpClock=0; onlineLastInputBtn="";
   onlinePredictBullets=[]; onlinePredictCd=0;
 }
@@ -16429,7 +16530,7 @@ function sendMyInput(dt){
   // P1: 버튼 변화=즉시 · 아날로그 변화=20Hz 캡 · 무변화=keepalive
   if(btnChanged || (str!==onlineLastInputStr && onlineInputAcc>=ONLINE_INPUT_MIN_IV) || onlineInputAcc>=ONLINE_INPUT_KEEPALIVE){
     onlineLastInputStr=str; onlineLastInputBtn=btn; onlineInputAcc=0;
-    OnlineManager.writeInput(inp);
+    netStampInput(inp); OnlineManager.writeInput(inp);
   }
 }
 
@@ -16450,14 +16551,14 @@ function updateOnlineHost(dt){
   // 상대가 끊겼으면 마지막 입력이 남아 유령처럼 계속 움직이지 않도록 입력을 비운다
   const gi = OnlineManager.opponentConnected ? (OnlineManager.onlineInput.guest || emptyInput()) : emptyInput();
   updateOnlineFighter(H, hi, dt);
-  updateOnlineFighter(G, gi, dt);
+  updateOnlineFighter(G, gi, dt); netHostTrackInput(G, gi, dt);   // 넷코드 다듬기: 게스트 화해용 입력 번호·적용 시간
   updateOnlineBullets(dt);
   tickSkillZones(dt, envOnline1v1());
   tickPowerupsHost(dt, [H, G]);
   onlineTimeLeft-=dt;
   H.displayHp=lerp(H.displayHp,H.hp,Math.min(1,dt*8)); G.displayHp=lerp(G.displayHp,G.hp,Math.min(1,dt*8));
   onlineWriteAcc+=dt;
-  if(onlineWriteAcc>=1/ONLINE_STATE_FPS){ onlineWriteAcc=0; hostWriteOnlineState(); }
+  if(onlineWriteAcc>=1/ONLINE_STATE_FPS){ onlineWriteAcc-=1/ONLINE_STATE_FPS; if(onlineWriteAcc>1/ONLINE_STATE_FPS) onlineWriteAcc=0; hostWriteOnlineState(); }   // 넷코드 다듬기(원인 F): 남은 시간 이월 → 정확한 주기
   if(onlineTimeLeft<=0){ onlineTimeLeft=0; hostEndOnlineMatch(); }
 }
 function updateOnlineGuest(dt){
@@ -16466,8 +16567,10 @@ function updateOnlineGuest(dt){
   if(!s) return;
   // 새 스냅샷이 도착하면 탄환 뷰를 받은 값으로 갱신(권한값 기준 보정) + 페어 보간 버퍼 적재(P1)
   onlineInterpClock+=dt;
-  if(s !== onlineLastStateRef){
+  const fresh=(s !== onlineLastStateRef);
+  if(fresh){
     onlineLastStateRef=s;
+    netNoteArrival(s);
     onlineSnapPush(onlineSnapBuf, onlineInterpClock, s);
     onlineBulletsView=(s.bullets||[]).map(b=>({ x:b.x, y:b.y, vx:b.vx||0, vy:b.vy||0, r:b.r, c:b.c, o:b.o, w:b.w||null }));
   }
@@ -16490,10 +16593,9 @@ function updateOnlineGuest(dt){
     if(!onlinePredict || mine.dead){
       const ch=getCharacter(mine.charId);
       onlinePredict={ x:mine.x, y:mine.y, facing:mine.facing||0, r:22, moveSpeed:GAME_CONFIG.playerMoveSpeed*ch.speedMul*TEMPO.playerMove };
+      onlineRecon=netNewRecon();
     } else {
-      const inp=readLocalInput();
-      predictMoveAim(onlinePredict, inp, dt);   // UPDATE-1 P3: 예측도 의도 공용(아날로그+분리 조준)
-      onlineReconcile(onlinePredict, mine, dt);
+      netGuestSelfStep(onlineRecon, onlinePredict, mine, fresh, dt);   // 넷코드 다듬기: 입력 번호 화해(구버전 호스트면 onlineReconcile)
     }
   }
 
@@ -16668,11 +16770,11 @@ function respawnOnline(f){
   f.x=pos.x; f.y=pos.y; f.invincibleTimer=GAME_CONFIG.invincibleTime;
 }
 function packFighter(f){
-  return { x:Math.round(f.x), y:Math.round(f.y), hp:Math.round(f.hp), maxHp:Math.round(f.maxHp),
+  return netAckPack({ x:Math.round(f.x), y:Math.round(f.y), hp:Math.round(f.hp), maxHp:Math.round(f.maxHp),
     facing:Math.round(f.facing*100)/100, score:f.score, dead:!!f.dead, inv:f.invincibleTimer>0, charId:f.char.id,
     am:(f.ammo===undefined?-1:f.ammo),   // 온라인긴급 P0: -1=무한탄(봇·럭키) — undefined는 RTDB set() 전체 거부
     rl:f.reloading?1:0, sg:Math.round(f.superGauge||0), fr:f.fireRevealTimer>0?1:0,
-    xc:Math.round(Math.max(0,f.specialCd||0)*10)/10 };   // X 쿨타임(HUD용, 숫자만)
+    xc:Math.round(Math.max(0,f.specialCd||0)*10)/10 }, f);   // X 쿨타임(HUD용, 숫자만) · 넷코드 다듬기: aq/ad/ms(게스트 화해용)
 }
 function hostWriteOnlineState(){
   const H=onlineFighters.host, G=onlineFighters.guest;
@@ -16791,6 +16893,13 @@ function drawOnlineNetBadge(){
     ctx.fillText("네트워크 지연 "+(age>=1000?(age/1000).toFixed(1)+"s":Math.round(age)+"ms"), LOGW-28, 82); }
   else if(RTCNet.on && RTCNet.self && RTCNet.self.open){ ctx.textAlign="right"; ctx.fillStyle="#63e06b"; ctx.font="bold 11px 'Malgun Gothic',sans-serif";
     ctx.fillText("P2P", LOGW-24, 82); }   // WebRTC 직접연결 활성 — 교사 육안 확인용
+  // 넷코드 다듬기: 측정값 한 줄(원인 가리기용) — 왕복 · 도착 흔들림 · 받는 양
+  const parts=[];
+  if(netStats.rtt!==null) parts.push("왕복 "+Math.round(netStats.rtt)+"ms");
+  if(netStats.iv!==null) parts.push("흔들림 "+Math.round(netStats.jit)+"ms");
+  if(netStats.kbps>0) parts.push(Math.round(netStats.kbps)+"KB/s");
+  if(parts.length){ ctx.textAlign="right"; ctx.fillStyle="rgba(220,230,255,0.7)"; ctx.font="11px 'Malgun Gothic',sans-serif";
+    ctx.fillText(parts.join(" · "), LOGW-12, 96); }
   ctx.restore();
   if(age>2000&&!_netWarned){ _netWarned=true;
     try{ console.warn("[online] state 수신이 "+Math.round(age)+"ms 정체 — 학교 방화벽의 WebSocket 차단(long-poll 폴백) 또는 회선 혼잡 의심"); }catch(e){} }
@@ -16995,6 +17104,7 @@ let tWinner = null, tResultText = "";
 let tRenderFighters = {};  // slot -> {x,y,facing}
 let tPrevDead = {};        // slot -> 직전 dead 상태(리스폰 첫 프레임 스냅 판정)
 let tPredict = null;       // 내 슬롯 예측
+let tRecon = netNewRecon(); // 넷코드 다듬기: 내 슬롯 화해 기록
 let tBulletsView = [];
 let tLastStateRef = null;
 let tSnapBuf = [], tInterpClock = 0;   // P1: 스냅샷 페어 보간 버퍼
@@ -17124,7 +17234,7 @@ function tBuildFighters(){
 function resetTeamMatchFromRoom(){
   const mode=getOnlineMode(OnlineManager.mode);
   tBullets=[]; tWriteAcc=0; tInputAcc=0; tLastInputStr=""; tLastInputBtn=""; tWinner=null; tResultText="";
-  tRenderFighters={}; tPrevDead={}; tPredict=null; tBulletsView=[]; tLastStateRef=null; tSnapBuf=[]; tInterpClock=0;
+  tRenderFighters={}; tPrevDead={}; tPredict=null; tRecon=netNewRecon(); netResetStats(); tBulletsView=[]; tLastStateRef=null; tSnapBuf=[]; tInterpClock=0;
   tPaintLastRLE=""; tPaintRLESkips=99;
   tEnemies={}; tEnemyId=0; tEnemiesView={};
   resetSkillZones(); resetAttackLog();
@@ -17184,7 +17294,7 @@ function tSendInput(dt){
   tInputAcc+=dt;
   const btn=onlineInputBtnSig(inp), btnChanged=(btn!==tLastInputBtn);
   if(btnChanged || (str!==tLastInputStr && tInputAcc>=ONLINE_INPUT_MIN_IV) || tInputAcc>=ONLINE_INPUT_KEEPALIVE){
-    tLastInputStr=str; tLastInputBtn=btn; tInputAcc=0; OnlineManager.writeInput(inp);   // P1: 버튼 즉시·아날로그 20Hz 캡
+    tLastInputStr=str; tLastInputBtn=btn; tInputAcc=0; netStampInput(inp); OnlineManager.writeInput(inp);   // P1: 버튼 즉시·아날로그 20Hz 캡
   }
 }
 
@@ -17209,6 +17319,7 @@ function tUpdateHost(dt){
     if(slot===OnlineManager.mySlot) input=readLocalInput();
     else { const p=players[slot]; const conn=p && p.connected!==false; const inp=(OnlineManager.inputs||{})[slot]; input = (conn && inp) ? inp : emptyInput(); }   // P1: inputs 노드에서
     tUpdateFighter(f, input, dt);
+    if(slot!==OnlineManager.mySlot) netHostTrackInput(f, input, dt);   // 넷코드 다듬기: 게스트 화해용
   }
   tUpdateBullets(dt);
   tTickRule(dt);                                           // BIG-BATCH-2 P2: 규칙 판정(host 권위)
@@ -17217,7 +17328,7 @@ function tUpdateHost(dt){
   for(const slot in tFighters){ const f=tFighters[slot]; f.displayHp=lerp(f.displayHp,f.hp,Math.min(1,dt*8)); }
   if(OnlineManager.role==="host" && tFighters[OnlineManager.mySlot]) tMyTagRole=!!tFighters[OnlineManager.mySlot].isTagger;
   tTimeLeft-=dt;
-  tWriteAcc+=dt; if(tWriteAcc>=1/(RTCNet.anyOpen()?RTC_STATE_FPS:T_STATE_FPS)){ tWriteAcc=0; tHostWriteState(); }
+  tWriteAcc+=dt; { const iv=1/(RTCNet.anyOpen()?RTC_STATE_FPS:T_STATE_FPS); if(tWriteAcc>=iv){ tWriteAcc-=iv; if(tWriteAcc>iv) tWriteAcc=0; tHostWriteState(); } }   // 넷코드 다듬기(원인 F): 이월
   if(tTimeLeft<=0){ tTimeLeft=0; if(RULE) tRuleTimeUpTeam(); else tHostEndMatch(); }
 }
 
@@ -17845,6 +17956,7 @@ function tPackFighter(f){
     xc:Math.round(Math.max(0,f.specialCd||0)*10)/10,     // X 쿨타임(HUD용)
     lv:(f.lives===undefined?-1:f.lives) };               // PVE 개인 목숨(-1=해당 없음/3v3)
   if(f.isBot){ o.c=f.char.id; o.tm=f.team; }             // 봇은 players 로스터에 없어 게스트가 charId/team 역산 불가 → 패킷에 실어 화면 일치(안 하면 게스트에서 봇이 전부 기본 캐릭/blue로 보임)
+  netAckPack(o, f);                                      // 넷코드 다듬기: aq/ad/ms(게스트 화해용, 사람 게스트만)
   if(RULE){                                              // P2: 규칙별 개인 상태(술래 여부·별 보유)
     if(RULE.id==="tag") o.tg=f.isTagger?1:0;
     else if(RULE.id==="stargrab") o.st=f.stars||0;
@@ -17928,8 +18040,10 @@ function tUpdateGuest(dt){
   if(s.pve && s.pve.mapId && s.pve.mapId!==tMapId){ tMapId=s.pve.mapId; const m=getMap(tMapId); OBSTACLES=m.obstacles.slice(); BUSHES=m.bushes; tGuestStructSig=""; }
   if(s.structs) tGuestApplyStructs(s.structs);                       // v1.22: 구조물 상태+충돌 동기화
   tInterpClock+=dt;
-  if(s!==tLastStateRef){
+  const fresh=(s!==tLastStateRef);
+  if(fresh){
     tLastStateRef=s;
+    netNoteArrival(s);
     onlineSnapPush(tSnapBuf, tInterpClock, s);   // P1: 페어 보간 버퍼
     tBulletsView=(s.bullets||[]).map(b=>({ x:b.x,y:b.y,vx:b.vx||0,vy:b.vy||0,r:b.r,c:b.c,w:b.w||null }));
     if(getOnlineMode(OnlineManager.mode).modeType==="pvp") tGuestApplyRule(s);   // P2+PERF-2: 새 패킷일 때만(페인트 RLE 디코드 60→15Hz)
@@ -17939,10 +18053,8 @@ function tUpdateGuest(dt){
   for(const slot in s.fighters){
     const p=s.fighters[slot];
     if(slot===myslot){
-      if(!tPredict || p.dead){ const ch=getCharacter(p.charId||tRosterCharId(slot)); tPredict={ x:p.x,y:p.y,facing:p.facing||0,r:22,moveSpeed:GAME_CONFIG.playerMoveSpeed*ch.speedMul*TEMPO.playerMove }; }
-      else { const inp=readLocalInput();
-        predictMoveAim(tPredict, inp, dt);   // UPDATE-1 P3: 예측도 의도 공용
-        onlineReconcile(tPredict, p, dt); }   // P1: 연속 화해(70px 하드스냅 제거)
+      if(!tPredict || p.dead){ const ch=getCharacter(p.charId||tRosterCharId(slot)); tPredict={ x:p.x,y:p.y,facing:p.facing||0,r:22,moveSpeed:GAME_CONFIG.playerMoveSpeed*ch.speedMul*TEMPO.playerMove }; tRecon=netNewRecon(); }
+      else netGuestSelfStep(tRecon, tPredict, p, fresh, dt);   // 넷코드 다듬기: 입력 번호 화해(구버전 호스트면 onlineReconcile)
     } else {
       if(!tRenderFighters[slot] || p.dead || tPrevDead[slot]) tRenderFighters[slot]={ x:p.x,y:p.y,facing:p.facing||0 };   // 리스폰 첫 프레임 스냅(죽은 자리에서 미끄러짐 방지)
       else tRenderFighters[slot]=onlineInterpTarget(tSnapBuf, tInterpClock, function(ss){ return (ss&&ss.fighters)?ss.fighters[slot]:null; }, tRenderFighters[slot], dt);   // P1: 페어 보간
@@ -18481,6 +18593,7 @@ function tPveUpdateHost(dt){
     if(f.inactive) continue;
     let input = isMe ? readLocalInput() : (((OnlineManager.inputs||{})[slot])||emptyInput());   // P1: inputs 노드에서
     tPveUpdatePlayer(f, input, dt);
+    if(!isMe) netHostTrackInput(f, input, dt);   // 넷코드 다듬기: 게스트 화해용
     f.displayHp=lerp(f.displayHp,f.hp,Math.min(1,dt*8));
   }
   for(const id in tEnemies) tEnemyUpdate(tEnemies[id], dt);
@@ -18491,7 +18604,7 @@ function tPveUpdateHost(dt){
   tickSkillZones(dt, envTeam());
   tickPowerupsHost(dt, Object.keys(tFighters).map(s=>tFighters[s]).filter(f=>!f.inactive));
   tPveProgress(dt);
-  tWriteAcc+=dt; if(tWriteAcc>=1/(RTCNet.anyOpen()?RTC_STATE_FPS:T_STATE_FPS)){ tWriteAcc=0; tHostWriteState(); }
+  tWriteAcc+=dt; { const iv=1/(RTCNet.anyOpen()?RTC_STATE_FPS:T_STATE_FPS); if(tWriteAcc>=iv){ tWriteAcc-=iv; if(tWriteAcc>iv) tWriteAcc=0; tHostWriteState(); } }   // 넷코드 다듬기(원인 F): 이월
 }
 function tPveUpdatePlayer(f,input,dt){
   // 강화 선택(1/2/3) — 죽은/관전 플레이어도 선택 가능(host 판정, 1회만)
